@@ -8,233 +8,136 @@
 <style>
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
-:root {
-  --orange: #F07820;
-  --bg: #0F0F0F;
-}
+:root { --orange: #F07820; --bg: #0F0F0F; }
 
 html, body {
-  width: 100vw; height: 100vh;
-  overflow: hidden;
-  background: var(--bg);
-  font-family: 'Montserrat', sans-serif;
-  cursor: none;
+  width:100vw; height:100vh;
+  overflow:hidden;
+  background:var(--bg);
+  font-family:'Montserrat',sans-serif;
+  cursor:none;
 }
 
-/* ── Hex grid bg ── */
+/* ── Static hex grid (no animation) ── */
 .hex-bg {
-  position: fixed; inset: 0; z-index: 0; opacity: 0.13;
+  position:fixed; inset:0; z-index:0; opacity:0.10;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='70'%3E%3Cpolygon points='30,2 58,16 58,54 30,68 2,54 2,16' fill='none' stroke='%23F07820' stroke-width='0.8'/%3E%3C/svg%3E");
-  background-size: 60px 70px;
-  animation: hexDrift 22s linear infinite;
+  background-size:60px 70px;
 }
-@keyframes hexDrift { to { background-position: 60px 140px; } }
 
-/* ── Glow ── */
+/* ── Simple static glow (no animation) ── */
 .glow {
-  position: fixed; inset: 0; z-index: 1;
-  background: radial-gradient(ellipse 90% 40% at 50% 45%, rgba(240,120,32,0.15) 0%, transparent 65%);
-  animation: breathe 5s ease-in-out infinite;
-}
-@keyframes breathe { 0%,100%{opacity:.6} 50%{opacity:1} }
-
-/* ── Particles ── */
-.particles { position:fixed; inset:0; z-index:2; pointer-events:none; }
-.p {
-  position:absolute; border-radius:50%;
-  background:var(--orange); opacity:0;
-  animation: rise linear infinite;
-}
-@keyframes rise {
-  0%   { transform:translateY(105vh); opacity:0; }
-  8%   { opacity:0.55; }
-  92%  { opacity:0.15; }
-  100% { transform:translateY(-8vh); opacity:0; }
+  position:fixed; inset:0; z-index:1;
+  background: radial-gradient(ellipse 80% 40% at 50% 45%, rgba(240,120,32,0.12) 0%, transparent 65%);
 }
 
-/* ── Vertical sweep ── */
-.sweep {
-  position:fixed; inset:0; z-index:3; pointer-events:none;
-  background: linear-gradient(180deg, transparent 15%, rgba(240,120,32,0.05) 50%, transparent 85%);
-  animation: sweepV 10s ease-in-out infinite;
-}
-@keyframes sweepV { 0%,100%{transform:translateY(-100%)} 50%{transform:translateY(100%)} }
-
-/* ── Scanlines ── */
-.scanlines {
-  position:fixed; inset:0; z-index:99; pointer-events:none;
-  background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 4px);
-}
-
-/* ── Frame border ── */
+/* ── Frame border — simple opacity pulse ── */
 .frame-line {
   position:fixed; z-index:20;
   background: linear-gradient(var(--d,90deg), transparent, var(--orange) 30%, var(--orange) 70%, transparent);
-  box-shadow: 0 0 8px var(--orange);
-  animation: framePulse 3.5s ease-in-out infinite;
+  animation: framePulse 4s ease-in-out infinite;
 }
-@keyframes framePulse { 0%,100%{opacity:.3} 50%{opacity:.7} }
+@keyframes framePulse { 0%,100%{opacity:.25} 50%{opacity:.6} }
 .ft { top:0; left:0; right:0; height:2px; }
 .fb { bottom:0; left:0; right:0; height:2px; }
 .fl { top:0; bottom:0; left:0; width:2px; --d:180deg; }
 .fr { top:0; bottom:0; right:0; width:2px; --d:180deg; }
 
 /* ── HUD corners ── */
-.hud { position:fixed; z-index:21; width:40px; height:40px; }
+.hud { position:fixed; z-index:21; width:36px; height:36px; }
 .hud svg { width:100%; height:100%; }
-.hud-tl { top:14px; left:14px; }
-.hud-tr { top:14px; right:14px; transform:scaleX(-1); }
-.hud-bl { bottom:14px; left:14px; transform:scaleY(-1); }
-.hud-br { bottom:14px; right:14px; transform:scale(-1,-1); }
+.hud-tl { top:12px; left:12px; }
+.hud-tr { top:12px; right:12px; transform:scaleX(-1); }
+.hud-bl { bottom:12px; left:12px; transform:scaleY(-1); }
+.hud-br { bottom:12px; right:12px; transform:scale(-1,-1); }
 
-/* ══════════════════════════════════
-   STAGE
-══════════════════════════════════ */
+/* ── STAGE ── */
 .stage {
   position:relative; z-index:10;
   width:100vw; height:100vh;
   display:flex; flex-direction:column;
   align-items:center; justify-content:space-between;
-  padding: 8vh 6vw 7vh;
+  padding:8vh 6vw 7vh;
 }
 
 /* ── TOP ── */
 .top-label {
-  font-size: clamp(11px, 2.8vw, 16px);
+  font-size:clamp(11px,2.8vw,16px);
   font-weight:300; letter-spacing:0.5em;
-  color:rgba(255,255,255,0.65);
+  color:rgba(255,255,255,0.6);
   text-transform:uppercase;
   opacity:0;
-  animation: fadeDown 1s ease 0.3s forwards;
+  animation:fadeDown 1s ease 0.3s forwards;
 }
 @keyframes fadeDown {
-  from { opacity:0; transform:translateY(-14px); }
+  from { opacity:0; transform:translateY(-12px); }
   to   { opacity:1; transform:translateY(0); }
 }
 
-/* ══════════════════════════════════
-   CENTER — logo block
-══════════════════════════════════ */
+/* ── LOGO BLOCK ── */
 .logo-block {
   display:flex; flex-direction:column; align-items:center;
-  gap:0;
   opacity:0;
-  animation: logoIn 1.2s cubic-bezier(0.16,1,0.3,1) 0.5s forwards,
-             logoBob 7s ease-in-out 2.2s infinite;
+  animation:logoIn 1s ease 0.5s forwards, logoBob 8s ease-in-out 2s infinite;
 }
 @keyframes logoIn {
-  from { opacity:0; transform:scale(0.3); }
+  from { opacity:0; transform:scale(0.5); }
   to   { opacity:1; transform:scale(1); }
 }
 @keyframes logoBob {
-  0%,100% { transform:translateY(0) rotate(-0.5deg); }
-  50%     { transform:translateY(-14px) rotate(0.5deg); }
+  0%,100% { transform:translateY(0); }
+  50%     { transform:translateY(-12px); }
 }
 
-/* Hex icon wrapper */
-.hex-wrap {
-  position:relative;
-  display:flex; align-items:center; justify-content:center;
-  animation: glowPulse 4s ease-in-out infinite;
-}
-@keyframes glowPulse {
-  0%,100% { filter: drop-shadow(0 0 40px rgba(240,120,32,0.8)) drop-shadow(0 20px 40px rgba(0,0,0,0.7)); }
-  50%     { filter: drop-shadow(0 0 80px rgba(240,120,32,1.0)) drop-shadow(0 20px 40px rgba(0,0,0,0.7)); }
-}
-
+/* Hex SVG — no filter/shadow */
 #logo-icon {
-  width: clamp(140px, 38vw, 200px);
-  height: auto; display:block;
+  width:clamp(140px,38vw,200px);
+  height:auto; display:block;
 }
 
-#hex-stroke {
-  stroke-dasharray: 620;
-  stroke-dashoffset: 620;
-}
-
-#hex-fill {
-  opacity: 0;
-}
-
-#p-letter {
-  opacity: 0;
-  transform-origin: 50px 55px;
-  transform: scale(0.4);
-}
-
-/* Orbit rings */
-.orbit-sys {
-  position:absolute; inset:0;
-  display:flex; align-items:center; justify-content:center;
-  pointer-events:none;
-}
-.ring {
-  position:absolute; border-radius:50%;
-  border:1px solid rgba(240,120,32,0.18);
-}
-.ring::after {
-  content:''; position:absolute; border-radius:50%;
-  background:var(--orange);
-  box-shadow:0 0 10px var(--orange);
-}
-.r1 { width:230px; height:230px; border-width:1.5px; border-color:rgba(240,120,32,0.25); animation:spin 10s linear infinite; }
-.r1::after { width:9px; height:9px; top:-4.5px; left:50%; transform:translateX(-50%); }
-.r2 { width:275px; height:275px; animation:spin 17s linear infinite reverse; }
-.r2::after { width:6px; height:6px; bottom:-3px; left:22%; }
-.r3 { width:320px; height:320px; border-style:dashed; border-color:rgba(240,120,32,0.07); animation:spin 28s linear infinite; }
-.r3::after { width:4px; height:4px; top:18%; right:-2px; }
-@keyframes spin { to { transform:rotate(360deg); } }
+#hex-stroke { stroke-dasharray:620; stroke-dashoffset:620; }
+#hex-fill   { opacity:0; }
+#p-letter   { opacity:0; transform-origin:50px 55px; transform:scale(0.4); }
 
 /* ── Brand text ── */
 .brand-text {
-  margin-top: 22px;
-  text-align:center;
-  opacity:0;
+  margin-top:20px; text-align:center; opacity:0;
 }
 .brand-name {
   font-weight:900;
-  font-size: clamp(38px, 10.5vw, 60px);
-  letter-spacing:0.09em;
-  line-height:1;
-  white-space:nowrap;
+  font-size:clamp(38px,10.5vw,60px);
+  letter-spacing:0.09em; line-height:1; white-space:nowrap;
 }
-.brand-name .pro   { color: #F07820; }
-.brand-name .mebel { color: #FFFFFF; }
+.brand-name .pro   { color:#F07820; }
+.brand-name .mebel { color:#FFFFFF; }
 
 .brand-sub {
-  margin-top:9px;
-  font-weight:300;
-  font-size: clamp(10px, 2.6vw, 14px);
+  margin-top:8px; font-weight:300;
+  font-size:clamp(10px,2.6vw,14px);
   letter-spacing:0.36em;
-  color:rgba(255,255,255,0.65);
-  text-transform:uppercase;
-  opacity:0;
+  color:rgba(255,255,255,0.6);
+  text-transform:uppercase; opacity:0;
 }
 
 .brand-line {
-  margin-top:7px;
-  width: clamp(200px, 55vw, 320px);
-  height:2px;
-  background: linear-gradient(90deg, transparent, var(--orange) 20%, var(--orange) 80%, transparent);
-  box-shadow:0 0 10px var(--orange);
+  margin-top:6px;
+  width:clamp(180px,50vw,300px); height:2px;
+  background:linear-gradient(90deg,transparent,var(--orange) 20%,var(--orange) 80%,transparent);
   transform:scaleX(0); transform-origin:center;
-}
-@keyframes lineGrow { to { transform:scaleX(1); } }
-
-@keyframes fadeUp {
-  from { opacity:0; transform:translateY(16px); }
-  to   { opacity:1; transform:translateY(0); }
 }
 
 /* ── BOTTOM ── */
 .bottom-section {
-  text-align:center; width:100%;
-  opacity:0;
-  animation: fadeUp 1s ease 1.5s forwards;
+  text-align:center; width:100%; opacity:0;
+  animation:fadeUp 1s ease 1.2s forwards;
+}
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(14px); }
+  to   { opacity:1; transform:translateY(0); }
 }
 .tagline {
-  font-size: clamp(11px, 2.8vw, 15px); font-weight:300;
-  letter-spacing:0.4em; color:rgba(255,255,255,0.7);
+  font-size:clamp(11px,2.8vw,15px); font-weight:300;
+  letter-spacing:0.4em; color:rgba(255,255,255,0.65);
   text-transform:uppercase; margin-bottom:14px;
 }
 .pills {
@@ -242,25 +145,25 @@ html, body {
   flex-wrap:wrap; margin-bottom:16px;
 }
 .pill {
-  border:1px solid rgba(240,120,32,0.7);
+  border:1px solid rgba(240,120,32,0.65);
   color:#F07820;
-  font-size: clamp(9px, 2.4vw, 12px); font-weight:400;
+  font-size:clamp(9px,2.4vw,12px); font-weight:400;
   letter-spacing:0.18em; text-transform:uppercase;
   padding:5px 12px; border-radius:2px;
-  opacity:0; animation: fadeUp 0.6s ease forwards;
+  opacity:0; animation:fadeUp 0.6s ease forwards;
 }
-.pill:nth-child(1){animation-delay:2.0s}
-.pill:nth-child(2){animation-delay:2.15s}
-.pill:nth-child(3){animation-delay:2.3s}
-.pill:nth-child(4){animation-delay:2.45s}
+.pill:nth-child(1){animation-delay:1.8s}
+.pill:nth-child(2){animation-delay:1.95s}
+.pill:nth-child(3){animation-delay:2.1s}
+.pill:nth-child(4){animation-delay:2.25s}
 
 .ticker-wrap { width:100%; overflow:hidden; }
 .ticker {
   display:inline-flex; gap:50px; white-space:nowrap;
-  font-size: clamp(9px, 2.2vw, 12px); font-weight:300;
-  letter-spacing:0.25em; color:rgba(240,120,32,0.75);
+  font-size:clamp(9px,2.2vw,12px); font-weight:300;
+  letter-spacing:0.25em; color:rgba(240,120,32,0.7);
   text-transform:uppercase;
-  animation:tickerScroll 22s linear infinite;
+  animation:tickerScroll 25s linear infinite;
 }
 @keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
 </style>
@@ -269,42 +172,31 @@ html, body {
 
 <div class="hex-bg"></div>
 <div class="glow"></div>
-<div class="particles" id="pts"></div>
-<div class="sweep"></div>
-<div class="scanlines"></div>
 
 <div class="frame-line ft"></div>
 <div class="frame-line fb"></div>
 <div class="frame-line fl"></div>
 <div class="frame-line fr"></div>
 
-<div class="hud hud-tl"><svg viewBox="0 0 40 40" fill="none"><path d="M2 38L2 2L38 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="3" fill="#F07820"/></svg></div>
-<div class="hud hud-tr"><svg viewBox="0 0 40 40" fill="none"><path d="M2 38L2 2L38 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="3" fill="#F07820"/></svg></div>
-<div class="hud hud-bl"><svg viewBox="0 0 40 40" fill="none"><path d="M2 38L2 2L38 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="3" fill="#F07820"/></svg></div>
-<div class="hud hud-br"><svg viewBox="0 0 40 40" fill="none"><path d="M2 38L2 2L38 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="3" fill="#F07820"/></svg></div>
+<div class="hud hud-tl"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
+<div class="hud hud-tr"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
+<div class="hud hud-bl"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
+<div class="hud hud-br"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
 
 <div class="stage">
-
   <div class="top-label">Добро пожаловать</div>
 
   <div class="logo-block">
-    <div class="hex-wrap">
-      <div class="orbit-sys">
-        <div class="ring r1"></div>
-        <div class="ring r2"></div>
-        <div class="ring r3"></div>
-      </div>
-      <svg id="logo-icon" viewBox="0 0 100 108" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polygon id="hex-fill"   points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/>
-        <polygon id="hex-stroke" points="50,4 97,28 97,78 50,104 3,78 3,28"
-          fill="none" stroke="#F07820" stroke-width="3.5" stroke-linejoin="round"/>
-        <g id="p-letter">
-          <text x="26" y="72"
-            font-family="Montserrat,sans-serif" font-weight="900"
-            font-size="60" fill="white">P</text>
-        </g>
-      </svg>
-    </div>
+    <svg id="logo-icon" viewBox="0 0 100 108" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon id="hex-fill"   points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/>
+      <polygon id="hex-stroke" points="50,4 97,28 97,78 50,104 3,78 3,28"
+        fill="none" stroke="#F07820" stroke-width="3.5" stroke-linejoin="round"/>
+      <g id="p-letter">
+        <text x="26" y="72"
+          font-family="Montserrat,sans-serif" font-weight="900"
+          font-size="60" fill="white">P</text>
+      </g>
+    </svg>
 
     <div class="brand-text">
       <div class="brand-name">
@@ -334,125 +226,96 @@ html, body {
       </div>
     </div>
   </div>
-
 </div>
 
 <script>
-  // Particles
-  const pts = document.getElementById('pts');
-  for (let i = 0; i < 28; i++) {
-    const el = document.createElement('div');
-    el.className = 'p';
-    const s = Math.random() * 5 + 2;
-    el.style.cssText = `width:${s}px;height:${s}px;left:${Math.random()*100}%;animation-duration:${Math.random()*12+8}s;animation-delay:${Math.random()*10}s;`;
-    pts.appendChild(el);
-  }
-
-  // ── Animation cycle ──
   const hexFill   = document.getElementById('hex-fill');
-  const hexStroke = document.getElementById('hex-stroke');
   const pLetter   = document.getElementById('p-letter');
   const brandText = document.querySelector('.brand-text');
   const brandSub  = document.querySelector('.brand-sub');
   const brandLine = document.querySelector('.brand-line');
 
-  function fadeIn(el, delay, duration) {
-    setTimeout(() => {
-      el.style.transition = `opacity ${duration}s ease`;
-      el.style.opacity = '1';
-    }, delay);
-  }
-  function fadeOut(el) {
-    el.style.transition = 'opacity 0.15s ease';
-    el.style.opacity = '0';
-  }
-
   function drawStroke() {
-    // Clone the stroke element — this guarantees fresh CSS animation from scratch
-    const old = document.getElementById('hex-stroke');
+    const old   = document.getElementById('hex-stroke');
     const clone = old.cloneNode(true);
-    clone.style.cssText = '';
-    clone.style.strokeDasharray = '620';
+    clone.style.strokeDasharray  = '620';
     clone.style.strokeDashoffset = '620';
     old.parentNode.replaceChild(clone, old);
-    // Force reflow then animate
     void clone.getBoundingClientRect();
-    clone.style.transition = 'stroke-dashoffset 1.2s ease';
+    clone.style.transition       = 'stroke-dashoffset 1.2s ease';
     clone.style.strokeDashoffset = '0';
   }
 
-  function miniAnim() {
-    // Flash fill
-    hexFill.style.transition = 'opacity 0.2s ease';
-    hexFill.style.opacity = '0.05';
-    setTimeout(() => {
-      hexFill.style.transition = 'opacity 0.5s ease';
-      hexFill.style.opacity = '1';
-    }, 300);
-
-    // Pop P
+  function popP() {
     pLetter.style.transition = 'none';
-    pLetter.style.opacity = '0';
-    pLetter.style.transform = 'scale(0.4)';
+    pLetter.style.opacity    = '0';
+    pLetter.style.transform  = 'scale(0.4)';
     void pLetter.offsetWidth;
     setTimeout(() => {
       pLetter.style.transition = 'opacity 0.3s ease, transform 0.5s cubic-bezier(0.34,1.56,0.64,1)';
-      pLetter.style.opacity = '1';
-      pLetter.style.transform = 'scale(1)';
-    }, 500);
+      pLetter.style.opacity    = '1';
+      pLetter.style.transform  = 'scale(1)';
+    }, 0);
   }
 
-  function fullAnim() {
-    // 1. Redraw stroke (clone trick)
-    drawStroke();
-
-    // 2. Fill flash
-    hexFill.style.transition = 'opacity 0.2s ease';
-    hexFill.style.opacity = '0.05';
+  function flashFill() {
+    hexFill.style.transition = 'opacity 0.15s ease';
+    hexFill.style.opacity    = '0.05';
     setTimeout(() => {
-      hexFill.style.transition = 'opacity 0.6s ease';
-      hexFill.style.opacity = '1';
-    }, 500);
+      hexFill.style.transition = 'opacity 0.5s ease';
+      hexFill.style.opacity    = '1';
+    }, 250);
+  }
 
-    // 3. Pop P
-    pLetter.style.transition = 'none';
-    pLetter.style.opacity = '0';
-    pLetter.style.transform = 'scale(0.4)';
-    void pLetter.offsetWidth;
+  function fadeEl(el, outDelay, inDelay) {
     setTimeout(() => {
-      pLetter.style.transition = 'opacity 0.3s ease, transform 0.5s cubic-bezier(0.34,1.56,0.64,1)';
-      pLetter.style.opacity = '1';
-      pLetter.style.transform = 'scale(1)';
-    }, 900);
+      el.style.transition = 'opacity 0.15s ease';
+      el.style.opacity    = '0';
+    }, outDelay);
+    setTimeout(() => {
+      el.style.transition = 'opacity 0.55s ease';
+      el.style.opacity    = '1';
+    }, inDelay);
+  }
 
-    // 4. Text fade out → in
-    fadeOut(brandText);
-    fadeOut(brandSub);
-    fadeIn(brandText, 1100, 0.6);
-    fadeIn(brandSub,  1300, 0.6);
-
-    // 5. Line redraw
+  function drawLine() {
     brandLine.style.transition = 'none';
-    brandLine.style.transform = 'scaleX(0)';
+    brandLine.style.transform  = 'scaleX(0)';
     void brandLine.offsetWidth;
     setTimeout(() => {
       brandLine.style.transition = 'transform 0.6s ease';
-      brandLine.style.transform = 'scaleX(1)';
-    }, 1200);
+      brandLine.style.transform  = 'scaleX(1)';
+    }, 0);
   }
 
-  // Initial draw on load
+  // Mini: только заливка мигает + P выпрыгивает
+  function miniAnim() {
+    flashFill();
+    setTimeout(() => popP(), 400);
+  }
+
+  // Full: всё перерисовывается
+  function fullAnim() {
+    drawStroke();
+    flashFill();
+    setTimeout(() => popP(),              900);
+    fadeEl(brandText, 1000, 1200);
+    fadeEl(brandSub,  1150, 1400);
+    setTimeout(() => drawLine(),         1100);
+  }
+
+  // Запуск при загрузке
   setTimeout(() => fullAnim(), 800);
 
-  // 10s = mini, 20s = full, 30s = mini, 40s = full...
+  // 10s = mini, 20s = full, 30s = mini ...
   let cycle = 0;
   setInterval(() => {
     cycle++;
     cycle % 2 === 0 ? fullAnim() : miniAnim();
   }, 10000);
 
-  // Fullscreen
-  const goFull = () => document.documentElement.requestFullscreen().catch(()=>{});
+  // Fullscreen по F
+  const goFull = () => document.documentElement.requestFullscreen().catch(() => {});
   setTimeout(goFull, 500);
   document.addEventListener('keydown', e => {
     if (['f','F','F11'].includes(e.key))

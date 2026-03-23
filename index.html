@@ -3,167 +3,230 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PROMEBEL</title>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;900&display=swap" rel="stylesheet">
+<title>ProДизайн 2026 — Pro Mebel</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,200;0,300;0,400;0,700;0,900;1,300&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-
-:root { --orange: #F07820; --bg: #0F0F0F; }
+:root { --orange:#F07820; --bg:#0D0D0D; --white:#FFFFFF; }
 
 html, body {
-  width:100vw; height:100vh;
-  overflow:hidden;
-  background:var(--bg);
-  font-family:'Montserrat',sans-serif;
-  cursor:none;
+  width:100vw; height:100vh; overflow:hidden;
+  background:var(--bg); font-family:'Montserrat',sans-serif; cursor:none;
 }
 
-/* ── Static hex grid (no animation) ── */
+/* ── Hex grid (static, lightweight) ── */
 .hex-bg {
-  position:fixed; inset:0; z-index:0; opacity:0.10;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='70'%3E%3Cpolygon points='30,2 58,16 58,54 30,68 2,54 2,16' fill='none' stroke='%23F07820' stroke-width='0.8'/%3E%3C/svg%3E");
+  position:fixed; inset:0; z-index:0; opacity:0.08;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='70'%3E%3Cpolygon points='30,2 58,16 58,54 30,68 2,54 2,16' fill='none' stroke='%23F07820' stroke-width='0.7'/%3E%3C/svg%3E");
   background-size:60px 70px;
 }
 
-/* ── Simple static glow (no animation) ── */
+/* ── Glow (static) ── */
 .glow {
   position:fixed; inset:0; z-index:1;
-  background: radial-gradient(ellipse 80% 40% at 50% 45%, rgba(240,120,32,0.12) 0%, transparent 65%);
+  background:radial-gradient(ellipse 75% 50% at 50% 50%, rgba(240,120,32,0.10) 0%, transparent 70%);
 }
 
-/* ── Frame border — simple opacity pulse ── */
+/* ── Frame ── */
 .frame-line {
   position:fixed; z-index:20;
-  background: linear-gradient(var(--d,90deg), transparent, var(--orange) 30%, var(--orange) 70%, transparent);
-  animation: framePulse 4s ease-in-out infinite;
+  background:linear-gradient(var(--d,90deg),transparent,var(--orange) 30%,var(--orange) 70%,transparent);
+  animation:framePulse 4s ease-in-out infinite;
 }
-@keyframes framePulse { 0%,100%{opacity:.25} 50%{opacity:.6} }
-.ft { top:0; left:0; right:0; height:2px; }
-.fb { bottom:0; left:0; right:0; height:2px; }
-.fl { top:0; bottom:0; left:0; width:2px; --d:180deg; }
-.fr { top:0; bottom:0; right:0; width:2px; --d:180deg; }
+@keyframes framePulse { 0%,100%{opacity:.2} 50%{opacity:.55} }
+.ft{top:0;left:0;right:0;height:2px;}
+.fb{bottom:0;left:0;right:0;height:2px;}
+.fl{top:0;bottom:0;left:0;width:2px;--d:180deg;}
+.fr{top:0;bottom:0;right:0;width:2px;--d:180deg;}
 
 /* ── HUD corners ── */
-.hud { position:fixed; z-index:21; width:36px; height:36px; }
-.hud svg { width:100%; height:100%; }
-.hud-tl { top:12px; left:12px; }
-.hud-tr { top:12px; right:12px; transform:scaleX(-1); }
-.hud-bl { bottom:12px; left:12px; transform:scaleY(-1); }
-.hud-br { bottom:12px; right:12px; transform:scale(-1,-1); }
+.hud{position:fixed;z-index:21;width:34px;height:34px;}
+.hud svg{width:100%;height:100%;}
+.hud-tl{top:12px;left:12px;}
+.hud-tr{top:12px;right:12px;transform:scaleX(-1);}
+.hud-bl{bottom:12px;left:12px;transform:scaleY(-1);}
+.hud-br{bottom:12px;right:12px;transform:scale(-1,-1);}
 
-/* ── STAGE ── */
-.stage {
-  position:relative; z-index:10;
-  width:100vw; height:100vh;
+/* ══════════════════════════════════
+   SLIDES
+══════════════════════════════════ */
+.slide {
+  position:fixed; inset:0; z-index:10;
   display:flex; flex-direction:column;
   align-items:center; justify-content:space-between;
-  padding:8vh 6vw 7vh;
+  padding:8vh 7vw 7vh;
+  opacity:0;
+  transition:opacity 1s ease;
+  pointer-events:none;
 }
+.slide.active { opacity:1; pointer-events:auto; }
 
-/* ── TOP ── */
-.top-label {
-  font-size:clamp(11px,2.8vw,16px);
-  font-weight:300; letter-spacing:0.5em;
-  color:rgba(255,255,255,0.6);
+/* ── LOGO (shared, always visible top) ── */
+.logo-top {
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  flex-shrink:0;
+}
+.logo-hex {
+  width:clamp(60px,14vw,80px); height:auto; display:block;
+}
+.logo-wordmark {
+  font-weight:900; font-size:clamp(20px,5.5vw,32px);
+  letter-spacing:0.1em; line-height:1; white-space:nowrap;
+}
+.logo-wordmark .pro   { color:#F07820; }
+.logo-wordmark .mebel { color:#FFFFFF; }
+.logo-tagline {
+  font-weight:300; font-size:clamp(8px,2vw,11px);
+  letter-spacing:0.4em; color:rgba(255,255,255,0.45);
   text-transform:uppercase;
-  opacity:0;
-  animation:fadeDown 1s ease 0.3s forwards;
-}
-@keyframes fadeDown {
-  from { opacity:0; transform:translateY(-12px); }
-  to   { opacity:1; transform:translateY(0); }
 }
 
-/* ── LOGO BLOCK ── */
-.logo-block {
-  display:flex; flex-direction:column; align-items:center;
-  opacity:0;
-  animation:logoIn 1s ease 0.5s forwards, logoBob 8s ease-in-out 2s infinite;
-}
-@keyframes logoIn {
-  from { opacity:0; transform:scale(0.5); }
-  to   { opacity:1; transform:scale(1); }
-}
-@keyframes logoBob {
-  0%,100% { transform:translateY(0); }
-  50%     { transform:translateY(-12px); }
+/* ── Divider ── */
+.divider {
+  width:clamp(120px,40vw,200px); height:1px;
+  background:linear-gradient(90deg,transparent,var(--orange),transparent);
+  opacity:0.6; flex-shrink:0;
 }
 
-/* Hex SVG — no filter/shadow */
-#logo-icon {
-  width:clamp(140px,38vw,200px);
-  height:auto; display:block;
-}
+/* ── Content area ── */
+.content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; }
 
-#hex-stroke { stroke-dasharray:620; stroke-dashoffset:620; }
-#hex-fill   { opacity:0; }
-#p-letter   { opacity:0; transform-origin:50px 55px; transform:scale(0.4); }
-
-/* ── Brand text ── */
-.brand-text {
-  margin-top:20px; text-align:center; opacity:0;
+/* ── SLIDE 1: Welcome ── */
+.s1-date {
+  font-size:clamp(11px,3vw,15px); font-weight:300;
+  letter-spacing:0.5em; color:rgba(240,120,32,0.8);
+  text-transform:uppercase; margin-bottom:16px;
 }
-.brand-name {
-  font-weight:900;
-  font-size:clamp(38px,10.5vw,60px);
-  letter-spacing:0.09em; line-height:1; white-space:nowrap;
+.s1-title {
+  font-size:clamp(32px,9vw,52px); font-weight:900;
+  letter-spacing:0.05em; color:var(--white);
+  text-align:center; line-height:1;
 }
-.brand-name .pro   { color:#F07820; }
-.brand-name .mebel { color:#FFFFFF; }
-
-.brand-sub {
-  margin-top:8px; font-weight:300;
-  font-size:clamp(10px,2.6vw,14px);
-  letter-spacing:0.36em;
-  color:rgba(255,255,255,0.6);
-  text-transform:uppercase; opacity:0;
-}
-
-.brand-line {
-  margin-top:6px;
-  width:clamp(180px,50vw,300px); height:2px;
-  background:linear-gradient(90deg,transparent,var(--orange) 20%,var(--orange) 80%,transparent);
-  transform:scaleX(0); transform-origin:center;
-}
-
-/* ── BOTTOM ── */
-.bottom-section {
-  text-align:center; width:100%; opacity:0;
-  animation:fadeUp 1s ease 1.2s forwards;
-}
-@keyframes fadeUp {
-  from { opacity:0; transform:translateY(14px); }
-  to   { opacity:1; transform:translateY(0); }
-}
-.tagline {
+.s1-title span { color:#F07820; }
+.s1-sub {
+  margin-top:14px;
   font-size:clamp(11px,2.8vw,15px); font-weight:300;
-  letter-spacing:0.4em; color:rgba(255,255,255,0.65);
-  text-transform:uppercase; margin-bottom:14px;
+  letter-spacing:0.12em; color:rgba(255,255,255,0.55);
+  text-align:center; line-height:1.6;
 }
-.pills {
-  display:flex; justify-content:center; gap:8px;
-  flex-wrap:wrap; margin-bottom:16px;
-}
-.pill {
-  border:1px solid rgba(240,120,32,0.65);
-  color:#F07820;
+.s1-badge {
+  margin-top:22px;
+  border:1px solid rgba(240,120,32,0.5);
+  color:rgba(240,120,32,0.9);
   font-size:clamp(9px,2.4vw,12px); font-weight:400;
-  letter-spacing:0.18em; text-transform:uppercase;
-  padding:5px 12px; border-radius:2px;
-  opacity:0; animation:fadeUp 0.6s ease forwards;
+  letter-spacing:0.25em; text-transform:uppercase;
+  padding:7px 18px; border-radius:2px;
 }
-.pill:nth-child(1){animation-delay:1.8s}
-.pill:nth-child(2){animation-delay:1.95s}
-.pill:nth-child(3){animation-delay:2.1s}
-.pill:nth-child(4){animation-delay:2.25s}
 
-.ticker-wrap { width:100%; overflow:hidden; }
-.ticker {
-  display:inline-flex; gap:50px; white-space:nowrap;
+/* ── SLIDE 2: Event info ── */
+.s2-label {
   font-size:clamp(9px,2.2vw,12px); font-weight:300;
-  letter-spacing:0.25em; color:rgba(240,120,32,0.7);
+  letter-spacing:0.5em; color:rgba(240,120,32,0.7);
+  text-transform:uppercase; margin-bottom:18px;
+}
+.s2-items { width:100%; display:flex; flex-direction:column; gap:12px; }
+.s2-item {
+  display:flex; align-items:flex-start; gap:12px;
+}
+.s2-dot {
+  width:6px; height:6px; border-radius:50%;
+  background:#F07820; flex-shrink:0; margin-top:5px;
+}
+.s2-text {
+  font-size:clamp(11px,2.9vw,15px); font-weight:300;
+  color:rgba(255,255,255,0.85); line-height:1.5;
+}
+.s2-text strong { color:#F07820; font-weight:700; }
+
+/* ── SLIDE 3: Contest ── */
+.s3-title {
+  font-size:clamp(13px,3.5vw,20px); font-weight:700;
+  color:var(--white); letter-spacing:0.05em;
+  text-align:center; margin-bottom:6px;
+}
+.s3-title span { color:#F07820; }
+.s3-sub {
+  font-size:clamp(10px,2.5vw,13px); font-weight:300;
+  color:rgba(255,255,255,0.5); letter-spacing:0.15em;
+  margin-bottom:20px; text-align:center;
+}
+.s3-steps { width:100%; display:flex; flex-direction:column; gap:10px; }
+.s3-step {
+  display:flex; align-items:center; gap:12px;
+}
+.s3-num {
+  width:24px; height:24px; border-radius:50%;
+  border:1px solid var(--orange);
+  color:var(--orange); font-size:clamp(9px,2.2vw,11px);
+  font-weight:700; display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.s3-txt {
+  font-size:clamp(11px,2.8vw,14px); font-weight:300;
+  color:rgba(255,255,255,0.8); line-height:1.4;
+}
+
+/* ── SLIDE 4: Prize + deadline ── */
+.s4-prize {
+  text-align:center; margin-bottom:24px;
+}
+.s4-prize-label {
+  font-size:clamp(9px,2.2vw,12px); font-weight:300;
+  letter-spacing:0.5em; color:rgba(240,120,32,0.7);
+  text-transform:uppercase; margin-bottom:10px;
+}
+.s4-prize-title {
+  font-size:clamp(16px,4.5vw,26px); font-weight:900;
+  color:var(--white); letter-spacing:0.05em;
+  line-height:1.2;
+}
+.s4-prize-title span { color:#F07820; }
+.s4-prize-value {
+  margin-top:8px;
+  font-size:clamp(22px,6vw,36px); font-weight:900;
+  color:#F07820; letter-spacing:0.05em;
+}
+.s4-deadline {
+  border-top:1px solid rgba(240,120,32,0.25);
+  padding-top:20px; text-align:center; width:100%;
+}
+.s4-deadline-label {
+  font-size:clamp(9px,2.2vw,11px); font-weight:300;
+  letter-spacing:0.4em; color:rgba(255,255,255,0.4);
+  text-transform:uppercase; margin-bottom:6px;
+}
+.s4-deadline-date {
+  font-size:clamp(20px,5.5vw,32px); font-weight:900;
+  color:var(--white); letter-spacing:0.05em;
+}
+.s4-insta {
+  margin-top:14px;
+  font-size:clamp(11px,2.8vw,14px); font-weight:300;
+  color:rgba(240,120,32,0.8); letter-spacing:0.1em;
+}
+
+/* ── Progress dots ── */
+.dots {
+  display:flex; gap:8px; flex-shrink:0;
+}
+.dot {
+  width:6px; height:6px; border-radius:50%;
+  background:rgba(255,255,255,0.2);
+  transition:background 0.4s ease, transform 0.4s ease;
+}
+.dot.on { background:#F07820; transform:scale(1.3); }
+
+/* ── Ticker ── */
+.ticker-wrap {
+  position:fixed; bottom:18px; left:0; right:0; z-index:22;
+  overflow:hidden; padding:0 14px;
+}
+.ticker {
+  display:inline-flex; gap:60px; white-space:nowrap;
+  font-size:clamp(8px,2vw,11px); font-weight:300;
+  letter-spacing:0.28em; color:rgba(240,120,32,0.55);
   text-transform:uppercase;
-  animation:tickerScroll 25s linear infinite;
+  animation:tickerScroll 28s linear infinite;
 }
 @keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
 </style>
@@ -172,154 +235,145 @@ html, body {
 
 <div class="hex-bg"></div>
 <div class="glow"></div>
-
 <div class="frame-line ft"></div>
 <div class="frame-line fb"></div>
 <div class="frame-line fl"></div>
 <div class="frame-line fr"></div>
+<div class="hud hud-tl"><svg viewBox="0 0 34 34" fill="none"><path d="M2 32L2 2L32 2" stroke="#F07820" stroke-width="1.8"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
+<div class="hud hud-tr"><svg viewBox="0 0 34 34" fill="none"><path d="M2 32L2 2L32 2" stroke="#F07820" stroke-width="1.8"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
+<div class="hud hud-bl"><svg viewBox="0 0 34 34" fill="none"><path d="M2 32L2 2L32 2" stroke="#F07820" stroke-width="1.8"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
+<div class="hud hud-br"><svg viewBox="0 0 34 34" fill="none"><path d="M2 32L2 2L32 2" stroke="#F07820" stroke-width="1.8"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
 
-<div class="hud hud-tl"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
-<div class="hud hud-tr"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
-<div class="hud hud-bl"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
-<div class="hud hud-br"><svg viewBox="0 0 36 36" fill="none"><path d="M2 34L2 2L34 2" stroke="#F07820" stroke-width="2"/><circle cx="2" cy="2" r="2.5" fill="#F07820"/></svg></div>
-
-<div class="stage">
-  <div class="top-label">Добро пожаловать</div>
-
-  <div class="logo-block">
-    <svg id="logo-icon" viewBox="0 0 100 108" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <polygon id="hex-fill"   points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/>
-      <polygon id="hex-stroke" points="50,4 97,28 97,78 50,104 3,78 3,28"
-        fill="none" stroke="#F07820" stroke-width="3.5" stroke-linejoin="round"/>
-      <g id="p-letter">
-        <text x="26" y="72"
-          font-family="Montserrat,sans-serif" font-weight="900"
-          font-size="60" fill="white">P</text>
-      </g>
+<!-- ═══════════ SLIDE 1: Welcome ═══════════ -->
+<div class="slide active" id="s0">
+  <div class="logo-top">
+    <svg class="logo-hex" viewBox="0 0 100 108" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/>
+      <text x="26" y="72" font-family="Montserrat,sans-serif" font-weight="900" font-size="60" fill="white">P</text>
     </svg>
-
-    <div class="brand-text">
-      <div class="brand-name">
-        <span class="pro">PRO</span><span class="mebel"> MEBEL</span>
-      </div>
-    </div>
-    <div class="brand-sub">Лучшее для вдохновения</div>
-    <div class="brand-line"></div>
+    <div class="logo-wordmark"><span class="pro">PRO</span><span class="mebel"> MEBEL</span></div>
+    <div class="logo-tagline">Лучшее для вдохновения</div>
   </div>
+  <div class="divider"></div>
+  <div class="content">
+    <div class="s1-date">26 марта 2026</div>
+    <div class="s1-title"><span>PRO</span>ДИЗАЙН<br>2026</div>
+    <div class="s1-sub">Закрытая презентация<br>для дизайнеров Согдийской области</div>
+    <div class="s1-badge">Добро пожаловать</div>
+  </div>
+  <div class="dots" id="dots">
+    <div class="dot on"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+</div>
 
-  <div class="bottom-section">
-    <div class="tagline">Мебельные материалы</div>
-    <div class="pills">
-      <div class="pill">ЛДСП</div>
-      <div class="pill">ЛМДФ</div>
-      <div class="pill">Фурнитура</div>
-      <div class="pill">Кромка</div>
+<!-- ═══════════ SLIDE 2: Event ═══════════ -->
+<div class="slide" id="s1">
+  <div class="logo-top">
+    <svg class="logo-hex" viewBox="0 0 100 108" fill="none"><polygon points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/><text x="26" y="72" font-family="Montserrat,sans-serif" font-weight="900" font-size="60" fill="white">P</text></svg>
+    <div class="logo-wordmark"><span class="pro">PRO</span><span class="mebel"> MEBEL</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="content">
+    <div class="s2-label">Вечер мероприятия</div>
+    <div class="s2-items">
+      <div class="s2-item"><div class="s2-dot"></div><div class="s2-text">Закрытая презентация <strong>PROдизайн 2026</strong> для дизайнеров Согдийской области</div></div>
+      <div class="s2-item"><div class="s2-dot"></div><div class="s2-text">Специальный гость — дизайнер из Узбекистана <strong>Фаррух Шодмонов</strong>, проект которого вошёл в наследие ЮНЕСКО</div></div>
+      <div class="s2-item"><div class="s2-dot"></div><div class="s2-text">Официальные представители <strong>EGGER</strong> среди гостей вечера</div></div>
+      <div class="s2-item"><div class="s2-dot"></div><div class="s2-text">Вдохновение, нетворкинг, фуршет и уникальные призы от EGGER</div></div>
     </div>
-    <div class="ticker-wrap">
-      <div class="ticker">
-        <span>Pro Mebel</span><span>·</span>
-        <span>Лучшее для вдохновения</span><span>·</span>
-        <span>Качество без компромиссов</span><span>·</span>
-        <span>Pro Mebel</span><span>·</span>
-        <span>Лучшее для вдохновения</span><span>·</span>
-        <span>Качество без компромиссов</span><span>·</span>
-      </div>
+  </div>
+  <div class="dots">
+    <div class="dot"></div><div class="dot on"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 3: Contest ═══════════ -->
+<div class="slide" id="s2">
+  <div class="logo-top">
+    <svg class="logo-hex" viewBox="0 0 100 108" fill="none"><polygon points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/><text x="26" y="72" font-family="Montserrat,sans-serif" font-weight="900" font-size="60" fill="white">P</text></svg>
+    <div class="logo-wordmark"><span class="pro">PRO</span><span class="mebel"> MEBEL</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="content">
+    <div class="s3-title">Конкурс <span>PRO</span>дизайн 2026</div>
+    <div class="s3-sub">Ты дизайнер интерьера? Это для тебя.</div>
+    <div class="s3-steps">
+      <div class="s3-step"><div class="s3-num">1</div><div class="s3-txt">Создай интерьер с декорами <strong style="color:#F07820">EGGER</strong></div></div>
+      <div class="s3-step"><div class="s3-num">2</div><div class="s3-txt">Покажи идею, концепцию и выбор материалов</div></div>
+      <div class="s3-step"><div class="s3-num">3</div><div class="s3-txt">Опубликуй в Instagram с отметкой <strong style="color:#F07820">@promebel_khujand</strong></div></div>
+      <div class="s3-step"><div class="s3-num">✓</div><div class="s3-txt">Оцениваем: логику, эстетику, практичность, авторский подход</div></div>
     </div>
+  </div>
+  <div class="dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot on"></div><div class="dot"></div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 4: Prize ═══════════ -->
+<div class="slide" id="s3">
+  <div class="logo-top">
+    <svg class="logo-hex" viewBox="0 0 100 108" fill="none"><polygon points="50,4 97,28 97,78 50,104 3,78 3,28" fill="#F07820"/><text x="26" y="72" font-family="Montserrat,sans-serif" font-weight="900" font-size="60" fill="white">P</text></svg>
+    <div class="logo-wordmark"><span class="pro">PRO</span><span class="mebel"> MEBEL</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="content">
+    <div class="s4-prize">
+      <div class="s4-prize-label">Главный приз</div>
+      <div class="s4-prize-title">Каталог <span>EGGER Box</span></div>
+      <div class="s4-prize-value">100$</div>
+    </div>
+    <div class="s4-deadline">
+      <div class="s4-deadline-label">Приём работ до</div>
+      <div class="s4-deadline-date">23 марта</div>
+      <div class="s4-insta">@promebel_khujand</div>
+    </div>
+  </div>
+  <div class="dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot on"></div>
+  </div>
+</div>
+
+<!-- Ticker -->
+<div class="ticker-wrap">
+  <div class="ticker">
+    <span>ProMebel · PROдизайн 2026</span><span>·</span>
+    <span>26 марта · Закрытая презентация</span><span>·</span>
+    <span>EGGER · Конкурс дизайна</span><span>·</span>
+    <span>Приз 100$ · Приём до 23 марта</span><span>·</span>
+    <span>@promebel_khujand</span><span>·</span>
+    <span>ProMebel · PROдизайн 2026</span><span>·</span>
+    <span>26 марта · Закрытая презентация</span><span>·</span>
+    <span>EGGER · Конкурс дизайна</span><span>·</span>
+    <span>Приз 100$ · Приём до 23 марта</span><span>·</span>
+    <span>@promebel_khujand</span><span>·</span>
   </div>
 </div>
 
 <script>
-  const hexFill   = document.getElementById('hex-fill');
-  const pLetter   = document.getElementById('p-letter');
-  const brandText = document.querySelector('.brand-text');
-  const brandSub  = document.querySelector('.brand-sub');
-  const brandLine = document.querySelector('.brand-line');
+  const slides = document.querySelectorAll('.slide');
+  const total  = slides.length;
+  let current  = 0;
 
-  function drawStroke() {
-    const old   = document.getElementById('hex-stroke');
-    const clone = old.cloneNode(true);
-    clone.style.strokeDasharray  = '620';
-    clone.style.strokeDashoffset = '620';
-    old.parentNode.replaceChild(clone, old);
-    void clone.getBoundingClientRect();
-    clone.style.transition       = 'stroke-dashoffset 1.2s ease';
-    clone.style.strokeDashoffset = '0';
+  function goTo(idx) {
+    slides[current].classList.remove('active');
+    current = (idx + total) % total;
+    slides[current].classList.add('active');
   }
 
-  function popP() {
-    pLetter.style.transition = 'none';
-    pLetter.style.opacity    = '0';
-    pLetter.style.transform  = 'scale(0.4)';
-    void pLetter.offsetWidth;
-    setTimeout(() => {
-      pLetter.style.transition = 'opacity 0.3s ease, transform 0.5s cubic-bezier(0.34,1.56,0.64,1)';
-      pLetter.style.opacity    = '1';
-      pLetter.style.transform  = 'scale(1)';
-    }, 0);
-  }
+  // Auto-advance every 6 seconds
+  setInterval(() => goTo(current + 1), 6000);
 
-  function flashFill() {
-    hexFill.style.transition = 'opacity 0.15s ease';
-    hexFill.style.opacity    = '0.05';
-    setTimeout(() => {
-      hexFill.style.transition = 'opacity 0.5s ease';
-      hexFill.style.opacity    = '1';
-    }, 250);
-  }
-
-  function fadeEl(el, outDelay, inDelay) {
-    setTimeout(() => {
-      el.style.transition = 'opacity 0.15s ease';
-      el.style.opacity    = '0';
-    }, outDelay);
-    setTimeout(() => {
-      el.style.transition = 'opacity 0.55s ease';
-      el.style.opacity    = '1';
-    }, inDelay);
-  }
-
-  function drawLine() {
-    brandLine.style.transition = 'none';
-    brandLine.style.transform  = 'scaleX(0)';
-    void brandLine.offsetWidth;
-    setTimeout(() => {
-      brandLine.style.transition = 'transform 0.6s ease';
-      brandLine.style.transform  = 'scaleX(1)';
-    }, 0);
-  }
-
-  // Mini: только заливка мигает + P выпрыгивает
-  function miniAnim() {
-    flashFill();
-    setTimeout(() => popP(), 400);
-  }
-
-  // Full: всё перерисовывается
-  function fullAnim() {
-    drawStroke();
-    flashFill();
-    setTimeout(() => popP(),              900);
-    fadeEl(brandText, 1000, 1200);
-    fadeEl(brandSub,  1150, 1400);
-    setTimeout(() => drawLine(),         1100);
-  }
-
-  // Запуск при загрузке
-  setTimeout(() => fullAnim(), 800);
-
-  // 10s = mini, 20s = full, 30s = mini ...
-  let cycle = 0;
-  setInterval(() => {
-    cycle++;
-    cycle % 2 === 0 ? fullAnim() : miniAnim();
-  }, 10000);
-
-  // Fullscreen по F
+  // Fullscreen
   const goFull = () => document.documentElement.requestFullscreen().catch(() => {});
   setTimeout(goFull, 500);
   document.addEventListener('keydown', e => {
     if (['f','F','F11'].includes(e.key))
       document.fullscreenElement ? document.exitFullscreen() : goFull();
+    if (e.key === 'ArrowRight') goTo(current + 1);
+    if (e.key === 'ArrowLeft')  goTo(current - 1);
   });
 </script>
 </body>

@@ -286,7 +286,7 @@
 <script>
 // ─── CONFIG ─────────────────────────────────────────────────────
 // После деплоя Apps Script вставь сюда свой URL:
-const API_URL = "https://script.google.com/macros/s/AKfycbzSNxic3RnffzceLSPv3_QIIvHz_zws7jgtkn4x2PymJemrEA8-kMWYfzfCMwWSN-G4/exec";
+https://script.google.com/macros/s/AKfycbzOS15QRhwYveH4_ylKtQI6usrtsO47KKw4q4AkdBY4IAC_3blu5CB4lgYh-tF0XC5L/exec
 
 // ─── STATE ──────────────────────────────────────────────────────
 let allRows    = [];   // все строки из таблицы
@@ -298,16 +298,20 @@ let activeType = "all";
 // ─── FETCH DATA ──────────────────────────────────────────────────
 async function loadData() {
   try {
-    // Если API_URL не задан — используем демо-данные
-    if (API_URL === "ВСТАВЬ_СВОЙ_APPS_SCRIPT_URL_ЗДЕСЬ") {
-      allRows = getDemoData();
-      init();
-      return;
-    }
-    const r = await fetch(API_URL);
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error);
-    allRows = j.data;
+    const data = await new Promise((resolve, reject) => {
+      const name = "cb_" + Date.now();
+      const script = document.createElement("script");
+      window[name] = (json) => {
+        delete window[name];
+        script.remove();
+        if (json.ok) resolve(json.data);
+        else reject(new Error(json.error));
+      };
+      script.onerror = () => reject(new Error("Script load failed"));
+      script.src = API_URL + "?callback=" + name;
+      document.head.appendChild(script);
+    });
+    allRows = data;
     init();
   } catch (e) {
     document.getElementById("catalog").innerHTML =

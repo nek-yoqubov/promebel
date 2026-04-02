@@ -1,0 +1,576 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Промебель — Каталог материалов</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f10;
+    --surface: #17171a;
+    --surface2: #1e1e23;
+    --border: #2a2a32;
+    --accent: #e8b84b;
+    --accent2: #f0d080;
+    --text: #f0efe8;
+    --muted: #888890;
+    --dim: #555560;
+    --radius: 10px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Manrope',sans-serif; min-height:100vh; }
+
+  /* ── HEADER ── */
+  header {
+    position:sticky; top:0; z-index:100;
+    background:rgba(15,15,16,.94); backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--border);
+    height:60px; padding:0 1.5rem;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .logo { font-family:'Bebas Neue',sans-serif; font-size:1.7rem; letter-spacing:.12em; }
+  .logo span { color:var(--accent); }
+  .header-right { font-size:.72rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+
+  /* ── HERO ── */
+  .hero {
+    max-width:1400px; margin:0 auto;
+    padding:3rem 1.5rem 2rem;
+    display:flex; align-items:flex-end; justify-content:space-between; gap:2rem; flex-wrap:wrap;
+  }
+  .hero-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(2.6rem,6vw,5rem); line-height:.9; letter-spacing:.04em; }
+  .hero-title em { color:var(--accent); font-style:normal; }
+  .hero-stats { display:flex; gap:2rem; padding-bottom:.4rem; }
+  .stat { text-align:right; }
+  .stat-n { font-family:'Bebas Neue',sans-serif; font-size:2rem; color:var(--accent); line-height:1; }
+  .stat-l { font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+
+  .divider { max-width:1400px; margin:.5rem auto 0; padding:0 1.5rem; }
+  .divider-line { height:1px; background:linear-gradient(90deg,var(--accent) 0%,var(--border) 40%,transparent 100%); }
+
+  /* ── CONTROLS ── */
+  .controls {
+    max-width:1400px; margin:1.5rem auto; padding:0 1.5rem;
+    display:flex; gap:.75rem; flex-wrap:wrap; align-items:center;
+  }
+  .search-wrap { position:relative; flex:1; min-width:220px; }
+  .search-wrap svg { position:absolute; left:.9rem; top:50%; transform:translateY(-50%); width:15px; height:15px; color:var(--dim); pointer-events:none; }
+  .search-input {
+    width:100%; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); font-family:'Manrope',sans-serif; font-size:.85rem;
+    padding:.7rem .9rem .7rem 2.6rem; border-radius:var(--radius); outline:none;
+    transition:border-color .2s;
+  }
+  .search-input::placeholder { color:var(--dim); }
+  .search-input:focus { border-color:var(--accent); }
+
+  .filter-row { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
+  .filter-lbl { font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; padding-right:.3rem; white-space:nowrap; }
+  .chip {
+    padding:.42rem .9rem; border-radius:100px;
+    border:1px solid var(--border); background:transparent;
+    color:var(--muted); font-family:'Manrope',sans-serif; font-size:.75rem;
+    cursor:pointer; transition:all .18s; white-space:nowrap;
+  }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .chip.on { background:var(--accent); border-color:var(--accent); color:#0f0f10; font-weight:700; }
+
+  .count-tag { margin-left:auto; font-size:.75rem; color:var(--muted); white-space:nowrap; }
+  .count-tag b { color:var(--accent); }
+
+  /* ── BREADCRUMB ── */
+  .breadcrumb {
+    max-width:1400px; margin:0 auto .75rem; padding:0 1.5rem;
+    display:flex; gap:.4rem; align-items:center; font-size:.78rem; flex-wrap:wrap;
+  }
+  .bc-item { color:var(--muted); cursor:pointer; transition:color .15s; }
+  .bc-item:hover { color:var(--accent); }
+  .bc-item.active { color:var(--text); cursor:default; }
+  .bc-sep { color:var(--dim); }
+
+  /* ── GRID ── */
+  .catalog {
+    max-width:1400px; margin:0 auto; padding:0 1.5rem 4rem;
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:1.5px;
+  }
+
+  /* ── FOLDER CARD ── */
+  .folder-card {
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:var(--radius); padding:1.5rem 1.5rem 1.25rem;
+    cursor:pointer; transition:all .2s; display:flex; flex-direction:column; gap:.5rem;
+    animation:fadeUp .35s ease forwards; opacity:0;
+  }
+  .folder-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .folder-icon { font-size:1.6rem; }
+  .folder-name { font-weight:600; font-size:1rem; line-height:1.3; }
+  .folder-count { font-size:.72rem; color:var(--muted); }
+
+  /* ── PRODUCT CARD ── */
+  .prod-card {
+    background:var(--surface); position:relative; overflow:hidden;
+    cursor:pointer; transition:transform .25s;
+    animation:fadeUp .35s ease forwards; opacity:0;
+  }
+  .prod-card:hover { transform:scale(1.025); z-index:5; }
+
+  .prod-img {
+    width:100%; height:180px; object-fit:cover; display:block;
+    background:var(--surface2);
+  }
+  .prod-img-placeholder {
+    width:100%; height:180px; background:var(--surface2);
+    display:flex; align-items:center; justify-content:center;
+    font-size:2.5rem; color:var(--dim);
+  }
+
+  .type-badge {
+    position:absolute; top:10px; left:10px;
+    padding:2px 9px; border-radius:4px; font-size:.6rem; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; backdrop-filter:blur(4px);
+  }
+
+  .prod-body { padding:1.1rem; border-top:1px solid var(--border); }
+  .prod-code { font-size:.62rem; color:var(--dim); font-family:'Courier New',monospace; letter-spacing:.12em; margin-bottom:.3rem; }
+  .prod-name { font-size:.9rem; font-weight:600; line-height:1.35; margin-bottom:.8rem; }
+  .prod-meta { display:grid; grid-template-columns:1fr 1fr; gap:.4rem; margin-bottom:.8rem; }
+  .meta-k { font-size:.58rem; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; }
+  .meta-v { font-size:.78rem; color:var(--muted); font-weight:500; }
+  .prod-foot { display:flex; align-items:center; justify-content:space-between; padding-top:.8rem; border-top:1px solid var(--border); }
+  .prod-price { font-family:'Bebas Neue',sans-serif; font-size:1.45rem; color:var(--accent); letter-spacing:.03em; }
+  .prod-price small { font-family:'Manrope',sans-serif; font-size:.6rem; color:var(--dim); margin-left:2px; }
+  .prod-no-price { font-size:.75rem; color:var(--dim); }
+  .expand-btn {
+    width:33px; height:33px; border-radius:7px; border:1px solid var(--border);
+    background:transparent; color:var(--muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition:all .18s;
+  }
+  .expand-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* type badge colors */
+  .t-ldsp  { background:rgba(232,184,75,.18);  color:#e8b84b; border:1px solid rgba(232,184,75,.3); }
+  .t-lmdf  { background:rgba(100,170,255,.18); color:#80b8ff; border:1px solid rgba(100,170,255,.3); }
+  .t-mdf   { background:rgba(80,210,140,.18);  color:#70d8a0; border:1px solid rgba(80,210,140,.3); }
+  .t-other { background:rgba(200,200,200,.1);  color:#aaa;    border:1px solid rgba(200,200,200,.2); }
+
+  /* ── STATES ── */
+  .state-box {
+    grid-column:1/-1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:5rem 0; gap:1rem; color:var(--muted);
+  }
+  .state-icon { font-size:3rem; opacity:.3; }
+  .state-txt  { font-size:.88rem; }
+  .spinner {
+    width:38px; height:38px; border:3px solid var(--border);
+    border-top-color:var(--accent); border-radius:50%;
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes fadeUp { to { opacity:1; } }
+
+  /* ── MODAL ── */
+  .modal-bg {
+    display:none; position:fixed; inset:0;
+    background:rgba(0,0,0,.82); z-index:200;
+    backdrop-filter:blur(6px); align-items:center; justify-content:center; padding:1.5rem;
+  }
+  .modal-bg.open { display:flex; }
+  .modal {
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    max-width:540px; width:100%; overflow:hidden;
+    animation:modalIn .22s ease;
+  }
+  @keyframes modalIn { from { opacity:0; transform:translateY(18px) scale(.97); } to { opacity:1; transform:none; } }
+  .modal-img { width:100%; height:210px; object-fit:cover; display:block; background:var(--surface2); }
+  .modal-img-ph { width:100%; height:210px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:3rem; color:var(--dim); }
+  .modal-inner { padding:1.75rem; }
+  .modal-badge-row { margin-bottom:.5rem; }
+  .modal-code { font-size:.68rem; color:var(--dim); font-family:'Courier New',monospace; letter-spacing:.12em; margin-bottom:.4rem; }
+  .modal-name { font-size:1.3rem; font-weight:700; margin-bottom:1.25rem; line-height:1.3; }
+  .modal-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.85rem; background:var(--surface2); border-radius:10px; padding:1.1rem; margin-bottom:1.4rem; }
+  .mg-k { font-size:.6rem; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; margin-bottom:3px; }
+  .mg-v { font-size:.9rem; font-weight:600; }
+  .modal-foot { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; }
+  .modal-price-block .lbl { font-size:.65rem; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; }
+  .modal-price { font-family:'Bebas Neue',sans-serif; font-size:2.4rem; color:var(--accent); line-height:1; }
+  .modal-price small { font-family:'Manrope',sans-serif; font-size:.65rem; color:var(--dim); }
+  .copy-btn {
+    padding:.7rem 1.4rem; border-radius:8px; background:var(--accent);
+    color:#0f0f10; border:none; font-family:'Manrope',sans-serif;
+    font-size:.78rem; font-weight:700; cursor:pointer; letter-spacing:.04em; transition:background .18s;
+  }
+  .copy-btn:hover { background:var(--accent2); }
+  .close-btn {
+    position:absolute; top:14px; right:14px; width:34px; height:34px;
+    border-radius:7px; background:rgba(15,15,16,.8); border:1px solid var(--border);
+    color:var(--text); font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+
+  @media(max-width:600px) {
+    .hero { flex-direction:column; align-items:flex-start; }
+    .controls { flex-direction:column; align-items:stretch; }
+    .count-tag { margin-left:0; }
+    .modal-grid { grid-template-columns:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ПРО<span>МЕБЕЛЬ</span></div>
+  <div class="header-right">Каталог материалов</div>
+</header>
+
+<div class="hero">
+  <h1 class="hero-title">КАТАЛОГ<br><em>МАТЕРИАЛОВ</em></h1>
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-n" id="totalCount">—</div>
+      <div class="stat-l">Позиций</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n" id="folderCount">—</div>
+      <div class="stat-l">Разделов</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"><div class="divider-line"></div></div>
+
+<div class="controls">
+  <div class="search-wrap">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input class="search-input" id="searchInput" type="text" placeholder="Поиск по названию или артикулу...">
+  </div>
+  <div class="filter-row" id="typeFilters">
+    <span class="filter-lbl">Тип:</span>
+    <button class="chip on" data-type="all">Все</button>
+  </div>
+  <div class="count-tag">Найдено: <b id="countDisplay">—</b></div>
+</div>
+
+<div class="breadcrumb" id="breadcrumb"></div>
+
+<div class="catalog" id="catalog">
+  <div class="state-box"><div class="spinner"></div><div class="state-txt">Загрузка данных...</div></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" style="position:relative">
+    <button class="close-btn" id="modalClose">✕</button>
+    <div id="modalImgWrap"></div>
+    <div class="modal-inner">
+      <div class="modal-badge-row" id="modalBadge"></div>
+      <div class="modal-code"  id="modalCode"></div>
+      <div class="modal-name"  id="modalName"></div>
+      <div class="modal-grid">
+        <div><div class="mg-k">Толщина</div><div class="mg-v" id="mHeight"></div></div>
+        <div><div class="mg-k">Длина</div>  <div class="mg-v" id="mLength"></div></div>
+        <div><div class="mg-k">Ширина</div> <div class="mg-v" id="mWidth"></div></div>
+      </div>
+      <div class="modal-foot">
+        <div class="modal-price-block">
+          <div class="lbl">Цена за лист</div>
+          <div><span class="modal-price" id="mPrice"></span></div>
+        </div>
+        <button class="copy-btn" id="copyBtn">Скопировать арт.</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ─────────────────────────────────────────────────────
+// После деплоя Apps Script вставь сюда свой URL:
+const API_URL = "ВСТАВЬ_СВОЙ_APPS_SCRIPT_URL_ЗДЕСЬ";
+
+// ─── STATE ──────────────────────────────────────────────────────
+let allRows    = [];   // все строки из таблицы
+let currentPid = "0"; // текущая папка
+let pathStack  = [];   // [{id, name}] для breadcrumb
+let searchQ    = "";
+let activeType = "all";
+
+// ─── FETCH DATA ──────────────────────────────────────────────────
+async function loadData() {
+  try {
+    // Если API_URL не задан — используем демо-данные
+    if (API_URL === "ВСТАВЬ_СВОЙ_APPS_SCRIPT_URL_ЗДЕСЬ") {
+      allRows = getDemoData();
+      init();
+      return;
+    }
+    const r = await fetch(API_URL);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    allRows = j.data;
+    init();
+  } catch (e) {
+    document.getElementById("catalog").innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠</div><div class="state-txt">Ошибка загрузки: ${e.message}</div></div>`;
+  }
+}
+
+// ─── INIT ────────────────────────────────────────────────────────
+function init() {
+  const items = allRows.filter(r => !r.isFolder);
+  document.getElementById("totalCount").textContent  = items.length;
+  document.getElementById("folderCount").textContent = allRows.filter(r => r.isFolder).length;
+
+  buildTypeFilters();
+  render();
+}
+
+// ─── TYPE FILTERS ────────────────────────────────────────────────
+function buildTypeFilters() {
+  // Определяем тип по имени родительской папки
+  const wrap = document.getElementById("typeFilters");
+  // Типы — папки у корневых разделов (parentId === "0") с isfolder=true
+  const rootFolders = allRows.filter(r => r.isFolder && r.parentId === "0");
+  rootFolders.forEach(f => {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.dataset.type = f.id;
+    btn.textContent = f.name;
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#typeFilters .chip").forEach(b => b.classList.remove("on"));
+      btn.classList.add("on");
+      activeType = f.id;
+      currentPid = f.id;
+      pathStack = [{ id: f.id, name: f.name }];
+      render();
+    });
+    wrap.appendChild(btn);
+  });
+
+  // "Все" chip
+  document.querySelector('[data-type="all"]').addEventListener("click", () => {
+    document.querySelectorAll("#typeFilters .chip").forEach(b => b.classList.remove("on"));
+    document.querySelector('[data-type="all"]').classList.add("on");
+    activeType = "all";
+    currentPid = "0";
+    pathStack = [];
+    render();
+  });
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────
+function render() {
+  renderBreadcrumb();
+  const catalog = document.getElementById("catalog");
+
+  let items = allRows.filter(r => r.parentId === currentPid);
+
+  // Поиск — ищем по всем товарам глобально
+  if (searchQ) {
+    const q = searchQ.toLowerCase();
+    const found = allRows.filter(r => !r.isFolder && (
+      r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q)
+    ));
+    document.getElementById("countDisplay").textContent = found.length;
+    if (!found.length) {
+      catalog.innerHTML = `<div class="state-box"><div class="state-icon">◎</div><div class="state-txt">Ничего не найдено</div></div>`;
+      return;
+    }
+    catalog.innerHTML = found.map((p, i) => prodCard(p, i)).join("");
+    catalog.querySelectorAll(".prod-card").forEach(c =>
+      c.addEventListener("click", () => openModal(allRows.find(r => r.id === c.dataset.id)))
+    );
+    return;
+  }
+
+  document.getElementById("countDisplay").textContent = items.filter(r => !r.isFolder).length || items.length;
+
+  if (!items.length) {
+    catalog.innerHTML = `<div class="state-box"><div class="state-icon">◎</div><div class="state-txt">Пусто</div></div>`;
+    return;
+  }
+
+  const folders = items.filter(r => r.isFolder);
+  const prods   = items.filter(r => !r.isFolder);
+
+  catalog.innerHTML =
+    folders.map((f, i) => folderCard(f, i)).join("") +
+    prods.map((p, i) => prodCard(p, folders.length + i)).join("");
+
+  catalog.querySelectorAll(".folder-card").forEach(c =>
+    c.addEventListener("click", () => openFolder(c.dataset.id, c.dataset.name))
+  );
+  catalog.querySelectorAll(".prod-card").forEach(c =>
+    c.addEventListener("click", () => openModal(allRows.find(r => r.id === c.dataset.id)))
+  );
+}
+
+// ─── FOLDER CARD HTML ────────────────────────────────────────────
+function folderCard(f, i) {
+  const childCount = allRows.filter(r => r.parentId === f.id).length;
+  return `
+  <div class="folder-card" data-id="${f.id}" data-name="${esc(f.name)}" style="animation-delay:${i*0.04}s">
+    <div class="folder-icon">📁</div>
+    <div class="folder-name">${esc(f.name)}</div>
+    <div class="folder-count">${childCount} позиций</div>
+  </div>`;
+}
+
+// ─── PRODUCT CARD HTML ───────────────────────────────────────────
+function prodCard(p, i) {
+  const typeClass = getTypeClass(p);
+  const typeName  = getTypeName(p);
+  const imgHtml   = p.photo
+    ? `<img class="prod-img" src="${esc(p.photo)}" alt="${esc(p.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    : "";
+  const phHtml = `<div class="prod-img-placeholder" style="${p.photo ? 'display:none' : ''}">🪵</div>`;
+
+  return `
+  <div class="prod-card" data-id="${p.id}" style="animation-delay:${i*0.035}s">
+    ${imgHtml}${phHtml}
+    <span class="type-badge ${typeClass}">${typeName}</span>
+    <div class="prod-body">
+      <div class="prod-code">${esc(p.code) || "—"}</div>
+      <div class="prod-name">${esc(p.name)}</div>
+      <div class="prod-meta">
+        <div><div class="meta-k">Толщина</div><div class="meta-v">${p.height ? p.height+" мм" : "—"}</div></div>
+        <div><div class="meta-k">Размер</div><div class="meta-v">${p.length && p.width ? p.length+"×"+p.width : "—"}</div></div>
+      </div>
+      <div class="prod-foot">
+        ${p.price
+          ? `<div class="prod-price">${p.price.toLocaleString("ru")} <small>сом</small></div>`
+          : `<div class="prod-no-price">По запросу</div>`}
+        <button class="expand-btn" title="Подробнее">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────────────
+function openFolder(id, name) {
+  pathStack.push({ id, name });
+  currentPid = id;
+  render();
+}
+
+function renderBreadcrumb() {
+  const bc = document.getElementById("breadcrumb");
+  const crumbs = [{ id: "0", name: "Каталог" }, ...pathStack];
+  bc.innerHTML = crumbs.map((c, i) => {
+    const isLast = i === crumbs.length - 1;
+    return `
+      ${i > 0 ? '<span class="bc-sep">›</span>' : ""}
+      <span class="bc-item ${isLast ? "active" : ""}" data-id="${c.id}" data-name="${esc(c.name)}">${esc(c.name)}</span>
+    `;
+  }).join("");
+
+  bc.querySelectorAll(".bc-item:not(.active)").forEach(el => {
+    el.addEventListener("click", () => {
+      const idx = pathStack.findIndex(x => x.id === el.dataset.id);
+      if (idx === -1) { pathStack = []; currentPid = "0"; }
+      else { pathStack = pathStack.slice(0, idx + 1); currentPid = el.dataset.id; }
+      render();
+    });
+  });
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────
+function openModal(p) {
+  if (!p) return;
+  const wrap = document.getElementById("modalImgWrap");
+  if (p.photo) {
+    wrap.innerHTML = `<img class="modal-img" src="${esc(p.photo)}" alt="${esc(p.name)}">`;
+  } else {
+    wrap.innerHTML = `<div class="modal-img-ph">🪵</div>`;
+  }
+
+  const typeClass = getTypeClass(p);
+  const typeName  = getTypeName(p);
+  document.getElementById("modalBadge").innerHTML = `<span class="type-badge ${typeClass}" style="position:relative">${typeName}</span>`;
+  document.getElementById("modalCode").textContent = p.code || "—";
+  document.getElementById("modalName").textContent = p.name;
+  document.getElementById("mHeight").textContent   = p.height ? p.height+" мм" : "—";
+  document.getElementById("mLength").textContent   = p.length ? p.length+" мм" : "—";
+  document.getElementById("mWidth").textContent    = p.width  ? p.width+" мм"  : "—";
+  document.getElementById("mPrice").innerHTML      = p.price
+    ? `${p.price.toLocaleString("ru")} <small>сом</small>`
+    : `<span style="font-size:.9rem;color:var(--muted)">По запросу</span>`;
+
+  document.getElementById("copyBtn").onclick = () => {
+    if (p.code) navigator.clipboard.writeText(p.code).catch(()=>{});
+    const btn = document.getElementById("copyBtn");
+    btn.textContent = "✓ Скопировано!";
+    setTimeout(() => btn.textContent = "Скопировать арт.", 2000);
+  };
+
+  document.getElementById("modalBg").classList.add("open");
+}
+
+document.getElementById("modalClose").addEventListener("click", closeModal);
+document.getElementById("modalBg").addEventListener("click", e => { if (e.target === document.getElementById("modalBg")) closeModal(); });
+function closeModal() { document.getElementById("modalBg").classList.remove("open"); }
+
+// ─── SEARCH ──────────────────────────────────────────────────────
+document.getElementById("searchInput").addEventListener("input", e => {
+  searchQ = e.target.value.trim();
+  render();
+});
+
+// ─── HELPERS ─────────────────────────────────────────────────────
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function getTypeName(p) {
+  // Ищем имя ближайшего корневого раздела
+  let cur = p;
+  while (cur && cur.parentId !== "0") {
+    cur = allRows.find(r => r.id === cur.parentId);
+  }
+  return cur ? cur.name : "Материал";
+}
+
+function getTypeClass(p) {
+  const n = getTypeName(p).toLowerCase();
+  if (n.includes("лмдф")) return "t-lmdf";
+  if (n.includes("мдф"))  return "t-mdf";
+  if (n.includes("лдсп")) return "t-ldsp";
+  return "t-other";
+}
+
+// ─── DEMO DATA (пока API_URL не задан) ──────────────────────────
+function getDemoData() {
+  return [
+    {id:"1",parentId:"0",isFolder:true, code:"",name:"ЛДСП",           price:null,height:null,length:null,width:null,photo:null},
+    {id:"2",parentId:"1",isFolder:true, code:"",name:"ЛДСП 5.796 м²",  price:null,height:null,length:null,width:null,photo:null},
+    {id:"3",parentId:"1",isFolder:true, code:"",name:"ЛДСП 4.575 м²",  price:null,height:null,length:null,width:null,photo:null},
+    {id:"4",parentId:"2",isFolder:true, code:"",name:"Матовый",         price:null,height:null,length:null,width:null,photo:null},
+    {id:"5",parentId:"2",isFolder:true, code:"",name:"Премиум матовый", price:null,height:null,length:null,width:null,photo:null},
+    {id:"10",parentId:"4",isFolder:false,code:"0522",    name:"4.6 М Бежевый",           price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"11",parentId:"4",isFolder:false,code:"0110 SM", name:"4.6 M Белый",             price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"12",parentId:"4",isFolder:false,code:"0101 PE", name:"4.6 M Белый фасадный",    price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"13",parentId:"4",isFolder:false,code:"3354 PR", name:"4.6 M Венге Цаво",        price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"14",parentId:"4",isFolder:false,code:"U604",    name:"4.6 M Дуб Водан",         price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"15",parentId:"4",isFolder:false,code:"8622 PR", name:"4.6 M Дуб Молочный",      price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"16",parentId:"4",isFolder:false,code:"5981 BS", name:"4.6 M Кашемир",           price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"17",parentId:"4",isFolder:false,code:"9490",    name:"4.6 M Орех Мария Луиза",  price:9490,height:16,length:2500,width:1830,photo:null},
+    {id:"18",parentId:"4",isFolder:false,code:"5648 PR", name:"4.6 M Орех Гепланкт",     price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"19",parentId:"4",isFolder:false,code:"9459 PR", name:"4.6 M Орех Экко",         price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"20",parentId:"4",isFolder:false,code:"0162",    name:"4.6 M Серый графит",      price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"21",parentId:"4",isFolder:false,code:"PE 0112", name:"4.6 M Серый Камень",      price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"22",parentId:"4",isFolder:false,code:"0171",    name:"4.6 M Серый шифер",       price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"23",parentId:"4",isFolder:false,code:"0190 PE", name:"4.6 M Чёрный",            price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"24",parentId:"4",isFolder:false,code:"4779 SN", name:"4.6 M Ясень Анкор Тёмный",price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"27",parentId:"5",isFolder:false,code:"0164",    name:"4.6 ПМ Антрацит",         price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"28",parentId:"5",isFolder:false,code:"K003",    name:"4.6 ПМ Дуб Крафт Золотой",price:null,height:16,length:2500,width:1830,photo:null},
+    {id:"29",parentId:"5",isFolder:false,code:"K004 PW", name:"4.6 ПМ Дуб Крафт Табачный",price:null,height:16,length:2500,width:1830,photo:null},
+  ];
+}
+
+// ─── START ───────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>

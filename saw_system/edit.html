@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Промебель — Редактирование заказа</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --black: #0a0a0a; --white: #f5f4f0; --gray-100: #f0eeea; --gray-200: #e2dfda;
+    --gray-400: #a8a49d; --gray-600: #6b6760; --red: #c0392b; --green: #15803d;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background: var(--white); font-family: 'DM Sans', sans-serif; color: var(--black); padding-bottom: 80px; }
+  header {
+    position: sticky; top: 0; background: var(--white); border-bottom: 1.5px solid var(--gray-200);
+    padding: 12px 20px; z-index: 100;
+  }
+  .header-inner { max-width: 520px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; }
+
+  main { max-width: 520px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 22px; margin-bottom: 8px; }
+  .order-id { font-family: 'DM Mono', monospace; color: var(--gray-600); margin-bottom: 24px; }
+
+  .card {
+    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .card-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+  }
+  .card-title {
+    font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--gray-600); font-family: 'DM Mono', monospace;
+  }
+  .btn-add {
+    font-size: 12px; padding: 5px 12px; background: var(--gray-100); border: 1.5px solid var(--gray-200);
+    border-radius: 5px; cursor: pointer;
+  }
+
+  .field { margin-bottom: 14px; }
+  label.field-label {
+    display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--gray-600); margin-bottom: 6px; font-family: 'DM Mono', monospace;
+  }
+  input {
+    width: 100%; padding: 11px 14px; font-size: 15px; background: var(--gray-100);
+    border: 1.5px solid var(--gray-200); border-radius: 6px; outline: none;
+  }
+
+  .dynamic-row {
+    display: grid; gap: 8px; margin-bottom: 10px; padding-bottom: 10px;
+    border-bottom: 1px dashed var(--gray-200);
+  }
+  .dynamic-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .row-sheet { grid-template-columns: 60px 80px 1fr 40px; }
+  .row-edge { grid-template-columns: 80px 1fr 40px; }
+  .row-ext { grid-template-columns: 1fr 40px; }
+
+  .btn-remove { color: var(--red); background: none; border: none; font-size: 18px; cursor: pointer; line-height: 1; }
+
+  .log-block {
+    margin-top: 20px; padding: 14px; background: #f9f9f7; border: 1px solid var(--gray-200); border-radius: 8px;
+    font-size: 12px; font-family: 'DM Mono', monospace; white-space: pre-wrap;
+    max-height: 200px; overflow-y: auto; color: var(--gray-600);
+  }
+
+  .submit-btn {
+    width: 100%; padding: 16px; background: var(--black); color: white; border: none;
+    border-radius: 8px; font-size: 16px; font-weight: 500; margin-top: 30px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">ПРОМЕБЕЛЬ</div>
+    <a href="orders.html" style="font-size:13px; color:#555; text-decoration: none;">← Заказы</a>
+  </div>
+</header>
+
+<main>
+  <h1>Редактирование заказа</h1>
+  <div class="order-id">ID: <span id="orderIdDisplay"></span></div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Листы</span>
+      <button class="btn-add" onclick="addSheet()">+ Добавить</button>
+    </div>
+    <div id="sheets"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Кромка 0.8 мм</span>
+      <button class="btn-add" onclick="addEdge08()">+ Добавить</button>
+    </div>
+    <div id="edge08"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Кромка 0.4 мм</span>
+      <button class="btn-add" onclick="addEdge04()">+ Добавить</button>
+    </div>
+    <div id="edge04"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Листы извне</span>
+      <button class="btn-add" onclick="addSheetExt()">+ Добавить</button>
+    </div>
+    <div id="sheetExt"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Кромка извне</span>
+      <button class="btn-add" onclick="addEdgeExt()">+ Добавить</button>
+    </div>
+    <div id="edgeExt"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Присадка</span></div>
+    <div class="field"><label class="field-label">Евровинт (шт)</label><input id="addon_euro" type="number"></div>
+    <div class="field"><label class="field-label">Эксцентрик (шт)</label><input id="addon_exc" type="number"></div>
+    <div class="field"><label class="field-label">Рафикс (шт)</label><input id="addon_raf" type="number"></div>
+    <div class="field"><label class="field-label">Петля (шт)</label><input id="addon_hinge" type="number"></div>
+    <div class="field"><label class="field-label">Прочее (шт)</label><input id="addon_other" type="number"></div>
+  </div>
+
+  <div id="changeLog" class="log-block" style="display:none;">
+    <strong>История изменений:</strong><br><br>
+    <div id="logContent"></div>
+  </div>
+
+  <button class="submit-btn" onclick="saveEdit()">Сохранить изменения</button>
+</main>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+const token = localStorage.getItem("token");
+const role = localStorage.getItem("role");
+
+const urlParams = new URLSearchParams(window.location.search);
+const orderId = urlParams.get("id");
+
+if (!token || (role !== 'admin' && role !== 'manager' && role !== 'director')) window.location.href = "orders.html";
+if (!orderId) window.location.href = "orders.html";
+
+document.getElementById("orderIdDisplay").textContent = orderId;
+
+// Функции добавления строк (аналогично create.html)
+function addSheet(valCount='', valCode='', valName='') {
+  const div = document.createElement("div");
+  div.className = "dynamic-row row-sheet";
+  div.innerHTML = `
+    <input type="number" placeholder="шт" class="s-count" value="${valCount}">
+    <input placeholder="код" class="s-code" value="${valCode}">
+    <input placeholder="название" class="s-name" value="${valName}">
+    <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
+  `;
+  document.getElementById("sheets").appendChild(div);
+}
+
+function addEdge(containerId, valLen='', valCode='') {
+  const div = document.createElement("div");
+  div.className = "dynamic-row row-edge";
+  div.innerHTML = `
+    <input type="number" placeholder="м" class="e-len" value="${valLen}">
+    <input placeholder="код" class="e-code" value="${valCode}">
+    <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
+  `;
+  document.getElementById(containerId).appendChild(div);
+}
+
+// Сбор листов с валидацией
+function getSheets() {
+  let c = [], co = [], n = [];
+  document.querySelectorAll("#sheets .dynamic-row").forEach(r => {
+    const count = parseInt(r.querySelector(".s-count").value) || 0;
+    const code = r.querySelector(".s-code").value.trim();
+    const name = r.querySelector(".s-name").value.trim();
+    // Пропускаем если количество 0 или отрицательное или нет названия
+    if (count <= 0 || !name) return;
+    c.push(count);
+    co.push(code || "—");
+    n.push(name);
+  });
+  return { count: c.join("-"), code: co.join("-"), name: n.join("-") };
+}
+
+function getEdges(containerId) {
+  let len = [], code = [];
+  document.querySelectorAll(`#${containerId} .dynamic-row`).forEach(r => {
+    const l = parseFloat(r.querySelector(".e-len").value) || 0;
+    const c = r.querySelector(".e-code").value.trim();
+    // Пропускаем если длина 0 или отрицательная или нет кода
+    if (l <= 0 || !c) return;
+    len.push(l);
+    code.push(c);
+  });
+  return { len: len.join("-"), code: code.join("-") };
+}
+
+function getExt(containerId) {
+  let vals = [];
+  document.querySelectorAll(`#${containerId} .dynamic-row`).forEach(r => {
+    const v = r.querySelector(".ext-val").value.trim();
+    if (v) vals.push(v); // пропускаем пустые
+  });
+  return vals.join(" | ");
+}
+
+// Валидация присадки — только положительные числа
+function getAddon(id) {
+  const val = parseInt(document.getElementById(id).value) || 0;
+  return val > 0 ? val : 0;
+}
+
+function addExt(containerId, val='') {
+  const div = document.createElement("div");
+  div.className = "dynamic-row row-ext";
+  div.innerHTML = `<input placeholder="Описание" class="ext-val" value="${val}"><button class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
+  document.getElementById(containerId).appendChild(div);
+}
+
+// Прямые ссылки для удобства вызова из HTML
+function addEdge08() { addEdge("edge08"); }
+function addEdge04() { addEdge("edge04"); }
+function addSheetExt() { addExt("sheetExt"); }
+function addEdgeExt() { addExt("edgeExt"); }
+
+async function loadOrder() {
+  try {
+    const res = await fetch(API, { method: "POST", body: JSON.stringify({ action: "list_orders", token }) });
+    const data = await res.json();
+    const order = data.orders.find(o => o.id === orderId);
+    if (!order) return window.location.href = "orders.html";
+
+    // Парсинг листов
+    if (order.sheet_count) {
+      const counts = order.sheet_count.split('-');
+      const codes = order.sheet_code.split('-');
+      const names = order.sheet_name.split('-');
+      counts.forEach((c, i) => addSheet(c, codes[i], names[i]));
+    }
+
+    // Парсинг кромок
+    const parseEdge = (id, lenStr, codeStr) => {
+      if (!lenStr) return;
+      const lens = lenStr.split('-');
+      const codes = codeStr.split('-');
+      lens.forEach((l, i) => addEdge(id, l, codes[i]));
+    };
+    parseEdge("edge08", order.edge_08_len, order.edge_08_code);
+    parseEdge("edge04", order.edge_04_len, order.edge_04_code);
+
+    // Извне
+    if (order.sheet_ext) order.sheet_ext.split(' | ').forEach(v => addExt("sheetExt", v));
+    if (order.edge_ext) order.edge_ext.split(' | ').forEach(v => addExt("edgeExt", v));
+
+    // Присадка
+    ['euro', 'exc', 'raf', 'hinge', 'other'].forEach(key => {
+      document.getElementById(`addon_${key}`).value = order[`addon_${key}`] || 0;
+    });
+
+    if (order.change_log) {
+      document.getElementById("changeLog").style.display = "block";
+      document.getElementById("logContent").innerHTML = order.change_log.replace(/\n/g, '<br>');
+    }
+  } catch (e) { alert("Ошибка загрузки"); }
+}
+
+function collectSheets() {
+  let c = [], co = [], n = [];
+  document.querySelectorAll("#sheets .dynamic-row").forEach(r => {
+    c.push(r.querySelector(".s-count").value || "0");
+    co.push(r.querySelector(".s-code").value || "—");
+    n.push(r.querySelector(".s-name").value || "—");
+  });
+  return { count: c.join("-"), code: co.join("-"), name: n.join("-") };
+}
+
+function collectEdges(id) {
+  let l = [], c = [];
+  document.querySelectorAll(`#${id} .dynamic-row`).forEach(r => {
+    l.push(r.querySelector(".e-len").value || "0");
+    c.push(r.querySelector(".e-code").value || "—");
+  });
+  return { len: l.join("-"), code: c.join("-") };
+}
+
+async function saveEdit() {
+  const s = collectSheets();
+  const e08 = collectEdges("edge08");
+  const e04 = collectEdges("edge04");
+
+  const payload = {
+    action: "edit_order",
+    token,
+    id: orderId,
+    sheet_count: s.count, sheet_code: s.code, sheet_name: s.name,
+    edge_08_len: e08.len, edge_08_code: e08.code,
+    edge_04_len: e04.len, edge_04_code: e04.code,
+    sheet_ext: Array.from(document.querySelectorAll("#sheetExt .ext-val")).map(i => i.value).join(" | "),
+    edge_ext: Array.from(document.querySelectorAll("#edgeExt .ext-val")).map(i => i.value).join(" | "),
+    addon_euro: getAddon("addon_euro"),
+    addon_exc: getAddon("addon_exc"),
+    addon_raf: getAddon("addon_raf"),
+    addon_hinge: getAddon("addon_hinge"),
+    addon_other: getAddon("addon_other")
+  };
+
+  try {
+    const res = await fetch(API, { method: "POST", body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.success) { alert("Сохранено"); window.location.href = "orders.html"; }
+    else alert("Ошибка: " + data.error);
+  } catch (e) { alert("Ошибка сети"); }
+}
+
+loadOrder();
+</script>
+</body>
+</html>

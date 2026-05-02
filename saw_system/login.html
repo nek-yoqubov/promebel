@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Промебель — Вход</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+  :root { --black: #0a0a0a; --white: #f5f4f0; --gray-100: #f0eeea; --gray-200: #e2dfda; --gray-600: #6b6760; --red: #c0392b; }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body {
+    height: 100vh; background: var(--white); color: var(--black);
+    font-family: 'DM Sans', sans-serif; display: flex; align-items: center; justify-content: center;
+  }
+  .container { width: 100%; max-width: 380px; padding: 20px; }
+  .brand { margin-bottom: 40px; text-align: center; }
+  .brand-name { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gray-600); }
+  .brand-title { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; margin-top: 6px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-600); margin-bottom: 6px; font-family: 'DM Mono', monospace; }
+  input {
+    width: 100%; padding: 14px 16px; font-size: 15px; background: var(--gray-100); border: 1.5px solid var(--gray-200);
+    border-radius: 6px; outline: none; transition: all 0.18s;
+  }
+  input:focus { border-color: var(--black); background: white; }
+  button {
+    width: 100%; padding: 15px; background: var(--black); color: white; border: none; border-radius: 6px;
+    font-size: 15px; font-weight: 500; cursor: pointer; margin-top: 10px;
+    transition: opacity 0.2s; position: relative; overflow: hidden;
+  }
+  button:disabled { opacity: 0.7; cursor: not-allowed; }
+  .error { color: var(--red); font-size: 13px; margin-top: 8px; text-align: center; min-height: 20px; }
+
+  /* Спиннер внутри кнопки */
+  .spinner {
+    display: none;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .btn-text { transition: opacity 0.2s; }
+
+  /* Оверлей успешного входа */
+  .success-overlay {
+    position: fixed; inset: 0; background: var(--white);
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px; z-index: 999;
+  }
+  .success-overlay.show { display: flex; }
+  .success-icon {
+    font-size: 48px;
+    animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .success-text {
+    font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--gray-600);
+    animation: fadeUp 0.4s ease 0.1s both;
+  }
+  @keyframes popIn {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  @keyframes fadeUp {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="brand">
+    <div class="brand-name">ПРОМЕБЕЛЬ</div>
+    <div class="brand-title">Система контроля</div>
+  </div>
+
+  <div class="field">
+    <label>Логин</label>
+    <input id="login" type="text" placeholder="Введите логин" onkeydown="if(event.key==='Enter') doLogin()">
+  </div>
+  <div class="field">
+    <label>Пароль</label>
+    <input id="password" type="password" placeholder="Введите пароль" onkeydown="if(event.key==='Enter') doLogin()">
+  </div>
+
+  <div class="error" id="error"></div>
+  <button onclick="doLogin()" id="loginBtn">
+    <span class="btn-text" id="btnText">Войти</span>
+    <div class="spinner" id="spinner"></div>
+  </button>
+</div>
+
+<!-- Оверлей успеха -->
+<div class="success-overlay" id="successOverlay">
+  <div class="success-icon">✓</div>
+  <div class="success-text">Добро пожаловать</div>
+</div>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+
+if (localStorage.getItem("token")) window.location.href = "orders.html";
+
+function setLoading(loading) {
+  const btn = document.getElementById("loginBtn");
+  const text = document.getElementById("btnText");
+  const spinner = document.getElementById("spinner");
+  btn.disabled = loading;
+  text.style.display = loading ? "none" : "block";
+  spinner.style.display = loading ? "block" : "none";
+}
+
+async function doLogin() {
+  const login = document.getElementById("login").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const err = document.getElementById("error");
+
+  err.textContent = "";
+  if (!login || !password) { err.textContent = "Заполните все поля"; return; }
+
+  setLoading(true);
+
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "login", login, password })
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      err.textContent = "Неверный логин или пароль";
+      setLoading(false);
+      return;
+    }
+
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("role", data.role || "user");
+
+    // Показываем успех и редиректим
+    document.getElementById("successOverlay").classList.add("show");
+    setTimeout(() => window.location.href = "orders.html", 1000);
+
+  } catch (e) {
+    err.textContent = "Ошибка соединения";
+    setLoading(false);
+  }
+}
+</script>
+</body>
+</html>

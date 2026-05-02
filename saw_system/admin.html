@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Промебель — Администрирование</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --black: #0a0a0a; --white: #f5f4f0; --gray-100: #f0eeea; --gray-200: #e2dfda;
+    --gray-400: #a8a49d; --gray-600: #6b6760; --red: #c0392b;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background: var(--white); font-family: 'DM Sans', sans-serif; color: var(--black); padding: 20px; }
+  header {
+    position: sticky; top: 0; background: var(--white); border-bottom: 1.5px solid var(--gray-200);
+    padding: 12px 0; z-index: 100;
+  }
+  .header-inner { max-width: 720px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; }
+
+  main { max-width: 720px; margin: 0 auto; padding-top: 20px; }
+  h1 { margin-bottom: 24px; font-size: 24px; }
+
+  .card {
+    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 15px; color: var(--gray-600); }
+
+  .user-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--gray-200);
+  }
+  .user-row:last-child { border-bottom: none; }
+
+  .add-form {
+    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; margin-top: 10px;
+  }
+
+  input, select {
+    padding: 10px; border: 1.5px solid var(--gray-200); border-radius: 6px; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: var(--black); }
+
+  button {
+    padding: 10px 16px; background: var(--black); color: white; border: none;
+    border-radius: 6px; cursor: pointer; font-weight: 500;
+  }
+  .btn-delete {
+    background: var(--red); color: white; padding: 6px 12px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">ПРОМЕБЕЛЬ</div>
+    <a href="orders.html" style="font-size:13px; color:#555; text-decoration: none;">← Заказы</a>
+  </div>
+</header>
+
+<main>
+  <h1>Управление пользователями</h1>
+
+  <div class="card">
+    <h3>Добавить пользователя</h3>
+    <div class="add-form">
+      <input id="newLogin" placeholder="Логин">
+      <input id="newPassword" type="password" placeholder="Пароль">
+      <select id="newRole">
+        <option value="user">Рабочий</option>
+        <option value="manager">Менеджер</option>
+        <option value="admin">Администратор</option>
+      </select>
+      <button onclick="addNewUser()">Добавить</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Список пользователей</h3>
+    <div id="userList"></div>
+  </div>
+</main>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+const token = localStorage.getItem("token");
+const role = localStorage.getItem("role");
+
+// Исправлено: Запрет доступа всем, кроме админа
+if (!token || role !== "admin") {
+  window.location.href = "orders.html";
+}
+
+async function loadUsers() {
+  const container = document.getElementById("userList");
+  container.innerHTML = `<div style="padding:10px; color:#666; font-size: 13px;">Загрузка списка...</div>`;
+  
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "list_users", token })
+    });
+    const data = await res.json();
+    
+    if (data.success) {
+      container.innerHTML = "";
+      data.users.forEach(user => {
+        const div = document.createElement("div");
+        div.className = "user-row";
+        div.innerHTML = `
+          <div>
+            <strong>${user.login}</strong> 
+            <span style="color:#888; font-size:12px; margin-left:10px;">[${user.role}]</span>
+          </div>
+          ${user.login !== 'admin' ? `<button class="btn-delete" onclick="deleteUser('${user.login}')">Удалить</button>` : ''}
+        `;
+        container.appendChild(div);
+      });
+    }
+  } catch (e) {
+    container.innerHTML = "Ошибка загрузки";
+  }
+}
+
+async function addNewUser() {
+  const login = document.getElementById("newLogin").value.trim();
+  const password = document.getElementById("newPassword").value.trim();
+  const userRole = document.getElementById("newRole").value;
+
+  if (!login || !password) return alert("Заполните все поля");
+
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "add_user", token, login, password, role: userRole })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Пользователь добавлен");
+      document.getElementById("newLogin").value = "";
+      document.getElementById("newPassword").value = "";
+      loadUsers();
+    } else {
+      alert("Ошибка: " + data.error);
+    }
+  } catch (e) { alert("Ошибка сети"); }
+}
+
+async function deleteUser(loginToDelete) {
+  if (!confirm(`Удалить пользователя ${loginToDelete}?`)) return;
+  
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "delete_user", token, login: loginToDelete })
+    });
+    const data = await res.json();
+    if (data.success) loadUsers();
+    else alert("Ошибка удаления");
+  } catch (e) { alert("Ошибка сети"); }
+}
+
+loadUsers();
+</script>
+</body>
+</html>

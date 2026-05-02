@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Промебель — Настройки</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --black: #0a0a0a; --white: #f5f4f0; --gray-100: #f0eeea; --gray-200: #e2dfda;
+    --gray-400: #a8a49d; --gray-600: #6b6760; --red: #c0392b; --green: #15803d;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background: var(--white); font-family: 'DM Sans', sans-serif; color: var(--black); padding: 20px; }
+  header {
+    position: sticky; top: 0; background: var(--white); border-bottom: 1.5px solid var(--gray-200);
+    padding: 12px 0; z-index: 100;
+  }
+  .header-inner { max-width: 520px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; }
+
+  main { max-width: 520px; margin: 0 auto; padding: 20px; }
+  h1 { margin-bottom: 30px; font-size: 24px; }
+
+  .card {
+    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px;
+    padding: 24px; margin-bottom: 20px;
+  }
+
+  .field { margin-bottom: 18px; }
+  label {
+    display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--gray-600); margin-bottom: 6px;
+    font-family: 'DM Mono', monospace;
+  }
+  input {
+    width: 100%; padding: 12px 16px; font-size: 15px; background: var(--gray-100);
+    border: 1.5px solid var(--gray-200); border-radius: 6px; outline: none;
+  }
+  input:focus { border-color: var(--black); background: white; }
+
+  .submit-btn {
+    width: 100%; padding: 16px; background: var(--black); color: white; border: none;
+    border-radius: 8px; font-size: 16px; font-weight: 500; margin-top: 20px; cursor: pointer;
+  }
+
+  .message {
+    padding: 12px; border-radius: 6px; margin-top: 16px; font-size: 14px; text-align: center;
+  }
+  .success { background: #dcfce7; color: var(--green); }
+  .error   { background: #fee2e2; color: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">ПРОМЕБЕЛЬ</div>
+    <a href="orders.html" style="font-size:13px; color:#555; text-decoration: none;">← Заказы</a>
+  </div>
+</header>
+
+<main>
+  <h1>Смена пароля</h1>
+
+  <div class="card">
+    <div class="field">
+      <label>Текущий пароль</label>
+      <input id="oldPass" type="password" placeholder="Введите текущий пароль">
+    </div>
+    <div class="field">
+      <label>Новый пароль</label>
+      <input id="newPass" type="password" placeholder="Новый пароль (минимум 4 символа)">
+    </div>
+    <div class="field">
+      <label>Повторите новый пароль</label>
+      <input id="newPass2" type="password" placeholder="Повторите новый пароль">
+    </div>
+
+    <div id="message" class="message" style="display:none;"></div>
+
+    <button class="submit-btn" onclick="changePassword()">Сменить пароль</button>
+  </div>
+</main>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+const token = localStorage.getItem("token");
+
+if (!token) window.location.href = "login.html";
+
+async function changePassword() {
+  const oldPass = document.getElementById("oldPass").value.trim();
+  const newPass = document.getElementById("newPass").value.trim();
+  const newPass2 = document.getElementById("newPass2").value.trim();
+  const msg = document.getElementById("message");
+
+  msg.style.display = "none";
+
+  if (!oldPass || !newPass || !newPass2) {
+    msg.textContent = "Заполните все поля";
+    msg.className = "message error";
+    msg.style.display = "block";
+    return;
+  }
+
+  if (newPass.length < 4) {
+    msg.textContent = "Новый пароль должен быть не менее 4 символов";
+    msg.className = "message error";
+    msg.style.display = "block";
+    return;
+  }
+
+  if (newPass !== newPass2) {
+    msg.textContent = "Новые пароли не совпадают";
+    msg.className = "message error";
+    msg.style.display = "block";
+    return;
+  }
+
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "change_password",
+        token,
+        old_password: oldPass,
+        new_password: newPass
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      msg.textContent = "Пароль успешно изменён!";
+      msg.className = "message success";
+      msg.style.display = "block";
+
+      document.getElementById("oldPass").value = "";
+      document.getElementById("newPass").value = "";
+      document.getElementById("newPass2").value = "";
+
+      // Исправлено: Редирект на список заказов
+      setTimeout(() => { window.location.href = "orders.html"; }, 1500);
+    } else {
+      msg.textContent = data.error === "WRONG_PASSWORD" 
+        ? "Текущий пароль неверный" 
+        : (data.error || "Ошибка при смене пароля");
+      msg.className = "message error";
+      msg.style.display = "block";
+    }
+  } catch (e) {
+    msg.textContent = "Ошибка соединения с сервером";
+    msg.className = "message error";
+    msg.style.display = "block";
+  }
+}
+</script>
+</body>
+</html>

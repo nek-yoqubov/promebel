@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Промебель — Заказы</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f4f0;
+    --gray-100: #f0eeea;
+    --gray-200: #e2dfda;
+    --gray-400: #a8a49d;
+    --gray-600: #6b6760;
+    --blue: #2563eb; --blue-bg: #dbeafe;
+    --orange: #ea580c; --orange-bg: #ffedd5;
+    --purple: #7c3aed; --purple-bg: #ede9fe;
+    --yellow: #b45309; --yellow-bg: #fef3c7;
+    --green: #15803d; --green-bg: #dcfce7;
+    --grey: #4b5563; --grey-bg: #f3f4f6;
+  }
+
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background: var(--white); font-family: 'DM Sans', sans-serif; color: var(--black); padding: 0 20px; }
+  
+  header {
+    position: sticky; top: 0; background: var(--white); border-bottom: 1.5px solid var(--gray-200);
+    padding: 12px 0; z-index: 100;
+  }
+  .header-inner {
+    max-width: 720px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;
+  }
+  .logo { font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; }
+
+  main { max-width: 720px; margin: 0 auto; padding: 20px 0 80px; }
+
+  .filters {
+    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px; padding: 16px; margin-bottom: 20px;
+  }
+  input[type="search"] {
+    width: 100%; padding: 12px 16px; font-size: 15px; background: var(--gray-100); border: 1.5px solid var(--gray-200);
+    border-radius: 6px; outline: none;
+  }
+  input:focus { border-color: var(--black); }
+
+  .status-chips {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0;
+  }
+  .chip {
+    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer;
+    border: 1.5px solid var(--gray-200); background: var(--gray-100); transition: all 0.2s;
+  }
+  .chip.active { border-color: transparent; font-weight: 600; }
+
+  .order-card {
+    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px; padding: 16px;
+    margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .order-card:hover { border-color: var(--black); transform: translateY(-1px); }
+
+  .card-left { flex: 1; }
+  .card-id { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--gray-600); }
+  .card-customer { font-weight: 600; margin: 4px 0; }
+  .card-phone { font-size: 13px; color: var(--gray-600); }
+
+  .badge {
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; display: inline-block;
+  }
+  .badge-Выгрузка { background: var(--blue-bg); color: var(--blue); }
+  .badge-Пила { background: var(--orange-bg); color: var(--orange); }
+  .badge-Кромка { background: var(--purple-bg); color: var(--purple); }
+  .badge-Присадка { background: var(--yellow-bg); color: var(--yellow); }
+  .badge-Готово { background: var(--green-bg); color: var(--green); }
+  .badge-✅ { background: var(--grey-bg); color: var(--grey); }
+
+  /* Модальное окно */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000;
+    backdrop-filter: blur(2px); padding: 20px;
+  }
+  .modal-content {
+    background: white; width: 100%; max-width: 450px; border-radius: 16px;
+    padding: 24px; position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .modal-title { font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 600; color: var(--gray-600); }
+  .close-modal { cursor: pointer; font-size: 28px; color: var(--gray-400); line-height: 0.8; }
+  
+  .detail-group { margin-bottom: 16px; }
+  .detail-label { font-size: 11px; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .detail-value { font-size: 16px; font-weight: 600; }
+
+  .modal-footer { margin-top: 28px; display: flex; gap: 10px; }
+  .btn {
+    flex: 1; padding: 14px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    text-align: center; cursor: pointer; border: none; transition: 0.2s; text-decoration: none;
+  }
+  .btn-edit { background: var(--black); color: white; }
+  .btn-edit:hover { opacity: 0.9; }
+  .btn-close { background: var(--gray-100); color: var(--black); }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--gray-400); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">ПРОМЕБЕЛЬ</div>
+    <div>
+      <a href="create.html" id="createBtn" style="display:none; margin-right:12px; font-size:13px; font-weight:600; color: var(--black); text-decoration: none;">+ Новый заказ</a>
+      <a href="index.html" style="font-size:13px; color:var(--gray-600); text-decoration: none;">← Главная</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="filters">
+    <input type="search" id="search" placeholder="Поиск по ID или клиенту..." oninput="filterOrders()">
+    <div class="status-chips" id="chips"></div>
+  </div>
+
+  <div id="list"></div>
+</main>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="m-id">№ —</div>
+      <div class="close-modal" onclick="closeModal()">&times;</div>
+    </div>
+    <div class="modal-body">
+      <div class="detail-group">
+        <div class="detail-label">Клиент</div>
+        <div class="detail-value" id="m-customer">—</div>
+      </div>
+      <div class="detail-group">
+        <div class="detail-label">Контактный телефон</div>
+        <div class="detail-value" id="m-phone">—</div>
+      </div>
+      <div class="detail-group">
+        <div class="detail-label">Текущий этап</div>
+        <div id="m-status-badge" class="badge">—</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-close" onclick="closeModal()">Закрыть</button>
+      <a href="#" id="m-edit-link" class="btn btn-edit" style="display:none;">Редактировать</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+const token = localStorage.getItem("token");
+const role = localStorage.getItem("role");
+
+if (!token) window.location.href = "login.html";
+
+if (role === "manager" || role === "admin" || role === "director") {
+  document.getElementById("createBtn").style.display = "inline";
+}
+
+let allOrders = [];
+let activeStatuses = new Set();
+
+const statusColors = {
+  "Выгрузка со склада": "badge-Выгрузка",
+  "Пила": "badge-Пила",
+  "Кромка": "badge-Кромка",
+  "Присадка": "badge-Присадка",
+  "Готово": "badge-Готово",
+  "✅": "badge-✅"
+};
+
+async function loadOrders() {
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "list_orders", token })
+    });
+    const data = await res.json();
+
+    if (data.error === "UNAUTHORIZED") {
+      localStorage.clear();
+      window.location.href = "login.html";
+      return;
+    }
+
+    allOrders = data.orders || [];
+    renderChips();
+    renderOrders();
+  } catch (e) {
+    document.getElementById("list").innerHTML = `<div class="empty">Ошибка загрузки заказов</div>`;
+  }
+}
+
+function renderChips() {
+  const container = document.getElementById("chips");
+  const uniqueStatuses = [...new Set(allOrders.map(o => o.status))];
+
+  container.innerHTML = uniqueStatuses.map(status => `
+    <div class="chip ${activeStatuses.has(status) ? 'active' : ''}" 
+         onclick="toggleStatus('${status}')" 
+         style="${activeStatuses.has(status) ? 'background: var(--black); color: var(--white);' : ''}">
+      ${status}
+    </div>
+  `).join('');
+}
+
+function toggleStatus(status) {
+  if (activeStatuses.has(status)) activeStatuses.delete(status);
+  else activeStatuses.add(status);
+  renderChips();
+  renderOrders();
+}
+
+function filterOrders() {
+  renderOrders();
+}
+
+function renderOrders() {
+  const search = document.getElementById("search").value.toLowerCase().trim();
+  const container = document.getElementById("list");
+
+  let filtered = allOrders.filter(order => {
+    const matchSearch = !search || 
+      order.id.toLowerCase().includes(search) || 
+      order.customer.toLowerCase().includes(search);
+
+    const matchStatus = activeStatuses.size === 0 || activeStatuses.has(order.status);
+    return matchSearch && matchStatus;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="empty">Заказы не найдены</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(order => `
+    <div class="order-card" onclick="openOrder('${order.id}')">
+      <div class="card-left">
+        <div class="card-id">№ ${order.id}</div>
+        <div class="card-customer">${order.customer || '—'}</div>
+        <div class="card-phone">${order.phone || '—'}</div>
+      </div>
+      <div class="badge ${statusColors[order.status] || 'badge-✅'}">${order.status}</div>
+    </div>
+  `).join('');
+}
+
+function openOrder(id) {
+  const order = allOrders.find(o => o.id === id);
+  if (!order) return;
+
+  document.getElementById("m-id").innerText = `№ ${order.id}`;
+  document.getElementById("m-customer").innerText = order.customer || '—';
+  document.getElementById("m-phone").innerText = order.phone || '—';
+  
+  const badge = document.getElementById("m-status-badge");
+  badge.className = `badge ${statusColors[order.status] || 'badge-✅'}`;
+  badge.innerText = order.status;
+
+  const editLink = document.getElementById("m-edit-link");
+if (role === "admin" || role === "director") {
+    editLink.href = `edit.html?id=${id}`;
+    editLink.style.display = "block";
+  } else {
+    editLink.style.display = "none";
+  }
+
+  document.getElementById("modal").style.display = "flex";
+}
+
+function closeModal() {
+  document.getElementById("modal").style.display = "none";
+}
+
+window.onclick = function(event) {
+  const modal = document.getElementById("modal");
+  if (event.target == modal) closeModal();
+}
+
+loadOrders();
+</script>
+</body>
+</html>

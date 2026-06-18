@@ -1,0 +1,213 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pro Mebel Display</title>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#0a0a0a;
+}
+
+.viewport{
+    width:100vw;
+    height:100vh;
+    overflow:hidden;
+    position:relative;
+}
+
+/* лёгкое затемнение сверху и снизу — глаз сам "ведёт" взгляд
+   к центральному слайду, дёшево и со вкусом */
+.viewport::before,
+.viewport::after{
+    content:"";
+    position:absolute;
+    left:0; right:0;
+    height:14%;
+    z-index:5;
+    pointer-events:none;
+}
+.viewport::before{
+    top:0;
+    background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0));
+}
+.viewport::after{
+    bottom:0;
+    background:linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0));
+}
+
+.track{
+    position:absolute;
+    width:100%;
+    left:0;
+    top:0;
+    will-change: transform;
+
+    display:flex;
+    flex-direction:column;
+    gap: var(--gap);
+}
+
+/* Каждый слайд занимает ровно треть экрана по высоте за вычетом
+   зазоров (--gap задаётся в JS в px, считается от высоты экрана —
+   так пропорция зазора остаётся одинаковой на любом дисплее). */
+.slide{
+    width:100%;
+    height: calc(33.3333vh - (var(--gap) * 2 / 3));
+    flex-shrink:0;
+    overflow:hidden;
+    position:relative;
+    border-radius: 10px;
+
+    transform-origin:center center;
+    transition:
+        transform 1.5s cubic-bezier(0.65,0,0.35,1),
+        opacity   1.5s cubic-bezier(0.65,0,0.35,1),
+        filter    1.5s cubic-bezier(0.65,0,0.35,1),
+        box-shadow 1.5s cubic-bezier(0.65,0,0.35,1);
+}
+
+.slide img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    object-position:center;
+    display:block;
+}
+
+/* состояния слайдов относительно центра экрана */
+.slide.is-center{
+    transform:scale(1);
+    opacity:1;
+    filter:brightness(1);
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    z-index:3;
+}
+
+.slide.is-edge{
+    transform:scale(.92);
+    opacity:.5;
+    filter:brightness(.65) saturate(.85);
+    box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    z-index:1;
+}
+
+</style>
+</head>
+<body>
+
+<div class="viewport">
+    <div class="track" id="track"></div>
+</div>
+
+<script>
+
+/* ====== список файлов слайдов ====== */
+const images = [
+    "1.jpg",
+    "2.jpg",
+    "3.jpg",
+    "4.jpg",
+    "5.jpg",
+    "6.jpg",
+    "7.jpg",
+    "8.jpg",
+    "9.jpg"
+];
+
+const track = document.getElementById("track");
+
+/*
+  Чтобы карусель была бесконечной и без "скачка" в конце,
+  дублируем массив. Стартуем не с нулевого элемента, а с одного
+  полного набора назад — тогда можно крутить в обе стороны
+  бесшовно. Здесь крутим вверх, поэтому достаточно тройного набора:
+  [....копия для запаса вверху....][основной][....запас внизу....]
+*/
+const renderList = [...images, ...images, ...images];
+
+renderList.forEach(src => {
+    const slide = document.createElement("div");
+    slide.className = "slide";
+
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+
+    slide.appendChild(img);
+    track.appendChild(slide);
+});
+
+const allSlides = Array.from(document.querySelectorAll(".slide"));
+const total = images.length;
+
+/* стартуем с середины (второй набор), чтобы был запас сверху */
+let current = total; // индекс слайда, который должен быть наверху видимой тройки
+
+let slideHeight = window.innerHeight / 3;
+
+function applyStates(){
+    allSlides.forEach((el, idx) => {
+        el.classList.remove("is-center", "is-edge");
+
+        if(idx === current + 1){
+            el.classList.add("is-center");
+        } else if(idx === current || idx === current + 2){
+            el.classList.add("is-edge");
+        }
+    });
+}
+
+function setPosition(withTransition){
+    track.style.transition = withTransition
+        ? "transform 1.5s cubic-bezier(0.65,0,0.35,1)"
+        : "none";
+
+    track.style.transform = `translateY(${-current * slideHeight}px)`;
+}
+
+/* начальная расстановка без анимации */
+setPosition(false);
+applyStates();
+
+function nextSlide(){
+
+    current++;
+    setPosition(true);
+    applyStates();
+
+    /* когда дошли до конца третьего набора — тихо прыгаем
+       обратно в середину, пока пользователь не видит рывка
+       (transition уже выключен к этому моменту) */
+    if(current >= total * 2){
+        setTimeout(() => {
+            current = total;
+            setPosition(false);
+            applyStates();
+        }, 1550); // чуть больше длительности transition
+    }
+}
+
+/* пересчёт высоты при изменении размеров окна/экрана */
+window.addEventListener("resize", () => {
+    slideHeight = window.innerHeight / 3;
+    setPosition(false);
+});
+
+setInterval(nextSlide, 3200);
+
+</script>
+
+</body>
+</html>

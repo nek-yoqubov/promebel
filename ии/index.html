@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Pro Mebel Display</title>
 
 <style>
@@ -11,6 +11,9 @@
     margin:0;
     padding:0;
     box-sizing:border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select:none;
+    -webkit-user-select:none;
 }
 
 html,body{
@@ -20,65 +23,61 @@ html,body{
     background:#0a0a0a;
 }
 
+/* три фиксированные позиции на экране — верх / центр / низ.
+   контент НЕ едет лентой, он переезжает из слота в слот. */
 .viewport{
     width:100vw;
     height:100vh;
-    overflow:hidden;
     position:relative;
+    overflow:hidden;
 }
 
-/* лёгкое затемнение сверху и снизу — глаз сам "ведёт" взгляд
-   к центральному слайду, дёшево и со вкусом */
+/* мягкая виньетка сверху/снизу — взгляд тянется к центру */
 .viewport::before,
 .viewport::after{
     content:"";
     position:absolute;
     left:0; right:0;
     height:14%;
-    z-index:5;
+    z-index:10;
     pointer-events:none;
 }
 .viewport::before{
     top:0;
-    background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0));
+    background:linear-gradient(to bottom, rgba(0,0,0,.5), rgba(0,0,0,0));
 }
 .viewport::after{
     bottom:0;
-    background:linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0));
+    background:linear-gradient(to top, rgba(0,0,0,.5), rgba(0,0,0,0));
 }
 
-.track{
+/* каждый слот — фиксированная область трети экрана с зазорами */
+.slot{
     position:absolute;
-    width:100%;
     left:0;
-    top:0;
-    will-change: transform;
-
-    display:flex;
-    flex-direction:column;
-    gap: var(--gap);
-}
-
-/* Каждый слайд занимает ровно треть экрана по высоте за вычетом
-   зазоров (--gap задаётся в JS в px, считается от высоты экрана —
-   так пропорция зазора остаётся одинаковой на любом дисплее). */
-.slide{
     width:100%;
-    height: calc(33.3333vh - (var(--gap) * 2 / 3));
-    flex-shrink:0;
+    height: var(--slide-h);
     overflow:hidden;
-    position:relative;
-    border-radius: 10px;
+}
+.slot[data-pos="top"]{    top: 0; }
+.slot[data-pos="center"]{ top: calc(var(--slide-h) + var(--gap)); }
+.slot[data-pos="bottom"]{ top: calc((var(--slide-h) + var(--gap)) * 2); }
 
+/* карточка слайда внутри слота — именно она анимируется */
+.card{
+    position:absolute;
+    inset:0;
+    border-radius:10px;
+    overflow:hidden;
     transform-origin:center center;
     transition:
-        transform 1.5s cubic-bezier(0.65,0,0.35,1),
-        opacity   1.5s cubic-bezier(0.65,0,0.35,1),
-        filter    1.5s cubic-bezier(0.65,0,0.35,1),
-        box-shadow 1.5s cubic-bezier(0.65,0,0.35,1);
+        transform 900ms cubic-bezier(0.22,1,0.36,1),
+        opacity   900ms cubic-bezier(0.22,1,0.36,1),
+        filter    900ms cubic-bezier(0.22,1,0.36,1),
+        box-shadow 900ms cubic-bezier(0.22,1,0.36,1);
 }
 
-.slide img{
+.card img{
     width:100%;
     height:100%;
     object-fit:cover;
@@ -86,30 +85,44 @@ html,body{
     display:block;
 }
 
-/* состояния слайдов относительно центра экрана */
-.slide.is-center{
-    transform:scale(1);
+/* визуальные состояния по позиции */
+.card.st-center{
+    transform:scale(1) translateY(0);
     opacity:1;
     filter:brightness(1);
-    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    box-shadow:0 14px 40px rgba(0,0,0,.45);
     z-index:3;
 }
-
-.slide.is-edge{
-    transform:scale(.92);
+.card.st-edge{
+    transform:scale(.92) translateY(0);
     opacity:.5;
-    filter:brightness(.65) saturate(.85);
-    box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    filter:brightness(.6) saturate(.85);
+    box-shadow:0 4px 14px rgba(0,0,0,.2);
     z-index:1;
+}
+
+/* слайд, который покидает верхний слот — гаснет и слегка
+   "приподнимается", создавая ощущение, что он уходит вверх и исчезает */
+.card.st-leaving{
+    transform:scale(.85) translateY(-6%);
+    opacity:0;
+    filter:brightness(.5);
+    box-shadow:0 0 0 rgba(0,0,0,0);
+    z-index:0;
+}
+
+/* новый слайд, который въезжает в нижний слот — появляется
+   снизу с увеличением, "подъезжает на своё место" */
+.card.st-entering{
+    transform:scale(.8) translateY(8%);
+    opacity:0;
 }
 
 </style>
 </head>
 <body>
 
-<div class="viewport">
-    <div class="track" id="track"></div>
-</div>
+<div class="viewport" id="viewport"></div>
 
 <script>
 
@@ -126,86 +139,131 @@ const images = [
     "9.JPG"
 ];
 
-const track = document.getElementById("track");
+const viewport = document.getElementById("viewport");
 
-/*
-  Чтобы карусель была бесконечной и без "скачка" в конце,
-  дублируем массив. Стартуем не с нулевого элемента, а с одного
-  полного набора назад — тогда можно крутить в обе стороны
-  бесшовно. Здесь крутим вверх, поэтому достаточно тройного набора:
-  [....копия для запаса вверху....][основной][....запас внизу....]
-*/
-const renderList = [...images, ...images, ...images];
+/* геометрия: зазор ~1.4% высоты экрана, высота слота = треть
+   экрана минус доля зазоров — три слота + два зазора = 100vh */
+function recalcGeometry(){
+    const gap = Math.round(window.innerHeight * 0.014);
+    const slideH = (window.innerHeight - gap * 2) / 3;
+    document.documentElement.style.setProperty("--gap", gap + "px");
+    document.documentElement.style.setProperty("--slide-h", slideH + "px");
+}
+recalcGeometry();
+window.addEventListener("resize", recalcGeometry);
 
-renderList.forEach(src => {
-    const slide = document.createElement("div");
-    slide.className = "slide";
+/* три слота — фиксированные DOM-узлы, которые никогда не двигаются.
+   у каждого внутри одна карточка <div class="card"><img></div>,
+   которую мы заменяем/анимируем при каждом шаге. */
+const positions = ["top", "center", "bottom"];
+const slots = {};
 
+positions.forEach(pos => {
+    const slot = document.createElement("div");
+    slot.className = "slot";
+    slot.dataset.pos = pos;
+    viewport.appendChild(slot);
+    slots[pos] = slot;
+});
+
+function makeCard(src, stateClass){
+    const card = document.createElement("div");
+    card.className = "card " + stateClass;
     const img = document.createElement("img");
     img.src = src;
     img.alt = "";
+    card.appendChild(img);
+    return card;
+}
 
-    slide.appendChild(img);
-    track.appendChild(slide);
-});
-
-const allSlides = Array.from(document.querySelectorAll(".slide"));
+/* индекс слайда, который сейчас отображается в самом верхнем слоте */
+let idx = 0;
 const total = images.length;
+const nextIndex = i => (i + 1) % total;
 
-/* стартуем с середины (второй набор), чтобы был запас сверху */
-let current = total; // индекс слайда, который должен быть наверху видимой тройки
+/* первичная отрисовка трёх слотов без анимации */
+slots.top.appendChild(   makeCard(images[idx],                    "st-edge")   );
+slots.center.appendChild(makeCard(images[nextIndex(idx)],         "st-center"));
+slots.bottom.appendChild(makeCard(images[nextIndex(nextIndex(idx))], "st-edge"));
 
-let slideHeight = window.innerHeight / 3;
+function step(){
 
-function applyStates(){
-    allSlides.forEach((el, idx) => {
-        el.classList.remove("is-center", "is-edge");
+    const topCard    = slots.top.firstElementChild;
+    const centerCard = slots.center.firstElementChild;
+    const bottomCard = slots.bottom.firstElementChild;
 
-        if(idx === current + 1){
-            el.classList.add("is-center");
-        } else if(idx === current || idx === current + 2){
-            el.classList.add("is-edge");
-        }
+    /* 1. верхний слайд гаснет и уходит — он остаётся физически
+          в слоте top, просто визуально исчезает */
+    topCard.classList.remove("st-edge");
+    topCard.classList.add("st-leaving");
+
+    /* 2. центральный слайд "переезжает" на позицию top —
+          для этого его DOM-узел реально переносим в слот top,
+          но т.к. слоты идентичны по размеру/позиции относительно
+          друг друга через transform, делаем это через смену класса,
+          а перенос узла — мгновенно, без скачка, см. ниже */
+    centerCard.classList.remove("st-center");
+    centerCard.classList.add("st-edge");
+
+    /* 3. нижний слайд становится центральным */
+    bottomCard.classList.remove("st-edge");
+    bottomCard.classList.add("st-center");
+
+    /* 4. новый слайд готовится въехать в нижний слот */
+    idx = nextIndex(idx);
+    const incomingSrc = images[(idx + 2) % total];
+    const incomingCard = makeCard(incomingSrc, "st-entering");
+    slots.bottom.appendChild(incomingCard);
+
+    /* запускаем появление нового слайда на следующем кадре,
+       чтобы браузер успел применить начальное (entering) состояние
+       перед переходом к конечному (edge) — иначе transition не сыграет */
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            incomingCard.classList.remove("st-entering");
+            incomingCard.classList.add("st-edge");
+        });
     });
+
+    /* после завершения анимации physически переносим карточки
+       в правильные слоты и убираем "уходящую" — готовим DOM
+       к следующему шагу */
+    setTimeout(() => {
+
+        topCard.remove();
+
+        slots.top.appendChild(centerCard);
+        slots.center.appendChild(bottomCard);
+        // incomingCard уже в slots.bottom
+
+    }, 920);
+
 }
 
-function setPosition(withTransition){
-    track.style.transition = withTransition
-        ? "transform 1.5s cubic-bezier(0.65,0,0.35,1)"
-        : "none";
+setInterval(step, 3000);
 
-    track.style.transform = `translateY(${-current * slideHeight}px)`;
+/* === защита от случайных тапов: блокируем контекстное меню,
+   выделение текста и долгие нажатия, которые на тач-дисплеях
+   открывают системные меню браузера === */
+document.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("touchstart", e => {
+    if(e.touches.length > 1) e.preventDefault();
+}, {passive:false});
+
+/* === попытка автоматически уйти в полноэкранный режим,
+   чтобы скрыть адресную строку Chrome ===
+   браузеры разрешают это только по жесту пользователя,
+   поэтому ставим обработчик на первый тап/клик по экрану —
+   после него страница уйдёт в fullscreen и останется там */
+function goFullscreen(){
+    const el = document.documentElement;
+    if(el.requestFullscreen){ el.requestFullscreen().catch(()=>{}); }
+    else if(el.webkitRequestFullscreen){ el.webkitRequestFullscreen(); }
+    document.removeEventListener("click", goFullscreen);
+    document.removeEventListener("touchend", goFullscreen);
 }
-
-/* начальная расстановка без анимации */
-setPosition(false);
-applyStates();
-
-function nextSlide(){
-
-    current++;
-    setPosition(true);
-    applyStates();
-
-    /* когда дошли до конца третьего набора — тихо прыгаем
-       обратно в середину, пока пользователь не видит рывка
-       (transition уже выключен к этому моменту) */
-    if(current >= total * 2){
-        setTimeout(() => {
-            current = total;
-            setPosition(false);
-            applyStates();
-        }, 1550); // чуть больше длительности transition
-    }
-}
-
-/* пересчёт высоты при изменении размеров окна/экрана */
-window.addEventListener("resize", () => {
-    slideHeight = window.innerHeight / 3;
-    setPosition(false);
-});
-
-setInterval(nextSlide, 3200);
+document.addEventListener("click", goFullscreen, {once:true});
+document.addEventListener("touchend", goFullscreen, {once:true});
 
 </script>
 

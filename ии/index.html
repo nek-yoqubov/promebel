@@ -30,8 +30,8 @@ html,body{
     overflow:hidden;
 }
 
-/* трек со всеми слайдами друг под другом по вертикали —
-   именно он двигается через translateY, как при свайпе */
+/* лента со всеми слайдами друг под другом —
+   физически едет вверх через translateY */
 .track{
     position:absolute;
     left:0;
@@ -40,23 +40,34 @@ html,body{
     will-change: transform;
 }
 
+/* каждый слайд занимает ровно треть экрана по высоте —
+   именно поэтому одновременно видно 3 штуки */
 .slide{
     width:100%;
-    height:100vh;
+    height:33.3333vh;
 
     display:flex;
     justify-content:center;
     align-items:center;
+    overflow:hidden;
 }
 
 .slide img{
-    /* оригинальные пропорции, без обрезки и без растяжения */
     max-width:100%;
     max-height:100%;
     width:auto;
     height:auto;
     object-fit:contain;
     display:block;
+
+    /* масштаб меняется самим JS через --scale,
+       но плавность даёт именно этот transition */
+    transform:scale(var(--scale, .8));
+    opacity:var(--opacity, .55);
+
+    transition:
+        transform 650ms cubic-bezier(0.22, 0.61, 0.36, 1),
+        opacity 650ms ease;
 }
 
 </style>
@@ -69,7 +80,7 @@ html,body{
 
 <script>
 
-/* ====== список файлов слайдов (JPG, как есть) ====== */
+/* ====== список файлов слайдов ====== */
 const images = [
     "1.JPG",
     "2.JPG",
@@ -82,10 +93,15 @@ const images = [
     "9.JPG"
 ];
 
-const track = document.getElementById("track");
 const total = images.length;
 
-images.forEach(src => {
+/* три копии подряд — чтобы лента всегда имела соседей
+   сверху и снизу, без обрывов на краях массива */
+const sequence = [...images, ...images, ...images];
+
+const track = document.getElementById("track");
+
+const slideEls = sequence.map(src => {
     const slide = document.createElement("div");
     slide.className = "slide";
 
@@ -95,54 +111,70 @@ images.forEach(src => {
 
     slide.appendChild(img);
     track.appendChild(slide);
+
+    return img;
 });
 
-let current = 0; // индекс слайда, который сейчас наверху (виден)
-const slideHeight = window.innerHeight;
+/* стартуем со второй копии, чтобы были соседи и сверху, и снизу */
+let current = total; // индекс в sequence, который сейчас в центре
 
-/* обычный свайп вверх — на один слайд, с анимацией */
-const SWIPE_DURATION = 650; // мс, ощущается как уверенный свайп пальцем
+const SWIPE_DURATION = 650;
+const REWIND_DURATION = 900;
 
-function setPosition(offsetIndex, withTransition, durationMs){
+function applyScales(){
+    slideEls.forEach((img, i) => {
+        if(i === current){
+            img.style.setProperty("--scale", "1");
+            img.style.setProperty("--opacity", "1");
+        } else if(i === current - 1 || i === current + 1){
+            img.style.setProperty("--scale", ".8");
+            img.style.setProperty("--opacity", ".55");
+        } else {
+            img.style.setProperty("--scale", ".8");
+            img.style.setProperty("--opacity", "0");
+        }
+    });
+}
+
+function setTrackPosition(withTransition, durationMs){
+    const slideHeight = window.innerHeight / 3;
+    /* центрируем так, чтобы слайд current оказался в среднем слоте экрана */
+    const offset = (current - 1) * slideHeight;
+
     track.style.transition = withTransition
         ? `transform ${durationMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`
         : "none";
-    track.style.transform = `translateY(${-offsetIndex * slideHeight}px)`;
+    track.style.transform = `translateY(${-offset}px)`;
 }
 
 /* стартовая позиция без анимации */
-setPosition(current, false, 0);
+applyScales();
+setTrackPosition(false, 0);
 
-function swipeNext(){
+function next(){
 
-    const isLast = (current === total - 1);
+    const isLast = ((current - total) % total === total - 1);
 
     if(isLast){
-        /* после последнего слайда — быстрый обратный свайп
-           ПРЯМО до первого слайда, не останавливаясь на
-           промежуточных. Технически: едем в отрицательном
-           направлении на (total - 1) слайдов одним быстрым
-           движением, заметно быстрее обычного свайпа. */
-        const FAST_REWIND_DURATION = 900; // быстро пролетает все 8 слайдов разом, но достаточно долго, чтобы взгляд успел зацепить движение, а не увидел просто мерцание
-
-        current = 0;
-        setPosition(current, true, FAST_REWIND_DURATION);
-
+        /* откатываем индекс на одну "копию" назад,
+           чтобы визуально лента прыгнула на самый верх
+           последовательности — это и даёт быстрый рывок
+           назад к 1-му слайду после прохождения 9-го */
+        current = current - (total - 1);
+        applyScales();
+        setTrackPosition(true, REWIND_DURATION);
     } else {
-        /* обычный свайп вверх на один слайд */
         current = current + 1;
-        setPosition(current, true, SWIPE_DURATION);
+        applyScales();
+        setTrackPosition(true, SWIPE_DURATION);
     }
 
 }
 
-setInterval(swipeNext, 2800);
+setInterval(next, 2800);
 
-/* пересчёт при изменении размеров экрана — высота слайда
-   завязана на текущий innerHeight, поэтому при ресайзе
-   просто переустанавливаем позицию без анимации */
 window.addEventListener("resize", () => {
-    setPosition(current, false, 0);
+    setTrackPosition(false, 0);
 });
 
 /* === защита от случайных тапов на тач-дисплее === */

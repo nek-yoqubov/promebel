@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PRO MEBEL — Заказы</title>
-<link rel="stylesheet" href="saw.css">
+<link rel="stylesheet" href="saw.css?v=2">
 <style>
   .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
   .controls input { max-width: 300px; }
@@ -65,6 +65,7 @@
     <a href="create.html" class="btn btn-brand" id="btnNew">+ Новый заказ</a>
     <input id="search" placeholder="Поиск по ID или клиенту" oninput="renderBoard()">
     <div class="counters" id="counters"></div>
+    <div class="hint" id="updatedAt" style="width:100%;"></div>
   </div>
 
   <div id="content"><div class="loading">Загружаем заказы…</div></div>
@@ -93,6 +94,7 @@ async function load() {
     if (data.error === 'UNAUTHORIZED') { localStorage.clear(); location.href = 'login.html'; return; }
     orders = (data.orders || []).filter(o => o.id);
     renderBoard();
+    document.getElementById('updatedAt').textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU') + ' · автообновление раз в минуту';
   } catch (e) {
     document.getElementById('content').innerHTML = '<div class="loading">Нет связи с сервером. Обнови страницу.</div>';
   }

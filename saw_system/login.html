@@ -30,7 +30,28 @@
 </div>
 
 <script>
+
+// Проигрывает SMIL-анимацию с нуля; onDone — после завершения
+function playAnim(svgId, durationMs, onDone) {
+  const overlay = document.getElementById('animOverlay');
+  const svg = document.getElementById(svgId);
+  if (!overlay || !svg || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (onDone) onDone();
+    return;
+  }
+  overlay.classList.add('show');
+  svg.setCurrentTime(0);       // сброс таймера SMIL — каждый показ с чистого листа
+  svg.unpauseAnimations();
+  setTimeout(() => {
+    svg.pauseAnimations();
+    overlay.classList.remove('show');
+    if (onDone) onDone();
+  }, durationMs);
+}
+
 const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+
+window.addEventListener('load', () => { const s = document.getElementById('animCheck'); if (s) s.pauseAnimations(); });
 
 document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
@@ -48,7 +69,7 @@ async function doLogin() {
     if (data.success) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('role', data.role);
-      window.location.href = 'index.html';
+      playAnim('animCheck', 1300, () => { window.location.href = 'index.html'; });
     } else {
       msg.textContent = 'Неверный логин или пароль';
     }
@@ -58,5 +79,7 @@ async function doLogin() {
   btn.disabled = false; btn.textContent = 'Войти';
 }
 </script>
+
+<div class="anim-overlay" id="animOverlay"><div class="anim-box"><svg id="animCheck" preserveAspectRatio="xMidYMid meet" fill="none" height="100%" width="100%" viewBox="0 0 200 200" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(0.316,0,0,0.316,111.997,100)" id="i0"><g id="i1" transform="matrix(1,0,0,1,-38,0)"><path stroke-dashoffset="-77.333" stroke-dasharray="0 100" pathLength="100" d="M0,-182C-100.516,-182,-182,-100.516,-182,0C-182,100.516,-100.516,182,0,182C100.516,182,182,100.516,182,0C182,-100.516,100.516,-182,0,-182Z" stroke-linejoin="round" stroke-linecap="round" stroke-width="35" stroke="#1bc100"><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1" keyTimes="0; 0.483871; 1" values="0 100; 84 16; 84 16" attributeName="stroke-dasharray" /><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1" keyTimes="0; 0.483871; 1" values="-77.333; -93.333; -93.333" attributeName="stroke-dashoffset" /></path></g></g><g transform="matrix(0.316,0,0,0.316,111.997,100)" visibility="hidden" id="i2"><animate repeatCount="1" begin="0s" calcMode="discrete" dur="1.033s" values="hidden; visible; visible; visible" keyTimes="0; 0.096969; 0.999677; 1" attributeName="visibility" /><g id="i1" transform="matrix(1,0,0,1,-38,0)"><path stroke-dashoffset="-77.333" stroke-dasharray="0 100" pathLength="100" d="M0,-182C-100.516,-182,-182,-100.516,-182,0C-182,100.516,-100.516,182,0,182C100.516,182,182,100.516,182,0C182,-100.516,100.516,-182,0,-182Z" stroke-linejoin="round" stroke-linecap="round" stroke-width="35" stroke="#1bc100"><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" keyTimes="0; 0.096774; 0.580645; 1" values="0 100; 0 100; 84 16; 84 16" attributeName="stroke-dasharray" /><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" keyTimes="0; 0.096774; 0.580645; 1" values="-77.333; -77.333; -93.333; -93.333" attributeName="stroke-dashoffset" /></path></g></g><g transform="matrix(0.316,0,0,0.316,111.997,100)" visibility="hidden" id="i3"><animate repeatCount="1" begin="0s" calcMode="discrete" dur="1.033s" values="hidden; visible; visible; visible" keyTimes="0; 0.193937; 0.999677; 1" attributeName="visibility" /><g id="i1" transform="matrix(1,0,0,1,-38,0)"><path stroke-dashoffset="-77.333" stroke-dasharray="0 100" pathLength="100" d="M0,-182C-100.516,-182,-182,-100.516,-182,0C-182,100.516,-100.516,182,0,182C100.516,182,182,100.516,182,0C182,-100.516,100.516,-182,0,-182Z" stroke-linejoin="round" stroke-linecap="round" stroke-width="35" stroke="#1bc100"><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" keyTimes="0; 0.193548; 0.677419; 1" values="0 100; 0 100; 84 16; 84 16" attributeName="stroke-dasharray" /><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" keyTimes="0; 0.193548; 0.677419; 1" values="-77.333; -77.333; -93.333; -93.333" attributeName="stroke-dashoffset" /></path></g></g><g transform="matrix(0.316,0,0,0.316,111.997,100)" visibility="hidden" id="i4"><animate repeatCount="1" begin="0s" calcMode="discrete" dur="1.033s" values="hidden; visible; visible; visible" keyTimes="0; 0.289906; 0.999677; 1" attributeName="visibility" /><g id="i1" transform="matrix(1,0,0,1,-38,0)"><path stroke-dashoffset="-77.333" stroke-dasharray="0 100" pathLength="100" d="M0,-182C-100.516,-182,-182,-100.516,-182,0C-182,100.516,-100.516,182,0,182C100.516,182,182,100.516,182,0C182,-100.516,100.516,-182,0,-182Z" stroke-linejoin="round" stroke-linecap="round" stroke-width="35" stroke="#1bc100"><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" keyTimes="0; 0.290323; 0.774194; 1" values="0 100; 0 100; 84 16; 84 16" attributeName="stroke-dasharray" /><animate repeatCount="1" fill="freeze" begin="0s" dur="1.033s" calcMode="spline" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" keyTimes="0; 0.290323; 0.774194; 1" values="-77.333; -77.333; -93.333; -93.333" attributeName="stroke-dashoffset" /></path></g></g><g transform="matrix(0.329,0,0,0.329,101.322,101.309)" id="i5"><g id="i6"><path d="M-97,-33.5" stroke-linejoin="round" stroke-linecap="round" stroke-width="35" stroke="#1bc100"><set fill="freeze" dur="0.033s" begin="0.4666666666666667s" to="M-97,-33.5" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.5s" to="M-97,-33.5C-97,-33.5,-94.313,-30.904,-89.918,-26.658" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.5333333333333333s" to="M-97,-33.5C-97,-33.5,-85.148,-22.05,-70.511,-7.91" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.5666666666666667s" to="M-97,-33.5C-97,-33.5,-65.273,-2.85,-41.532,20.085" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.6s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-16,44.75,-12.361,41.014,-6.028,34.513" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.6333333333333333s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-16,44.75,4.413,23.794,32.688,-5.234" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.6666666666666666s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-16,44.75,25.862,1.773,72.728,-46.34" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.7s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-16,44.75,51.812,-24.867,111.444,-86.087" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.7333333333333333s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-15.999,44.749,82.212,-56.076,146.186,-121.754" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.7666666666666667s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-15.999,44.749,117.046,-91.838,174.302,-150.617" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.8s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-15.999,44.749,156.308,-132.145,193.129,-169.946" attributeName="d" /><set fill="freeze" dur="0.033s" begin="0.8333333333333334s" to="M-97,-33.5C-97,-33.5,-16,44.75,-16,44.75C-16,44.75,200,-177,200,-177" attributeName="d" /></path></g></g></svg></div></div>
 </body>
 </html>

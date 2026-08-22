@@ -6,16 +6,28 @@
 <title>PRO MEBEL — Экран цеха</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=IBM+Plex+Mono:wght@600&family=Manrope:wght@600;700&display=swap');
-  :root { --bg:#131210; --card:#1D1B18; --line:#2B2925; --ink:#F6F4EF; --muted:#8B867D; --brand:#F97316; --ok:#2FBF71; }
+  :root {
+    --bg:#131210; --card:#1D1B18; --line:#2B2925; --ink:#F6F4EF; --muted:#8B867D;
+    --brand:#F97316; --ok:#2FBF71; --badge-ink:#131210;
+  }
+  body.light {
+    --bg:#FAFAF8; --card:#FFFFFF; --line:#E9E6E0; --ink:#141310; --muted:#8B867D;
+    --badge-ink:#FFFFFF;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font-family:'Manrope',sans-serif; min-height:100vh; padding:40px; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'Manrope',sans-serif; min-height:100vh; padding:40px; transition: background .25s, color .25s; }
   header { display:flex; align-items:center; gap:18px; margin-bottom:34px; }
   header img { height:44px; }
   header .title { font:700 20px 'Unbounded',sans-serif; letter-spacing:.04em; color:var(--muted); }
+  .theme-btn {
+    margin-left:auto; cursor:pointer; border:1px solid var(--line); background:var(--card);
+    color:var(--ink); border-radius:999px; padding:10px 18px; font:700 14px 'Manrope',sans-serif;
+    transition: background .25s, color .25s;
+  }
   #orders { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
-  .order { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:14px; }
+  .order { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:14px; transition: background .25s; }
   .order-id { font:600 26px 'IBM Plex Mono',monospace; word-break:break-all; }
-  .badge { padding:8px 16px; border-radius:999px; font:700 14px 'Manrope',sans-serif; white-space:nowrap; color:#131210; background:var(--brand); }
+  .badge { padding:8px 16px; border-radius:999px; font:700 14px 'Manrope',sans-serif; white-space:nowrap; color:var(--badge-ink); background:var(--brand); }
   .badge.Готово { background:var(--ok); }
   .empty { color:var(--muted); font-size:20px; padding:80px 20px; text-align:center; grid-column:1/-1; }
   #updateTime { margin-top:30px; font-size:13px; color:var(--muted); }
@@ -24,8 +36,9 @@
 <body>
 
 <header>
-  <img src="logo.png" alt="PRO MEBEL">
+  <img src="logo-light.png" alt="PRO MEBEL" id="logo">
   <div class="title">ЦЕХ · ТЕКУЩИЕ ЗАКАЗЫ</div>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀ Светлая</button>
 </header>
 
 <div id="orders"></div>
@@ -33,6 +46,19 @@
 
 <script>
 const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
+
+// Тема: тёмная по умолчанию, выбор запоминается
+function applyTheme(theme) {
+  const light = theme === 'light';
+  document.body.classList.toggle('light', light);
+  document.getElementById('logo').src = light ? 'logo.png' : 'logo-light.png';
+  document.getElementById('themeBtn').textContent = light ? '🌙 Тёмная' : '☀ Светлая';
+  localStorage.setItem('displayTheme', theme);
+}
+function toggleTheme() {
+  applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+}
+applyTheme(localStorage.getItem('displayTheme') || 'dark');
 
 async function loadPublicOrders() {
   try {

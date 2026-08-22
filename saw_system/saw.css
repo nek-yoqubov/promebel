@@ -123,3 +123,14 @@ input::placeholder { color: #B9B4AA; }
   .wrap { padding: 14px; }
   h1 { font-size: 19px; }
 }
+
+/* Оверлей анимации успеха */
+.anim-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(250, 250, 248, .92);
+}
+.anim-overlay.show { display: flex; }
+.anim-overlay .anim-box { width: min(46vmin, 260px); }
+.anim-overlay svg { width: 100%; height: auto; display: block; }
+@media (prefers-reduced-motion: reduce) { .anim-overlay { display: none !important; } }

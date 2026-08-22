@@ -1,0 +1,125 @@
+/* PRO MEBEL — SAW system, общие стили */
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root {
+  --paper: #FAFAF8;
+  --card: #FFFFFF;
+  --ink: #141310;
+  --muted: #8B867D;
+  --line: #E9E6E0;
+  --brand: #F97316;
+  --brand-soft: #FFF1E6;
+  --ok: #1D9E55;
+  --ok-soft: #E7F6EC;
+  --danger: #D64545;
+  --r: 14px;
+  --shadow: 0 1px 2px rgba(20,19,16,.04), 0 8px 24px rgba(20,19,16,.05);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+h1, h2, .display { font-family: 'Unbounded', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+h1 { font-size: 22px; margin: 0 0 6px; }
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px; }
+.wrap-narrow { max-width: 460px; margin: 0 auto; padding: 20px; }
+
+/* Шапка */
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 0; margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.topbar img.logo { height: 34px; display: block; }
+.topbar .spacer { flex: 1; }
+.topbar a, .topbar button.linklike {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--muted); font: 600 13px 'Manrope', sans-serif;
+  text-decoration: none;
+}
+.topbar a:hover, .topbar button.linklike:hover { color: var(--ink); }
+
+/* Карточки и поля */
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 22px; box-shadow: var(--shadow);
+}
+.field { margin-bottom: 16px; }
+.field-label {
+  display: block; font-size: 12px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+input, select {
+  width: 100%; padding: 12px 14px; font: 500 15px 'Manrope', sans-serif;
+  border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--paper); color: var(--ink); outline: none;
+  transition: border-color .15s, background .15s;
+}
+input:focus, select:focus { border-color: var(--brand); background: #fff; }
+input::placeholder { color: #B9B4AA; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 20px; border: none; border-radius: 10px; cursor: pointer;
+  font: 700 15px 'Manrope', sans-serif; transition: transform .1s, opacity .15s;
+}
+.btn:active { transform: translateY(1px); }
+.btn-brand { background: var(--brand); color: #fff; }
+.btn-brand:hover { opacity: .92; }
+.btn-ghost { background: none; border: 1.5px solid var(--line); color: var(--ink); }
+.btn-ghost:hover { border-color: var(--ink); }
+.btn-danger { background: none; border: 1.5px solid var(--line); color: var(--danger); padding: 8px 14px; font-size: 13px; }
+.btn-danger:hover { border-color: var(--danger); }
+.btn-block { width: 100%; }
+.btn[disabled] { opacity: .5; cursor: default; }
+
+/* Гексагон — фирменный маркер этапа */
+.hex {
+  width: 34px; height: 38px; flex: none;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  display: flex; align-items: center; justify-content: center;
+  font: 700 13px 'Unbounded', sans-serif; color: #fff;
+  background: var(--muted);
+}
+.hex.brand { background: var(--brand); }
+.hex.ok { background: var(--ok); }
+.hex.outline { background: var(--line); color: var(--muted); }
+
+/* Статус-бейджи */
+.badge {
+  display: inline-block; padding: 4px 10px; border-radius: 999px;
+  font: 700 12px 'Manrope', sans-serif;
+}
+.badge.b-ware { background: var(--brand-soft); color: #B45309; }
+.badge.b-saw { background: #FEF3C7; color: #92400E; }
+.badge.b-edge { background: #E0EAFF; color: #3B5BDB; }
+.badge.b-ready { background: var(--ok-soft); color: var(--ok); }
+.badge.b-done { background: #F0EFEA; color: var(--muted); }
+
+.msg { font-size: 13px; margin-top: 10px; min-height: 18px; }
+.msg.err { color: var(--danger); }
+.msg.ok { color: var(--ok); }
+.hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* Меню-хаб */
+.menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.menu a.card { text-decoration: none; color: var(--ink); transition: border-color .15s, transform .15s; }
+.menu a.card:hover { border-color: var(--brand); transform: translateY(-2px); }
+.menu h3 { margin: 6px 0 4px; font-size: 16px; }
+.menu p { margin: 0; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .wrap { padding: 14px; }
+  h1 { font-size: 19px; }
+}

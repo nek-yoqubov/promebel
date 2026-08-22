@@ -3,305 +3,163 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Промебель — Заказы</title>
+<title>PRO MEBEL — Заказы</title>
+<link rel="stylesheet" href="saw.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+  .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .controls input { max-width: 300px; }
+  .counters { display: flex; gap: 14px; margin-left: auto; }
+  .counter { display: flex; align-items: center; gap: 8px; }
+  .counter .label { font-size: 12px; color: var(--muted); font-weight: 600; }
 
-  :root {
-    --black: #0a0a0a;
-    --white: #f5f4f0;
-    --gray-100: #f0eeea;
-    --gray-200: #e2dfda;
-    --gray-400: #a8a49d;
-    --gray-600: #6b6760;
-    --blue: #2563eb; --blue-bg: #dbeafe;
-    --orange: #ea580c; --orange-bg: #ffedd5;
-    --purple: #7c3aed; --purple-bg: #ede9fe;
-    --yellow: #b45309; --yellow-bg: #fef3c7;
-    --green: #15803d; --green-bg: #dcfce7;
-    --grey: #4b5563; --grey-bg: #f3f4f6;
+  .board {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+    align-items: start;
   }
+  @media (max-width: 980px) {
+    .board { display: flex; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; }
+    .col { min-width: 270px; scroll-snap-align: start; }
+  }
+  .col-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 4px 10px;
+  }
+  .col-head .name { font: 700 13px 'Unbounded', sans-serif; }
+  .col-head .cnt { margin-left: auto; font: 600 13px 'IBM Plex Mono', monospace; color: var(--muted); }
+  .col-body { display: flex; flex-direction: column; gap: 10px; min-height: 60px; }
 
-  * { box-sizing: border-box; margin:0; padding:0; }
-  body { background: var(--white); font-family: 'DM Sans', sans-serif; color: var(--black); padding: 0 20px; }
-  
-  header {
-    position: sticky; top: 0; background: var(--white); border-bottom: 1.5px solid var(--gray-200);
-    padding: 12px 0; z-index: 100;
+  .order {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; box-shadow: var(--shadow);
   }
-  .header-inner {
-    max-width: 720px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;
+  .order .oid { font: 600 16px 'IBM Plex Mono', monospace; word-break: break-all; }
+  .order .who { margin-top: 6px; font-weight: 600; }
+  .order .meta { margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .order .actions { margin-top: 10px; display: flex; gap: 8px; }
+  .order .actions a {
+    font: 700 12px 'Manrope', sans-serif; text-decoration: none;
+    color: var(--brand);
   }
-  .logo { font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; }
+  .empty-col { font-size: 13px; color: var(--muted); padding: 12px 4px; }
 
-  main { max-width: 720px; margin: 0 auto; padding: 20px 0 80px; }
-
-  .filters {
-    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px; padding: 16px; margin-bottom: 20px;
+  .done-block { margin-top: 26px; }
+  .done-head {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    color: var(--muted); font-weight: 700; font-size: 13px; user-select: none;
   }
-  input[type="search"] {
-    width: 100%; padding: 12px 16px; font-size: 15px; background: var(--gray-100); border: 1.5px solid var(--gray-200);
-    border-radius: 6px; outline: none;
-  }
-  input:focus { border-color: var(--black); }
-
-  .status-chips {
-    display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0;
-  }
-  .chip {
-    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer;
-    border: 1.5px solid var(--gray-200); background: var(--gray-100); transition: all 0.2s;
-  }
-  .chip.active { border-color: transparent; font-weight: 600; }
-
-  .order-card {
-    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px; padding: 16px;
-    margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;
-    cursor: pointer; transition: all 0.2s;
-  }
-  .order-card:hover { border-color: var(--black); transform: translateY(-1px); }
-
-  .card-left { flex: 1; }
-  .card-id { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--gray-600); }
-  .card-customer { font-weight: 600; margin: 4px 0; }
-  .card-phone { font-size: 13px; color: var(--gray-600); }
-
-  .badge {
-    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; display: inline-block;
-  }
-  .badge-Выгрузка { background: var(--blue-bg); color: var(--blue); }
-  .badge-Пила { background: var(--orange-bg); color: var(--orange); }
-  .badge-Кромка { background: var(--purple-bg); color: var(--purple); }
-  .badge-Присадка { background: var(--yellow-bg); color: var(--yellow); }
-  .badge-Готово { background: var(--green-bg); color: var(--green); }
-  .badge-✅ { background: var(--grey-bg); color: var(--grey); }
-
-  /* Модальное окно */
-  .modal-overlay {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000;
-    backdrop-filter: blur(2px); padding: 20px;
-  }
-  .modal-content {
-    background: white; width: 100%; max-width: 450px; border-radius: 16px;
-    padding: 24px; position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-  }
-  .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-  .modal-title { font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 600; color: var(--gray-600); }
-  .close-modal { cursor: pointer; font-size: 28px; color: var(--gray-400); line-height: 0.8; }
-  
-  .detail-group { margin-bottom: 16px; }
-  .detail-label { font-size: 11px; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-  .detail-value { font-size: 16px; font-weight: 600; }
-
-  .modal-footer { margin-top: 28px; display: flex; gap: 10px; }
-  .btn {
-    flex: 1; padding: 14px; border-radius: 10px; font-size: 14px; font-weight: 600;
-    text-align: center; cursor: pointer; border: none; transition: 0.2s; text-decoration: none;
-  }
-  .btn-edit { background: var(--black); color: white; }
-  .btn-edit:hover { opacity: 0.9; }
-  .btn-close { background: var(--gray-100); color: var(--black); }
-
-  .empty { text-align: center; padding: 60px 20px; color: var(--gray-400); font-size: 14px; }
+  .done-list { display: none; margin-top: 12px; display: none; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .done-list.open { display: grid; }
+  .loading { color: var(--muted); padding: 30px 0; text-align: center; }
 </style>
 </head>
 <body>
-
-<header>
-  <div class="header-inner">
-    <div class="logo">ПРОМЕБЕЛЬ</div>
-    <div>
-      <a href="create.html" id="createBtn" style="display:none; margin-right:12px; font-size:13px; font-weight:600; color: var(--black); text-decoration: none;">+ Новый заказ</a>
-      <a href="index.html" style="font-size:13px; color:var(--gray-600); text-decoration: none;">← Главная</a>
-    </div>
-  </div>
-</header>
-
-<main>
-  <div class="filters">
-    <input type="search" id="search" placeholder="Поиск по ID или клиенту..." oninput="filterOrders()">
-    <div class="status-chips" id="chips"></div>
+<div class="wrap">
+  <div class="topbar">
+    <img src="logo.png" alt="PRO MEBEL" class="logo">
+    <div class="spacer"></div>
+    <a href="index.html">Меню</a>
+    <button class="linklike" onclick="localStorage.clear(); location.href='login.html'">Выйти</button>
   </div>
 
-  <div id="list"></div>
-</main>
-
-<div class="modal-overlay" id="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <div class="modal-title" id="m-id">№ —</div>
-      <div class="close-modal" onclick="closeModal()">&times;</div>
-    </div>
-    <div class="modal-body">
-      <div class="detail-group">
-        <div class="detail-label">Клиент</div>
-        <div class="detail-value" id="m-customer">—</div>
-      </div>
-      <div class="detail-group">
-        <div class="detail-label">Контактный телефон</div>
-        <div class="detail-value" id="m-phone">—</div>
-      </div>
-      <div class="detail-group">
-        <div class="detail-label">Текущий этап</div>
-        <div id="m-status-badge" class="badge">—</div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-close" onclick="closeModal()">Закрыть</button>
-      <a href="#" id="m-edit-link" class="btn btn-edit" style="display:none;">Редактировать</a>
-    </div>
+  <div class="controls">
+    <a href="create.html" class="btn btn-brand" id="btnNew">+ Новый заказ</a>
+    <input id="search" placeholder="Поиск по ID или клиенту" oninput="renderBoard()">
+    <div class="counters" id="counters"></div>
   </div>
+
+  <div id="content"><div class="loading">Загружаем заказы…</div></div>
 </div>
 
 <script>
 const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
 const token = localStorage.getItem("token");
-const role = localStorage.getItem("role");
-
+const role = localStorage.getItem("role") || "user";
 if (!token) window.location.href = "login.html";
+if (role === "user") document.getElementById('btnNew').style.display = 'none';
 
-if (role === "manager" || role === "admin" || role === "director") {
-  document.getElementById("createBtn").style.display = "inline";
-}
+const COLS = [
+  { status: 'Выгрузка со склада', name: 'Выгрузка', n: '1', badge: 'b-ware' },
+  { status: 'Пила', name: 'Распил', n: '2', badge: 'b-saw' },
+  { status: 'Кромка', name: 'Кромка', n: '3', badge: 'b-edge' },
+  { status: 'Готово', name: 'Готово', n: '4', badge: 'b-ready' }
+];
 
-let allOrders = [];
-let activeStatuses = new Set();
+let orders = [];
 
-const statusColors = {
-  "Выгрузка со склада": "badge-Выгрузка",
-  "Пила": "badge-Пила",
-  "Кромка": "badge-Кромка",
-  "Присадка": "badge-Присадка",
-  "Готово": "badge-Готово",
-  "✅": "badge-✅"
-};
-
-async function loadOrders() {
+async function load() {
   try {
-    const res = await fetch(API, {
-      method: "POST",
-      body: JSON.stringify({ action: "list_orders", token })
-    });
+    const res = await fetch(API, { method: 'POST', body: JSON.stringify({ action: 'list_orders', token }) });
     const data = await res.json();
-
-    if (data.error === "UNAUTHORIZED") {
-      localStorage.clear();
-      window.location.href = "login.html";
-      return;
-    }
-
-    allOrders = data.orders || [];
-    renderChips();
-    renderOrders();
+    if (data.error === 'UNAUTHORIZED') { localStorage.clear(); location.href = 'login.html'; return; }
+    orders = (data.orders || []).filter(o => o.id);
+    renderBoard();
   } catch (e) {
-    document.getElementById("list").innerHTML = `<div class="empty">Ошибка загрузки заказов</div>`;
+    document.getElementById('content').innerHTML = '<div class="loading">Нет связи с сервером. Обнови страницу.</div>';
   }
 }
 
-function renderChips() {
-  const container = document.getElementById("chips");
-  const uniqueStatuses = [...new Set(allOrders.map(o => o.status))];
-
-  container.innerHTML = uniqueStatuses.map(status => `
-    <div class="chip ${activeStatuses.has(status) ? 'active' : ''}" 
-         onclick="toggleStatus('${status}')" 
-         style="${activeStatuses.has(status) ? 'background: var(--black); color: var(--white);' : ''}">
-      ${status}
-    </div>
-  `).join('');
+function pdfLink(o) {
+  return o.pdf_token ? `pdf.html?id=${encodeURIComponent(o.id)}&t=${o.pdf_token}` : null;
 }
 
-function toggleStatus(status) {
-  if (activeStatuses.has(status)) activeStatuses.delete(status);
-  else activeStatuses.add(status);
-  renderChips();
-  renderOrders();
-}
-
-function filterOrders() {
-  renderOrders();
-}
-
-function renderOrders() {
-  const search = document.getElementById("search").value.toLowerCase().trim();
-  const container = document.getElementById("list");
-
-  let filtered = allOrders.filter(order => {
-    const matchSearch = !search || 
-      order.id.toLowerCase().includes(search) || 
-      order.customer.toLowerCase().includes(search);
-
-    const matchStatus = activeStatuses.size === 0 || activeStatuses.has(order.status);
-    return matchSearch && matchStatus;
-  });
-
-  if (filtered.length === 0) {
-    container.innerHTML = `<div class="empty">Заказы не найдены</div>`;
-    return;
-  }
-
-  container.innerHTML = filtered.map(order => `
-  <div class="order-card" onclick="openOrder('${order.id}')">
-    <div class="card-left">
-      <div class="card-id">№ ${order.id}</div>
-      <div class="card-customer">${order.customer || '—'}</div>
-      <div class="card-phone">${order.phone || '—'}</div>
-    </div>
-
-    <div style="display:flex; align-items:center; gap:10px;">
-      
-      ${order.status && order.status.startsWith('Готово') && order.pdf_token ? `
-        <div onclick="openPdf(event, '${order.id}', '${order.pdf_token}')" style="cursor:pointer;">
-          📄
-        </div>
-      ` : ''}
-
-      <div class="badge ${statusColors[order.status] || 'badge-✅'}">
-        ${order.status}
+function orderCard(o) {
+  const pdf = pdfLink(o);
+  return `
+    <div class="order">
+      <div class="oid">${o.id}</div>
+      <div class="who">${o.customer || '—'}</div>
+      <div class="meta">${o.date || ''}${o.total ? ' · в работе: ' + o.total : ''}</div>
+      <div class="actions">
+        ${o.phone ? `<a href="tel:+${o.phone}">Позвонить</a>` : ''}
+        ${pdf ? `<a href="${pdf}" target="_blank">PDF</a>` : ''}
       </div>
-
-    </div>
-  </div>
-`).join('');
+    </div>`;
 }
 
-function openOrder(id) {
-  const order = allOrders.find(o => o.id === id);
-  if (!order) return;
+function renderBoard() {
+  const q = (document.getElementById('search').value || '').trim().toLowerCase();
+  const match = o => !q || o.id.toLowerCase().includes(q) || (o.customer || '').toLowerCase().includes(q);
 
-  document.getElementById("m-id").innerText = `№ ${order.id}`;
-  document.getElementById("m-customer").innerText = order.customer || '—';
-  document.getElementById("m-phone").innerText = order.phone || '—';
-  
-  const badge = document.getElementById("m-status-badge");
-  badge.className = `badge ${statusColors[order.status] || 'badge-✅'}`;
-  badge.innerText = order.status;
+  const active = orders.filter(o => o.status !== '✅' && match(o));
+  const done = orders.filter(o => o.status === '✅' && match(o));
 
-  const editLink = document.getElementById("m-edit-link");
-if (role === "admin" || role === "director") {
-    editLink.href = `edit.html?id=${id}`;
-    editLink.style.display = "block";
-  } else {
-    editLink.style.display = "none";
-  }
+  // Счётчики-гексагоны
+  document.getElementById('counters').innerHTML = COLS.map(c => {
+    const n = orders.filter(o => o.status === c.status).length;
+    return `<div class="counter"><div class="hex ${n ? 'brand' : 'outline'}">${n}</div><div class="label">${c.name}</div></div>`;
+  }).join('');
 
-  document.getElementById("modal").style.display = "flex";
+  let html = '<div class="board">';
+  COLS.forEach(c => {
+    const list = active.filter(o => o.status === c.status);
+    html += `
+      <div class="col">
+        <div class="col-head">
+          <div class="hex ${c.status === 'Готово' ? 'ok' : 'brand'}">${c.n}</div>
+          <div class="name">${c.name}</div>
+          <div class="cnt">${list.length}</div>
+        </div>
+        <div class="col-body">
+          ${list.length ? list.map(orderCard).join('') : '<div class="empty-col">Пусто</div>'}
+        </div>
+      </div>`;
+  });
+  html += '</div>';
+
+  html += `
+    <div class="done-block">
+      <div class="done-head" onclick="document.getElementById('doneList').classList.toggle('open')">
+        <span class="badge b-done">✅ Выданные: ${done.length}</span>
+        <span>показать / скрыть</span>
+      </div>
+      <div class="done-list" id="doneList">${done.map(orderCard).join('')}</div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = html;
 }
 
-function closeModal() {
-  document.getElementById("modal").style.display = "none";
-}
-
-window.onclick = function(event) {
-  const modal = document.getElementById("modal");
-  if (event.target == modal) closeModal();
-}
-function openPdf(e, id, token) {
-  e.stopPropagation();
-  window.open(`pdf.html?id=${id}&t=${token}`, '_blank');
-}
-loadOrders();
+load();
+setInterval(load, 60000);
 </script>
 </body>
 </html>

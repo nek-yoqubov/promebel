@@ -3,56 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Промебель — Шоурум</title>
+<title>PRO MEBEL — Экран цеха</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
-  body {
-    background: #111; color: white; font-family: 'DM Sans', sans-serif;
-    min-height: 100vh; padding: 20px; text-align: center; margin:0;
-  }
-  header { margin-bottom: 30px; font-family: 'DM Mono', monospace; font-size: 14px; opacity: 0.6; }
-  h1 { font-size: 28px; margin-bottom: 40px; }
-  #orders { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
-  .order {
-    background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
-    padding: 20px 24px; display: flex; justify-content: space-between; align-items: center;
-    font-size: 18px;
-  }
-  .order-id { font-family: 'DM Mono', monospace; font-size: 20px; font-weight: 500; }
-  .badge {
-    padding: 8px 20px; border-radius: 30px; font-weight: 500; font-size: 15px;
-  }
-  /* Стили для статусов (берут первое слово из названия статуса) */
-  .Выгрузка { background: #2563eb; }
-  .Пила { background: #ea580c; }
-  .Кромка { background: #7c3aed; }
-  .Присадка { background: #b45309; }
-  .Готово { background: #15803d; }
-  .✅ { background: #4b5563; }
-  
-  .empty { color: #666; font-size: 18px; padding: 80px 20px; }
+  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=IBM+Plex+Mono:wght@600&family=Manrope:wght@600;700&display=swap');
+  :root { --bg:#131210; --card:#1D1B18; --line:#2B2925; --ink:#F6F4EF; --muted:#8B867D; --brand:#F97316; --ok:#2FBF71; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'Manrope',sans-serif; min-height:100vh; padding:40px; }
+  header { display:flex; align-items:center; gap:18px; margin-bottom:34px; }
+  header img { height:44px; }
+  header .title { font:700 20px 'Unbounded',sans-serif; letter-spacing:.04em; color:var(--muted); }
+  #orders { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+  .order { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:14px; }
+  .order-id { font:600 26px 'IBM Plex Mono',monospace; word-break:break-all; }
+  .badge { padding:8px 16px; border-radius:999px; font:700 14px 'Manrope',sans-serif; white-space:nowrap; color:#131210; background:var(--brand); }
+  .badge.Готово { background:var(--ok); }
+  .empty { color:var(--muted); font-size:20px; padding:80px 20px; text-align:center; grid-column:1/-1; }
+  #updateTime { margin-top:30px; font-size:13px; color:var(--muted); }
 </style>
 </head>
 <body>
 
-<header>ПРОМЕБЕЛЬ • ШОУРУМ</header>
-<h1>Текущие заказы</h1>
+<header>
+  <img src="logo.png" alt="PRO MEBEL">
+  <div class="title">ЦЕХ · ТЕКУЩИЕ ЗАКАЗЫ</div>
+</header>
 
 <div id="orders"></div>
-<div style="margin-top:30px; font-size:13px; color:#555;" id="updateTime">Обновлено: только что</div>
+<div id="updateTime">Обновлено: только что</div>
 
 <script>
 const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
 
 async function loadPublicOrders() {
   try {
-    const res = await fetch(API, {
-      method: "POST",
-      body: JSON.stringify({ action: "get_public_orders" })
-    });
+    const res = await fetch(API, { method: "POST", body: JSON.stringify({ action: "get_public_orders" }) });
     const data = await res.json();
     const orders = data.orders || [];
-
     const container = document.getElementById("orders");
     container.innerHTML = "";
 
@@ -64,15 +50,10 @@ async function loadPublicOrders() {
     orders.forEach(order => {
       const div = document.createElement("div");
       div.className = "order";
-      
-      // Берем первое слово статуса для CSS класса (например "Выгрузка" из "Выгрузка со склада")
-      const statusClass = order.status ? order.status.split(' ')[0] : '✅';
-      
-      // Исправлено согласно техзаданию (пункт 2): чистый вывод ID без лишних ссылок
+      const statusClass = order.status === 'Готово' ? 'Готово' : '';
       div.innerHTML = `
         <div class="order-id">№ ${order.id}</div>
-        <div class="badge ${statusClass}">${order.status}</div>
-      `;
+        <div class="badge ${statusClass}">${order.status}</div>`;
       container.appendChild(div);
     });
 
@@ -82,7 +63,6 @@ async function loadPublicOrders() {
   }
 }
 
-// Автообновление каждые 30 секунд
 setInterval(loadPublicOrders, 30000);
 loadPublicOrders();
 </script>

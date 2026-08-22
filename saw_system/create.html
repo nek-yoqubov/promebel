@@ -3,351 +3,177 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Промебель — Новый заказ</title>
+<title>PRO MEBEL — Новый заказ</title>
+<link rel="stylesheet" href="saw.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
-  :root {
-    --black: #0a0a0a; --white: #f5f4f0; --gray-100: #f0eeea; --gray-200: #e2dfda;
-    --gray-400: #a8a49d; --gray-600: #6b6760; --red: #c0392b; --green: #15803d;
+  .chip-box {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--paper); cursor: text; transition: border-color .15s;
   }
-  * { box-sizing: border-box; margin:0; padding:0; }
-  body { background: var(--white); font-family: 'DM Sans', sans-serif; color: var(--black); padding-bottom: 80px; }
-  header {
-    position: sticky; top: 0; background: var(--white); border-bottom: 1.5px solid var(--gray-200);
-    padding: 12px 20px; z-index: 100;
+  .chip-box:focus-within { border-color: var(--brand); background: #fff; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 10px; border-radius: 8px;
+    background: var(--brand-soft); color: #B45309;
+    font: 600 14px 'IBM Plex Mono', monospace;
   }
-  .header-inner { max-width: 520px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-  .logo { font-family: 'DM Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; }
-
-  main { max-width: 520px; margin: 0 auto; padding: 20px; }
-  h1 { font-size: 24px; margin-bottom: 24px; }
-
-  .card {
-    background: white; border: 1.5px solid var(--gray-200); border-radius: 10px;
-    padding: 18px; margin-bottom: 16px;
+  .chip button {
+    background: none; border: none; cursor: pointer; padding: 0;
+    color: #B45309; font-size: 15px; line-height: 1;
   }
-  .card-header {
-    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+  .chip-box input {
+    flex: 1; min-width: 120px; border: none; background: none;
+    padding: 6px 2px; font: 600 15px 'IBM Plex Mono', monospace;
   }
-  .card-title {
-    font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
-    color: var(--gray-600); font-family: 'DM Mono', monospace;
-  }
-  .btn-add {
-    font-size: 12px; padding: 5px 12px; background: var(--gray-100); border: 1.5px solid var(--gray-200);
-    border-radius: 5px; cursor: pointer;
-  }
-
-  .field { margin-bottom: 14px; }
-  label.field-label {
-    display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--gray-600); margin-bottom: 6px; font-family: 'DM Mono', monospace;
-  }
-  input, select {
-    width: 100%; padding: 11px 14px; font-size: 15px; background: var(--gray-100);
-    border: 1.5px solid var(--gray-200); border-radius: 6px; outline: none;
-  }
-  input:focus, select:focus { border-color: var(--black); background: white; }
-
-  .dynamic-row {
-    display: grid; gap: 8px; margin-bottom: 10px; padding-bottom: 10px;
-    border-bottom: 1px dashed var(--gray-200);
-  }
-  .dynamic-row:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
-  
-  /* Специфические колонки для разных типов */
-  .row-sheet { grid-template-columns: 60px 80px 1fr 60px; }
-  .row-edge { grid-template-columns: 80px 1fr 60px; }
-  .row-ext { grid-template-columns: 1fr 60px; }
-
-  .btn-remove {
-    color: var(--red); background: none; border: none; font-size: 11px; cursor: pointer;
-    font-family: 'DM Mono', monospace; text-align: right;
-  }
-
-  .submit-btn {
-    width: 100%; padding: 16px; background: var(--black); color: white; border: none;
-    border-radius: 8px; font-size: 16px; font-weight: 500; margin-top: 30px; cursor: pointer;
-  }
-  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  #overlay {
-    position: fixed; inset: 0; background: rgba(245,244,240,0.95); display: none;
-    align-items: center; justify-content: center; flex-direction: column; z-index: 999;
-    text-align: center;
-  }
+  .chip-box input:focus { border: none; background: none; }
+  .id-preview { font: 600 13px 'IBM Plex Mono', monospace; color: var(--muted); margin-top: 8px; min-height: 18px; }
 </style>
 </head>
 <body>
-
-<header>
-  <div class="header-inner">
-    <div class="logo">ПРОМЕБЕЛЬ</div>
-    <a href="orders.html" style="font-size:13px; color:#555; text-decoration: none;">← Заказы</a>
+<div class="wrap-narrow" style="max-width:560px;">
+  <div class="topbar">
+    <img src="logo.png" alt="PRO MEBEL" class="logo">
+    <div class="spacer"></div>
+    <a href="orders.html">← Заказы</a>
   </div>
-</header>
 
-<main>
   <h1>Новый заказ</h1>
+  <p class="hint" style="margin:0 0 18px;">Клиент, телефон и номера реализаций из 1С — больше ничего не нужно.</p>
 
   <div class="card">
-    <div class="card-header"><span class="card-title">Основная информация</span></div>
-    <div class="field">
-      <label class="field-label">ID заказа (из 1С)</label>
-      <input id="id" placeholder="12345" oninput="checkId()">
-      <div id="idHint" style="font-size:12px; margin-top:4px; min-height:18px;"></div>
-    </div>
     <div class="field">
       <label class="field-label">Клиент</label>
-      <input id="customer" placeholder="ФИО клиента">
+      <input id="customer" placeholder="Имя и фамилия" autocomplete="off">
     </div>
+
     <div class="field">
       <label class="field-label">Телефон</label>
-      <input id="phone" placeholder="901234567" maxlength="9" oninput="formatPhone()">
+      <input id="phone" inputmode="numeric" placeholder="901234567" maxlength="9">
+      <div class="hint">9 цифр — код 992 добавится автоматически</div>
     </div>
-  </div>
 
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Листы</span>
-      <button class="btn-add" onclick="addSheet()">+ Добавить</button>
+    <div class="field">
+      <label class="field-label">ID реализаций</label>
+      <div class="chip-box" id="chipBox" onclick="document.getElementById('idInput').focus()">
+        <input id="idInput" inputmode="numeric" placeholder="номер + Enter">
+      </div>
+      <div class="hint">Можно несколько: вводи номер и жми Enter. В таблицу запишутся через дефис.</div>
+      <div class="id-preview" id="idPreview"></div>
     </div>
-    <div id="sheets"></div>
+
+    <button class="btn btn-brand btn-block" id="btn" onclick="createOrder()">Создать заказ</button>
+    <div class="msg" id="msg"></div>
   </div>
-
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Кромка 0.8 мм</span>
-      <button class="btn-add" onclick="addEdge08()">+ Добавить</button>
-    </div>
-    <div id="edge08"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Кромка 0.4 мм</span>
-      <button class="btn-add" onclick="addEdge04()">+ Добавить</button>
-    </div>
-    <div id="edge04"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Листы извне</span>
-      <button class="btn-add" onclick="addSheetExt()">+ Добавить</button>
-    </div>
-    <div id="sheetExt"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Кромка извне</span>
-      <button class="btn-add" onclick="addEdgeExt()">+ Добавить</button>
-    </div>
-    <div id="edgeExt"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><span class="card-title">Присадка</span></div>
-    <div class="field"><label class="field-label">Евровинт (шт)</label><input id="addon_euro" type="number" value="0"></div>
-    <div class="field"><label class="field-label">Эксцентрик (шт)</label><input id="addon_exc" type="number" value="0"></div>
-    <div class="field"><label class="field-label">Рафикс (шт)</label><input id="addon_raf" type="number" value="0"></div>
-    <div class="field"><label class="field-label">Петля (шт)</label><input id="addon_hinge" type="number" value="0"></div>
-    <div class="field"><label class="field-label">Прочее (шт)</label><input id="addon_other" type="number" value="0"></div>
-  </div>
-
-  <button class="submit-btn" id="createBtn" onclick="createOrder()" disabled>Создать заказ</button>
-</main>
-
-<div id="overlay"></div>
+</div>
 
 <script>
 const API = "https://script.google.com/macros/s/AKfycbxzI1zAz4wMJHIctiD_Z2X_AbolzhG3th6d1TfvUvIldBMrwYwUKhp8CT1RW2X4wW1yYA/exec";
 const token = localStorage.getItem("token");
-const role = localStorage.getItem("role");
+const role = localStorage.getItem("role") || "user";
+if (!token) window.location.href = "login.html";
+if (role === "user") window.location.href = "orders.html";
 
-if (!token || (role !== "manager" && role !== "admin" && role !== "director")) {
-  window.location.href = "index.html";
+const ids = [];
+const idInput = document.getElementById('idInput');
+const chipBox = document.getElementById('chipBox');
+const preview = document.getElementById('idPreview');
+
+idInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === '-' || e.key === ',') {
+    e.preventDefault();
+    addChip();
+  } else if (e.key === 'Backspace' && !idInput.value && ids.length) {
+    removeChip(ids.length - 1);
+  }
+});
+idInput.addEventListener('blur', addChip);
+
+function addChip() {
+  const v = idInput.value.replace(/[^0-9]/g, '');
+  idInput.value = '';
+  if (!v) return;
+  if (ids.includes(v)) { flash('Такой номер уже добавлен'); return; }
+  ids.push(v);
+  render();
 }
 
-let idValid = false;
-
-function showOverlay(text, status = 'wait') {
-  const overlay = document.getElementById("overlay");
-  overlay.style.display = "flex";
-  let icon = status === 'success' ? '✅' : (status === 'error' ? '❌' : '⏳');
-  overlay.innerHTML = `<div style="font-size:48px;margin-bottom:16px;">${icon}</div><div>${text}</div>`;
+function removeChip(i) {
+  ids.splice(i, 1);
+  render();
 }
 
-// Функции добавления строк
-function addSheet() {
-  const div = document.createElement("div");
-  div.className = "dynamic-row row-sheet";
-  div.innerHTML = `
-    <input type="number" placeholder="шт" class="s-count">
-    <input placeholder="код" class="s-code">
-    <input placeholder="название" class="s-name">
-    <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
-  `;
-  document.getElementById("sheets").appendChild(div);
-}
-
-function addEdge08() {
-  const div = document.createElement("div");
-  div.className = "dynamic-row row-edge";
-  div.innerHTML = `
-    <input type="number" placeholder="метры" class="e-len">
-    <input placeholder="код кромки" class="e-code">
-    <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
-  `;
-  document.getElementById("edge08").appendChild(div);
-}
-
-function addEdge04() {
-  const div = document.createElement("div");
-  div.className = "dynamic-row row-edge";
-  div.innerHTML = `
-    <input type="number" placeholder="метры" class="e-len">
-    <input placeholder="код кромки" class="e-code">
-    <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
-  `;
-  document.getElementById("edge04").appendChild(div);
-}
-
-function addSheetExt() {
-  const div = document.createElement("div");
-  div.className = "dynamic-row row-ext";
-  div.innerHTML = `<input placeholder="Описание листа" class="ext-val"><button class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
-  document.getElementById("sheetExt").appendChild(div);
-}
-
-function addEdgeExt() {
-  const div = document.createElement("div");
-  div.className = "dynamic-row row-ext";
-  div.innerHTML = `<input placeholder="Описание кромки" class="ext-val"><button class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
-  document.getElementById("edgeExt").appendChild(div);
-}
-
-async function checkId() {
-  const id = document.getElementById("id").value.trim();
-  const hint = document.getElementById("idHint");
-  if (!id) { hint.textContent = ""; idValid = false; validateForm(); return; }
-
-  try {
-    const res = await fetch(API, { method:"POST", body: JSON.stringify({action:"check_id", id, token}) });
-    const data = await res.json();
-    if (data.exists) {
-      hint.innerHTML = `<span style="color:#c0392b">ID уже существует</span>`;
-      idValid = false;
-    } else {
-      hint.innerHTML = `<span style="color:#15803d">ID свободен ✓</span>`;
-      idValid = true;
-    }
-  } catch(e) { hint.textContent = "Ошибка проверки"; idValid = false; }
-  validateForm();
-}
-
-function formatPhone() {
-  let val = document.getElementById("phone").value.replace(/\D/g,'').slice(0,9);
-  document.getElementById("phone").value = val;
-  validateForm();
-}
-
-function validateForm() {
-  const phone = document.getElementById("phone").value.length;
-  document.getElementById("createBtn").disabled = !(idValid && phone === 9);
-}
-
-// Сбор данных
-// Сбор листов с валидацией
-function getSheets() {
-  let c = [], co = [], n = [];
-  document.querySelectorAll("#sheets .dynamic-row").forEach(r => {
-    const count = parseInt(r.querySelector(".s-count").value) || 0;
-    const code = r.querySelector(".s-code").value.trim();
-    const name = r.querySelector(".s-name").value.trim();
-    // Пропускаем если количество 0 или отрицательное или нет названия
-    if (count <= 0 || !name) return;
-    c.push(count);
-    co.push(code || "—");
-    n.push(name);
+function render() {
+  chipBox.querySelectorAll('.chip').forEach(c => c.remove());
+  ids.forEach((id, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `${id}<button type="button" onclick="removeChip(${i})">×</button>`;
+    chipBox.insertBefore(chip, idInput);
   });
-  return { count: c.join("-"), code: co.join("-"), name: n.join("-") };
+  preview.textContent = ids.length ? 'В таблицу: ' + ids.join('-') : '';
 }
 
-function getEdges(containerId) {
-  let len = [], code = [];
-  document.querySelectorAll(`#${containerId} .dynamic-row`).forEach(r => {
-    const l = parseFloat(r.querySelector(".e-len").value) || 0;
-    const c = r.querySelector(".e-code").value.trim();
-    // Пропускаем если длина 0 или отрицательная или нет кода
-    if (l <= 0 || !c) return;
-    len.push(l);
-    code.push(c);
-  });
-  return { len: len.join("-"), code: code.join("-") };
+function flash(text, ok) {
+  const msg = document.getElementById('msg');
+  msg.textContent = text;
+  msg.className = 'msg ' + (ok ? 'ok' : 'err');
 }
 
-function getExt(containerId) {
-  let vals = [];
-  document.querySelectorAll(`#${containerId} .dynamic-row`).forEach(r => {
-    const v = r.querySelector(".ext-val").value.trim();
-    if (v) vals.push(v); // пропускаем пустые
-  });
-  return vals.join(" | ");
-}
-
-// Валидация присадки — только положительные числа
-function getAddon(id) {
-  const val = parseInt(document.getElementById(id).value) || 0;
-  return val > 0 ? val : 0;
-}
+document.getElementById('phone').addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 9);
+});
 
 async function createOrder() {
-  const btn = document.getElementById("createBtn");
-  btn.disabled = true;
-  showOverlay("Создание заказа...");
+  addChip(); // подобрать недописанный номер из поля
 
-  const s = getSheets();
-  const e08 = getEdges("edge08");
-  const e04 = getEdges("edge04");
+  const customer = document.getElementById('customer').value.trim();
+  const phoneRaw = document.getElementById('phone').value.trim();
+  const btn = document.getElementById('btn');
 
-  const payload = {
-    action: "create_order",
-    token: token,
-    id: document.getElementById("id").value.trim(),
-    customer: document.getElementById("customer").value.trim(),
-    phone: "992" + document.getElementById("phone").value,
-    sheet_count: s.count,
-    sheet_code: s.code,
-    sheet_name: s.name,
-    edge_08_len: e08.len,
-    edge_08_code: e08.code,
-    edge_04_len: e04.len,
-    edge_04_code: e04.code,
-    sheet_ext: getExt("sheetExt"),
-    edge_ext: getExt("edgeExt"),
-    addon_euro: getAddon("addon_euro"),
-    addon_exc: getAddon("addon_exc"),
-    addon_raf: getAddon("addon_raf"),
-    addon_hinge: getAddon("addon_hinge"),
-    addon_other: getAddon("addon_other")
-  };
+  if (!customer) { flash('Укажи имя клиента'); return; }
+  if (phoneRaw.length !== 9) { flash('Телефон — ровно 9 цифр'); return; }
+  if (!ids.length) { flash('Добавь хотя бы один ID'); return; }
+
+  const id = ids.join('-');
+  const phone = '992' + phoneRaw;
+
+  btn.disabled = true; btn.textContent = 'Проверяем…';
 
   try {
-    const res = await fetch(API, { method: "POST", body: JSON.stringify(payload) });
-    const result = await res.json();
-    if (result.success === true) {
-      showOverlay("Заказ успешно создан!", "success");
-      setTimeout(() => window.location.href = "orders.html", 1500);
-    } else {
-      throw new Error(result.error || "Неизвестная ошибка");
+    const chk = await fetch(API, { method: 'POST', body: JSON.stringify({ action: 'check_id', id, token }) });
+    const chkData = await chk.json();
+    if (chkData.exists) {
+      flash('Заказ с таким набором ID уже есть');
+      btn.disabled = false; btn.textContent = 'Создать заказ';
+      return;
     }
-  } catch (err) {
-    showOverlay("Ошибка: " + err.message, "error");
-    btn.disabled = false;
-    setTimeout(() => { document.getElementById("overlay").style.display = "none"; }, 3000);
+
+    btn.textContent = 'Создаём…';
+    const res = await fetch(API, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'create_order', token, id, customer, phone })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      flash('Заказ ' + id + ' создан. Директору отправлено уведомление.', true);
+      ids.length = 0; render();
+      document.getElementById('customer').value = '';
+      document.getElementById('phone').value = '';
+      setTimeout(() => { window.location.href = 'orders.html'; }, 900);
+    } else if (data.error === 'ID_EXISTS') {
+      flash('Заказ с таким набором ID уже есть');
+    } else if (data.error === 'UNAUTHORIZED') {
+      flash('Сессия истекла — войди заново');
+      setTimeout(() => { window.location.href = 'login.html'; }, 1200);
+    } else {
+      flash('Не получилось создать заказ, попробуй ещё раз');
+    }
+  } catch (e) {
+    flash('Нет связи с сервером');
   }
+  btn.disabled = false; btn.textContent = 'Создать заказ';
 }
 </script>
 </body>

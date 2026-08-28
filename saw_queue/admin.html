@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Пользователи</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+<style>
+.add-row{display:grid;grid-template-columns:1fr 1fr 150px auto;gap:10px}
+@media(max-width:700px){.add-row{grid-template-columns:1fr}}
+.urow{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.urow:last-child{border-bottom:none}
+.urow .l{font-weight:700}
+.urow .r{font:600 12px 'IBM Plex Mono';color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="page" style="max-width:760px">
+  <div class="topbar">
+    <a href="index.html" title="В меню" style="display:inline-flex"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL"></a>
+    <div class="spacer"></div>
+    <a class="navlink" href="index.html" id="lnkBack"></a>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()"></button>
+  </div>
+  <h1 style="margin-bottom:18px">Пользователи</h1>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="field-label" style="margin-bottom:10px">Добавить</div>
+    <div class="add-row">
+      <input id="nl" placeholder="логин" autocomplete="off">
+      <input id="np" type="password" placeholder="пароль" autocomplete="new-password">
+      <select id="nr">
+        <option value="user">Рабочий</option>
+        <option value="manager">Менеджер</option>
+        <option value="director">Директор</option>
+        <option value="admin">Админ</option>
+      </select>
+      <button class="btn" onclick="addU()">Добавить</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+  <div class="panel"><div id="list"><div class="hint">Загружаем…</div></div></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+if(!Auth.require(['admin'])) throw 'redirect';
+initTheme();
+document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Меню';
+function flash(t,ok){const m=document.getElementById('msg');m.textContent=t;m.className='msg '+(ok?'ok':'err')}
+async function loadU(){
+  const {data,error}=await sb.from('users').select('login,role').order('login');
+  if(error){flash('Не удалось загрузить');return;}
+  document.getElementById('list').innerHTML=data.map(u=>`
+    <div class="urow"><span class="l">${u.login}</span><span class="r">[${u.role}]</span>
+    <span class="spacer"></span>
+    ${u.login==='admin'?'':`<button class="btn sm danger" onclick="delU('${u.login}')">Удалить</button>`}</div>`).join('');
+}
+async function addU(){
+  const login=document.getElementById('nl').value.trim();
+  const password=document.getElementById('np').value.trim();
+  const role=document.getElementById('nr').value;
+  if(!login||!password){flash('Заполни логин и пароль');return;}
+  const {error}=await sb.from('users').insert({login,password,role});
+  if(error){flash(error.code==='23505'?'Такой логин уже есть':'Ошибка: '+error.message);return;}
+  flash('Добавлен',true);document.getElementById('nl').value='';document.getElementById('np').value='';loadU();
+}
+async function delU(login){
+  if(!confirm('Удалить '+login+'?'))return;
+  await sb.from('users').delete().eq('login',login);loadU();
+}
+loadU();
+</script>
+</body>
+</html>

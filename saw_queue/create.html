@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Новый заказ</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+<style>
+.subrow{position:relative;padding:14px;padding-left:16px;border:2px solid var(--line-2);border-left:5px solid var(--saw);
+  border-radius:11px;margin-bottom:12px;display:grid;gap:11px;background:var(--card)}
+.subrow.edge-row{border-left-color:var(--edge)}
+.subrow .rm{position:absolute;top:12px;right:13px;cursor:pointer;color:var(--muted);display:inline-flex;
+  width:26px;height:26px;align-items:center;justify-content:center;border-radius:7px;border:1.5px solid var(--line)}
+.subrow .rm:hover{color:var(--late);border-color:var(--late)}
+.subrow-title{font:800 13px 'Manrope';color:var(--ink);display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.subrow-title .num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;
+  border-radius:6px;background:var(--saw);color:#131114;font:800 12px 'Manrope';padding:0 6px}
+.subrow.edge-row .subrow-title .num{background:var(--edge);color:#fff}
+.mini-label{font-size:11px;color:var(--ink-2);font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-bottom:5px}
+.subrow input,.subrow select{padding:9px 11px;font-size:14px;border-width:1.5px}
+</style>
+</head>
+<body>
+<div class="page-narrow">
+  <div class="topbar">
+    <a href="index.html" title="В меню" style="display:inline-flex"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL"></a>
+    <div class="spacer"></div>
+    <a class="navlink" href="orders.html" id="lnkBack"></a>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()"></button>
+  </div>
+
+  <h1>Новый заказ</h1>
+  <p class="sub" style="margin:0 0 18px">Заказ целиком встаёт в очередь. Время готовности рассчитается автоматически после сохранения.</p>
+
+  <div class="panel">
+    <div class="sec-title">Клиент</div>
+    <div class="field">
+      <label class="field-label">Имя клиента</label>
+      <input id="customer" placeholder="Имя и фамилия" autocomplete="off">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label class="field-label">Телефон</label>
+        <input id="phone" class="mono" inputmode="numeric" placeholder="901234567" maxlength="9">
+        <div class="hint">9 цифр — код 992 добавится сам</div>
+      </div>
+      <div class="field">
+        <label class="field-label">Номера реализаций</label>
+        <input id="realization" class="mono" placeholder="8891-8892" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Листы ЛДСП</div>
+    <div id="sheets"></div>
+    <button class="btn ghost sm" onclick="addSheet()" id="addSheetBtn"></button>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Кромка</div>
+    <div id="edges"></div>
+    <button class="btn ghost sm" onclick="addEdge()" id="addEdgeBtn"></button>
+    <div class="hint" style="margin-top:8px">Каждую кромку можно привязать к листу — чтобы в цехе было ясно, какая к какой.</div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Дополнительно</div>
+    <label class="chk" style="margin-bottom:12px"><input type="checkbox" id="has_drill">Есть присадка</label>
+    <label class="chk"><input type="checkbox" id="is_urgent">Экстренный (вне очереди)</label>
+  </div>
+
+  <button class="btn btn-block" id="save" onclick="save()" style="margin-top:16px">Создать заказ</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+if(!Auth.require(['manager','admin','director'])) throw 'redirect';
+initTheme();
+document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Очередь';
+document.getElementById('addSheetBtn').innerHTML=icon('plus')+'Ещё лист';
+document.getElementById('addEdgeBtn').innerHTML=icon('plus')+'Ещё кромка';
+
+let sheetSeq=0, edgeSeq=0;
+const sheetsEl=document.getElementById('sheets');
+const edgesEl=document.getElementById('edges');
+
+function addSheet(){
+  const i=sheetSeq++;
+  const div=document.createElement('div');
+  div.className='subrow'; div.dataset.sheet=i;
+  div.innerHTML=`
+    <div class="subrow-title"><span class="num">?</span> Лист</div>
+    <span class="rm" onclick="this.parentNode.remove();renumber();refreshEdgeLinks()">${icon('x')}</span>
+    <div><div class="mini-label">Материал / декор</div>
+      <input class="s-mat" placeholder="напр. Антрацит 0164"></div>
+    <div style="max-width:140px"><div class="mini-label">Листов, шт</div>
+      <input class="s-qty" type="number" min="1" value="1"></div>`;
+  sheetsEl.appendChild(div);
+  renumber(); refreshEdgeLinks();
+}
+function addEdge(){
+  const i=edgeSeq++;
+  const div=document.createElement('div');
+  div.className='subrow edge-row'; div.dataset.edge=i;
+  div.innerHTML=`
+    <div class="subrow-title"><span class="num">?</span> Кромка</div>
+    <span class="rm" onclick="this.parentNode.remove();renumber()">${icon('x')}</span>
+    <div class="row2">
+      <div><div class="mini-label">Прямая, пог.м</div><input class="e-m" type="number" min="0" value="0"></div>
+      <div><div class="mini-label">Овальная, шт</div><input class="e-oval" type="number" min="0" value="0"></div>
+    </div>
+    <div><div class="mini-label">К какому листу</div>
+      <select class="e-link"><option value="">— не привязано —</option></select></div>
+    <label class="chk"><input type="checkbox" class="e-client">Клиент принесёт кромку сам</label>`;
+  edgesEl.appendChild(div);
+  renumber(); refreshEdgeLinks();
+}
+// перенумерация видимых листов/кромок (1,2,3…) после добавления/удаления
+function renumber(){
+  [...sheetsEl.querySelectorAll('[data-sheet]')].forEach((s,i)=>{s.querySelector('.num').textContent=i+1;});
+  [...edgesEl.querySelectorAll('[data-edge]')].forEach((e,i)=>{e.querySelector('.num').textContent=i+1;});
+}
+function refreshEdgeLinks(){
+  const opts=[...sheetsEl.querySelectorAll('[data-sheet]')].map((s,idx)=>{
+    const mat=s.querySelector('.s-mat').value||('Лист '+(idx+1));
+    return `<option value="${s.dataset.sheet}">${idx+1}. ${mat}</option>`;
+  }).join('');
+  edgesEl.querySelectorAll('.e-link').forEach(sel=>{
+    const cur=sel.value;
+    sel.innerHTML='<option value="">— не привязано —</option>'+opts;
+    sel.value=cur;
+  });
+}
+sheetsEl.addEventListener('input',e=>{ if(e.target.classList.contains('s-mat')) refreshEdgeLinks(); });
+document.getElementById('phone').addEventListener('input',e=>{
+  e.target.value=e.target.value.replace(/[^0-9]/g,'').slice(0,9);
+});
+function flash(t,ok){ const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(ok?'ok':'err'); }
+
+async function save(){
+  const customer=document.getElementById('customer').value.trim();
+  const phoneRaw=document.getElementById('phone').value.trim();
+  const realization=document.getElementById('realization').value.trim();
+  const has_drill=document.getElementById('has_drill').checked;
+  const is_urgent=document.getElementById('is_urgent').checked;
+
+  const sheetRows=[...sheetsEl.querySelectorAll('[data-sheet]')].map(s=>({
+    key:s.dataset.sheet,
+    material:s.querySelector('.s-mat').value.trim(),
+    qty:parseInt(s.querySelector('.s-qty').value)||0
+  })).filter(s=>s.qty>0);
+
+  const edgeRows=[...edgesEl.querySelectorAll('[data-edge]')].map(e=>({
+    linkKey:e.querySelector('.e-link').value,
+    meters:parseFloat(e.querySelector('.e-m').value)||0,
+    oval_pcs:parseInt(e.querySelector('.e-oval').value)||0,
+    by_client:e.querySelector('.e-client').checked
+  })).filter(e=>e.meters>0||e.oval_pcs>0||e.by_client);
+
+  if(!customer){ flash('Укажи имя клиента'); return; }
+  if(phoneRaw && phoneRaw.length!==9){ flash('Телефон — 9 цифр'); return; }
+  if(!sheetRows.length){ flash('Добавь хотя бы один лист'); return; }
+
+  const btn=document.getElementById('save'); btn.disabled=true; btn.textContent='Сохраняем…';
+  try{
+    const { data:order, error:e1 } = await sb.from('queue_orders').insert({
+      customer, phone: phoneRaw?('992'+phoneRaw):null, realization: realization||null,
+      has_drill, is_urgent, source:'manual'
+    }).select().single();
+    if(e1) throw e1;
+
+    const keyToId={};
+    for(const s of sheetRows){
+      const { data:sh, error:e2 } = await sb.from('queue_sheets')
+        .insert({ order_id:order.id, material:s.material||null, qty:s.qty }).select().single();
+      if(e2) throw e2;
+      keyToId[s.key]=sh.id;
+    }
+    if(edgeRows.length){
+      const payload=edgeRows.map(e=>({
+        order_id:order.id, sheet_id: e.linkKey?keyToId[e.linkKey]:null,
+        meters:e.meters, oval_pcs:e.oval_pcs, by_client:e.by_client
+      }));
+      const { error:e3 } = await sb.from('queue_edges').insert(payload);
+      if(e3) throw e3;
+    }
+    flash('Заказ создан', true);
+    setTimeout(()=>location.href='orders.html', 700);
+  }catch(err){
+    console.error(err);
+    flash('Не удалось сохранить: '+(err.message||err));
+    btn.disabled=false; btn.textContent='Создать заказ';
+  }
+}
+
+addSheet(); addEdge();
+</script>
+</body>
+</html>

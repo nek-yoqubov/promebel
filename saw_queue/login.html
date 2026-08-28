@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Вход</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+<style>body{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.box{width:100%;max-width:370px} .logo-c{text-align:center;margin-bottom:24px}
+.logo-c img{height:44px}</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo-c"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL"></div>
+  <div class="panel">
+    <h1 style="text-align:center;font-size:19px;margin-bottom:18px">Очередь распила</h1>
+    <div class="field"><label class="field-label">Логин</label><input id="login" autocomplete="username"></div>
+    <div class="field"><label class="field-label">Пароль</label><input id="password" type="password" autocomplete="current-password"></div>
+    <button class="btn btn-block" id="btn" onclick="doLogin()">Войти</button>
+    <div class="msg err" id="msg"></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+document.getElementById('password').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+async function doLogin(){
+  const login=document.getElementById('login').value.trim(),password=document.getElementById('password').value;
+  const msg=document.getElementById('msg'),btn=document.getElementById('btn');
+  if(!login||!password){msg.textContent='Заполни логин и пароль';return;}
+  btn.disabled=true;btn.textContent='Проверяем…';msg.textContent='';
+  const {data,error}=await sb.from('users').select('login,role,password').eq('login',login).maybeSingle();
+  if(error||!data||data.password!==password){msg.textContent='Неверный логин или пароль';btn.disabled=false;btn.textContent='Войти';return;}
+  localStorage.setItem('saw_token','1');localStorage.setItem('saw_login',data.login);localStorage.setItem('saw_role',data.role);
+  location.href='index.html';
+}
+</script>
+</body>
+</html>

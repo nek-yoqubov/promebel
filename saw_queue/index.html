@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Меню</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+<style>
+.menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.mcard{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px;text-decoration:none;transition:border-color .12s,transform .12s}
+.mcard:hover{border-color:var(--brand);transform:translateY(-2px)}
+.mcard .ic{width:38px;height:38px;border-radius:10px;background:var(--card-2);display:flex;align-items:center;
+  justify-content:center;color:var(--brand);margin-bottom:12px}
+.mcard h3{margin:0 0 5px;font:700 16px 'Manrope';color:var(--ink)}
+.mcard p{margin:0;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL">
+    <div class="spacer"></div>
+    <span class="sep" id="whoami"></span>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()"></button>
+    <button class="icon-btn" onclick="Auth.logout()" id="btnOut"></button>
+  </div>
+  <h1 style="margin-bottom:20px">Очередь распила</h1>
+  <div class="menu" id="menu"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+if(!Auth.require())throw'r';
+initTheme();
+document.getElementById('whoami').textContent=Auth.user()+' · '+Auth.role();
+document.getElementById('btnOut').innerHTML=icon('logout');
+const items=[
+  {t:'Очередь цеха',d:'Прогноз, этапы, приёмка',h:'orders.html',i:'list',r:['all']},
+  {t:'Новый заказ',d:'Внести заказ в очередь',h:'create.html',i:'plus',r:['manager','admin','director']},
+  {t:'Табло',d:'Экран для цеха',h:'display.html',i:'board',r:['all']},
+  {t:'Архив выданных',d:'История заказов, детальный разбор',h:'archive.html',i:'receipt',r:['all']},
+  {t:'Нормативы',d:'Время операций, рабочий день',h:'settings.html',i:'settings',r:['admin','director']},
+  {t:'Пользователи',d:'Доступ к системе',h:'admin.html',i:'users',r:['admin']},
+];
+const role=Auth.role();
+document.getElementById('menu').innerHTML=items.filter(i=>i.r.includes('all')||i.r.includes(role))
+  .map(i=>`<a class="mcard" href="${i.h}"><div class="ic">${icon(i.i)}</div><h3>${i.t}</h3><p>${i.d}</p></a>`).join('');
+</script>
+</body>
+</html>

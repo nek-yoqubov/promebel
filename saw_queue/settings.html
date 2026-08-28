@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Настройки нормативов</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+</head>
+<body>
+<div class="page-narrow">
+  <div class="topbar">
+    <a href="index.html" title="В меню" style="display:inline-flex"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL"></a>
+    <div class="spacer"></div>
+    <a class="navlink" href="index.html" id="lnkBack"></a>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()"></button>
+  </div>
+  <h1>Нормативы и рабочий день</h1>
+  <p class="hint" style="margin:0 0 18px">Меняешь тут — очередь пересчитается для всех заказов. Старые заказы не теряются.</p>
+
+  <div class="panel">
+    <div class="sec-title">Время операций (мин)</div>
+    <div class="row2">
+      <div class="field"><label class="field-label">Распил · 1 лист</label><input id="saw_per_sheet" type="number"></div>
+      <div class="field"><label class="field-label">Присадка · заказ</label><input id="drill_per_order" type="number"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label class="field-label">Кромка · 100 пог.м</label><input id="edge_per_100m" type="number"></div>
+      <div class="field"><label class="field-label">Кромка овальная · шт</label><input id="edge_oval_per_pc" type="number"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Буферы между операциями (мин)</div>
+    <div class="row2">
+      <div class="field"><label class="field-label">Смена листа в пиле</label><input id="buf_saw_change" type="number"></div>
+      <div class="field"><label class="field-label">Настройка кромочника</label><input id="buf_edge_setup" type="number"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label class="field-label">Расстановка на полки</label><input id="buf_shelf" type="number"></div>
+      <div class="field"><label class="field-label">Выгрузка на авто</label><input id="buf_load" type="number"></div>
+    </div>
+    <div class="field"><label class="field-label">Доставка со склада в цех</label><input id="deliver_minutes" type="number"></div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Рабочий день</div>
+    <div class="row2">
+      <div class="field"><label class="field-label">Начало</label><input id="day_start"></div>
+      <div class="field"><label class="field-label">Конец</label><input id="day_end"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label class="field-label">Обед с</label><input id="lunch_start"></div>
+      <div class="field"><label class="field-label">Обед до</label><input id="lunch_end"></div>
+    </div>
+  </div>
+
+  <button class="btn btn-block" id="save" onclick="save()" style="margin-top:16px">Сохранить</button>
+  <div class="msg" id="msg"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+if(!Auth.require(['admin','director'])) throw 'redirect';
+initTheme();
+document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Меню';
+const NORM=['saw_per_sheet','drill_per_order','edge_per_100m','edge_oval_per_pc','buf_saw_change','buf_edge_setup','buf_shelf','buf_load','deliver_minutes'];
+const WORK=['day_start','day_end','lunch_start','lunch_end'];
+async function init(){
+  const s=await loadSettings();
+  NORM.forEach(k=>document.getElementById(k).value=(s.norms&&s.norms[k]!=null)?s.norms[k]:'');
+  WORK.forEach(k=>document.getElementById(k).value=(s.work_day&&s.work_day[k])||'');
+}
+async function save(){
+  const norms={}, work_day={};
+  NORM.forEach(k=>norms[k]=parseFloat(document.getElementById(k).value)||0);
+  WORK.forEach(k=>work_day[k]=document.getElementById(k).value.trim());
+  const {error}=await sb.from('settings').update({norms,work_day,updated_at:new Date().toISOString()}).eq('id',1);
+  const msg=document.getElementById('msg');
+  if(error){msg.className='msg err';msg.textContent='Ошибка: '+error.message;}
+  else{msg.className='msg ok';msg.textContent='Сохранено';SETTINGS=null;}
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Архив выданных</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+<style>
+.arow{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+.ahead{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:14px 16px;cursor:pointer}
+.ahead:hover{background:var(--card)}
+.aname{font:700 15px 'Manrope'}
+.ameta{font:500 12px 'IBM Plex Mono';color:var(--muted);margin-top:3px}
+.adate{text-align:right;font:600 12px 'IBM Plex Mono';color:var(--ink-2)}
+.adate .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block}
+.adetail{display:none;padding:0 16px 16px;border-top:1px solid var(--line)}
+.adetail.open{display:block}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+@media(max-width:640px){.dgrid{grid-template-columns:1fr}}
+.dblock .h{font:700 11px 'Manrope';text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:7px}
+.drow{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.drow:last-child{border-bottom:none}
+.drow .k{color:var(--ink-2)} .drow .v{font-weight:600;font-family:'IBM Plex Mono';text-align:right}
+.tsteps{display:flex;flex-direction:column;gap:1px}
+.ts{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13px}
+.ts .d{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+.ts .l{color:var(--ink-2)} .ts .t{margin-left:auto;font:600 12px 'IBM Plex Mono';color:var(--muted)}
+.toolbar{display:flex;gap:10px;align-items:center;margin:18px 0 14px;flex-wrap:wrap}
+.search{position:relative;flex:1;max-width:320px}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.search input{padding-left:34px}
+.empty{color:var(--muted);text-align:center;padding:48px 0}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <a href="index.html" title="В меню" style="display:inline-flex"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL"></a>
+    <span class="sep">Архив выданных</span>
+    <div class="spacer"></div>
+    <a class="navlink" href="index.html" id="lnkMenu"></a>
+    <a class="navlink" href="orders.html" id="lnkOrders"></a>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()"></button>
+    <button class="icon-btn" onclick="Auth.logout()" id="btnOut"></button>
+  </div>
+
+  <div class="toolbar">
+    <div class="search"><span id="searchIco"></span><input id="search" placeholder="Поиск по клиенту / реализации" oninput="render()"></div>
+    <span class="stat" id="stat" style="font-size:12px;color:var(--muted);font-weight:600"></span>
+  </div>
+  <div id="list"><div class="empty">Загружаем архив…</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+if(!Auth.require()) throw 'redirect';
+initTheme();
+document.getElementById('lnkMenu').innerHTML=icon('list')+'Меню';
+document.getElementById('lnkOrders').innerHTML=icon('board')+'Очередь';
+document.getElementById('btnOut').innerHTML=icon('logout');
+document.getElementById('searchIco').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>';
+
+let ARCH=[], expanded=new Set();
+
+async function load(){
+  const {data,error}=await sb.from('queue_orders')
+    .select('*, sheets:queue_sheets(*), edges:queue_edges(*)')
+    .not('loaded_at','is',null)
+    .order('loaded_at',{ascending:false});
+  if(error){document.getElementById('list').innerHTML='<div class="empty">Ошибка: '+error.message+'</div>';return;}
+  ARCH=data||[];
+  render();
+}
+
+function fmtDT(ts){ return ts?new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'; }
+function sumSheets(o){return (o.sheets||[]).reduce((s,x)=>s+(x.qty||0),0)}
+
+function render(){
+  const q=(document.getElementById('search').value||'').trim().toLowerCase();
+  const rows=ARCH.filter(o=>!q||o.customer.toLowerCase().includes(q)||(o.realization||'').toLowerCase().includes(q));
+  document.getElementById('stat').textContent='Выдано заказов: '+ARCH.length;
+  if(!rows.length){document.getElementById('list').innerHTML='<div class="empty">Архив пуст</div>';return;}
+
+  const sheetName={};
+  let html='';
+  rows.forEach(o=>{
+    (o.sheets||[]).forEach((s,i)=>sheetName[s.id]=s.material||('Лист '+(i+1)));
+    const num=o.realization||o.id.slice(0,8);
+    const open=expanded.has(o.id);
+
+    const sheetsHtml=(o.sheets||[]).map(s=>`<div class="drow"><span class="k">${s.material||'—'}</span><span class="v">${s.qty} шт</span></div>`).join('')||'<div class="hint">—</div>';
+    const edgesHtml=(o.edges||[]).map(x=>{
+      const link=x.sheet_id?sheetName[x.sheet_id]:'—';
+      const t=x.by_client?'клиент сам':((x.meters?x.meters+'м':'')+(x.oval_pcs?' · '+x.oval_pcs+' овал.':''))||'—';
+      return `<div class="drow"><span class="k">${link}</span><span class="v">${t}</span></div>`;
+    }).join('')||'<div class="hint">Без кромки</div>';
+
+    const steps=[
+      ['Создан',o.created_at],['Принят груз',o.accepted_at],['Распил',o.saw_done_at],
+      ['Кромка',o.edge_done_at],['Присадка',o.has_drill?o.drill_done_at:null,!o.has_drill],
+      ['Готово',o.ready_at],['Выдан',o.loaded_at]
+    ].filter(s=>!s[2]);
+    const stepsHtml=steps.map(([l,t])=>`<div class="ts"><span class="d"></span><span class="l">${l}</span><span class="t">${fmtDT(t)}</span></div>`).join('');
+
+    const shelves=[['shelf_unload','Разгрузка'],['shelf_saw','Распил'],['shelf_edge','Кромка'],['shelf_ready','Готово']]
+      .filter(([f])=>o[f]).map(([f,l])=>`<div class="drow"><span class="k">${l}</span><span class="v">${o[f]}</span></div>`).join('')||'<div class="hint">—</div>';
+
+    html+=`<div class="arow">
+      <div class="ahead" onclick="toggle('${o.id}')">
+        <div><div class="aname">${o.customer}${o.is_urgent?' ⚡':''}</div>
+          <div class="ameta">№ ${num} · ${sumSheets(o)} лист.${o.phone?' · '+o.phone:''}</div></div>
+        <div class="adate"><span class="lbl">выдан</span>${fmtDT(o.loaded_at)}</div>
+        <div>${icon('chevron')}</div>
+      </div>
+      <div class="adetail ${open?'open':''}">
+        <div class="dgrid">
+          <div class="dblock"><div class="h">${icon('box')}Листы</div>${sheetsHtml}</div>
+          <div class="dblock"><div class="h">${icon('edge')}Кромка → лист</div>${edgesHtml}</div>
+          <div class="dblock"><div class="h">${icon('box')}Полки</div>${shelves}
+            ${o.car_number?`<div class="drow"><span class="k">Авто выдачи</span><span class="v">${o.car_number}</span></div>`:''}</div>
+          <div class="dblock"><div class="h">${icon('clock')}Хронология</div><div class="tsteps">${stepsHtml}</div></div>
+        </div>
+        <div style="margin-top:14px"><a class="btn ghost sm" href="receipt.html?id=${o.id}" target="_blank">${icon('receipt')}Квитанция</a></div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('list').innerHTML=html;
+}
+function toggle(id){ expanded.has(id)?expanded.delete(id):expanded.add(id); render(); }
+load();
+</script>
+</body>
+</html>

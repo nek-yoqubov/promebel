@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL — Очередь распила</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="queue.css">
+<style>
+/* ---- таймлайн ---- */
+.legend{display:flex;gap:16px;align-items:center;margin-bottom:14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend .lg{display:inline-flex;align-items:center;gap:6px}
+.legend .dot{width:10px;height:10px;border-radius:3px}
+.mach{display:grid;grid-template-columns:78px 1fr;gap:12px;align-items:center;margin-bottom:9px}
+.mach .name{font:600 12px 'Manrope';text-align:right;color:var(--ink-2)}
+.track{position:relative;height:42px;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+  background:var(--card)}
+.daybreak{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--late);opacity:.6;z-index:3}
+.daybreak span{position:absolute;top:2px;left:4px;font:700 8px 'Manrope';color:var(--late);letter-spacing:.05em;white-space:nowrap}
+.blk{position:absolute;top:4px;bottom:4px;display:flex;flex-direction:column;justify-content:center;
+  padding:0 8px;border-radius:5px;overflow:hidden;cursor:pointer;transition:transform .1s;
+  border-left:3px solid}
+.blk:hover{transform:translateY(-1px);z-index:4;box-shadow:var(--shadow)}
+.blk .bn{font:700 11px 'Manrope';overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk .bt{font:500 9px 'IBM Plex Mono';opacity:.8;white-space:nowrap}
+/* цвет = статус, не аппарат. Аппарат — тонкая левая полоса */
+.blk.st-wait{background:var(--card-2);color:var(--ink-2);border-left-color:var(--muted)}
+.blk.st-run{background:color-mix(in srgb,var(--brand) 22%,var(--card));color:var(--ink);border-left-color:var(--brand)}
+.blk.st-done{background:var(--ok-bg);color:var(--ok);border-left-color:var(--ok)}
+.blk.m-s{border-left-color:var(--saw)} .blk.m-e{border-left-color:var(--edge)} .blk.m-d{border-left-color:var(--drill)}
+.axis{display:grid;grid-template-columns:78px 1fr;gap:12px;margin-top:3px}
+.ticks{position:relative;height:15px}
+.tick{position:absolute;font:500 9px 'IBM Plex Mono';color:var(--muted);transform:translateX(-50%)}
+
+/* ---- список ---- */
+.toolbar{display:flex;gap:10px;align-items:center;margin:18px 0 14px;flex-wrap:wrap}
+.search{position:relative;flex:1;max-width:320px}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.search input{padding-left:34px}
+.stat{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);font-weight:600}
+.stat b{color:var(--ink);font-family:'IBM Plex Mono'}
+.updated{font-size:11px;color:var(--muted);margin-left:auto}
+
+.qcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;
+  overflow:hidden;transition:border-color .12s}
+.qcard.late{border-color:var(--late)}
+.qtop{display:grid;grid-template-columns:36px 1fr auto;gap:14px;align-items:center;padding:14px 16px;cursor:pointer}
+.qtop:hover{background:var(--card)}
+.qpos{font:800 17px 'Manrope';color:var(--muted);text-align:center}
+.qname{font:700 15px 'Manrope';display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.qmeta{font:500 12px 'IBM Plex Mono';color:var(--muted);margin-top:3px}
+.qbadges{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+.qready{text-align:right;min-width:130px}
+.qready .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.qready .day{font:700 12px 'Manrope';margin-top:3px}
+.qready .day.today{color:var(--ok)} .qready .day.tomorrow{color:var(--warn)} .qready .day.later{color:var(--late)}
+.qready .hh{font:700 20px 'IBM Plex Mono';line-height:1.1}
+.qready .hh.wait{font-size:13px;color:var(--warn)}
+
+.qactions{display:flex;gap:8px;padding:0 16px 14px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px;margin-top:0}
+.stbtn{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line);background:var(--card);
+  color:var(--ink-2);border-radius:9px;padding:8px 13px;font:700 13px 'Manrope';cursor:pointer;transition:all .12s}
+.stbtn:hover{border-color:var(--line-2);color:var(--ink)}
+.stbtn .mi{width:14px;height:14px;border-radius:3px;flex:none}
+.stbtn.mi-s .mi{background:var(--saw)} .stbtn.mi-e .mi{background:var(--edge)} .stbtn.mi-d .mi{background:var(--drill)}
+.stbtn.done{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.stbtn.due{border-color:var(--brand);color:var(--brand);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}}
+.stbtn.accept{border-color:var(--ok);color:var(--ok)}
+.stbtn.accept.pending{border-color:var(--warn);color:var(--warn)}
+.spacer-a{flex:1}
+
+/* ---- модалка ---- */
+.overlay{position:fixed;inset:0;background:#0009;backdrop-filter:blur(3px);display:none;align-items:center;
+  justify-content:center;z-index:50;padding:20px}
+.overlay.open{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:520px;width:100%;
+  max-height:85vh;overflow:auto;box-shadow:var(--shadow)}
+.modal-head{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--panel)}
+.modal-head h3{margin:0;font:800 18px 'Manrope'}
+.modal-body{padding:18px 20px}
+.mblock{margin-bottom:18px}
+.mblock:last-child{margin-bottom:0}
+.mblock .h{font:700 11px 'Manrope';text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;
+  display:flex;align-items:center;gap:7px}
+.mrow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.mrow:last-child{border-bottom:none}
+.mrow .k{color:var(--ink-2)} .mrow .v{font-weight:600;font-family:'IBM Plex Mono';text-align:right}
+.mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mini-field .field-label{margin-bottom:4px;font-size:10px}
+.mini-field input{padding:8px 10px;font-size:13px}
+.timeline-steps{display:flex;flex-direction:column;gap:2px}
+.tstep{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px}
+.tstep .tdot{width:9px;height:9px;border-radius:50%;background:var(--line-2);flex:none}
+.tstep.done .tdot{background:var(--ok)}
+.tstep .tt{color:var(--ink-2)} .tstep .tv{margin-left:auto;font:600 12px 'IBM Plex Mono';color:var(--muted)}
+/* плашка просрочки */
+.late-banner{display:flex;align-items:center;gap:10px;background:var(--late-bg);border:1px solid var(--late);
+  color:var(--late);border-radius:11px;padding:11px 14px;margin-bottom:14px;font:700 13px 'Manrope';
+  animation:slideIn .3s ease}
+@keyframes slideIn{from{transform:translateY(-6px);opacity:0}to{transform:translateY(0);opacity:1}}
+.late-banner .lb-x{margin-left:auto;background:none;border:none;color:var(--late);cursor:pointer;
+  display:inline-flex;padding:2px;opacity:.7}
+.late-banner .lb-x:hover{opacity:1}
+.bell-badge{position:relative}
+.bell-badge::after{content:attr(data-n);position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;
+  background:var(--late);color:#fff;border-radius:9px;font:700 10px 'Manrope';display:flex;align-items:center;
+  justify-content:center;padding:0 4px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <a href="index.html" title="В меню" style="display:inline-flex"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL"></a>
+    <span class="sep">Очередь распила</span>
+    <div class="spacer"></div>
+    <a class="navlink" href="index.html" id="lnkMenu"></a>
+    <a class="navlink" href="display.html" id="lnkDisplay"></a>
+    <a class="navlink primary" href="create.html" id="lnkNew"></a>
+    <button class="icon-btn" id="bellBtn" onclick="enableNotif()" title="Уведомления"></button>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Тема"></button>
+    <button class="icon-btn" onclick="Auth.logout()" title="Выйти" id="btnOut"></button>
+  </div>
+
+  <div id="lateBanner" class="late-banner" style="display:none">
+    <span class="lb-ico"></span>
+    <span class="txt"></span>
+    <button class="lb-x" onclick="document.getElementById('lateBanner').style.display='none'"></button>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Загрузка аппаратов · сегодня</div>
+    <div class="legend">
+      <span class="lg"><span class="dot" style="background:var(--saw)"></span>Пила</span>
+      <span class="lg"><span class="dot" style="background:var(--edge)"></span>Кромка</span>
+      <span class="lg"><span class="dot" style="background:var(--drill)"></span>Присадка</span>
+      <span class="lg" style="margin-left:12px"><span class="dot" style="background:var(--brand)"></span>в работе</span>
+      <span class="lg"><span class="dot" style="background:var(--ok)"></span>готово</span>
+    </div>
+    <div id="tracks"></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search"><span id="searchIco"></span><input id="search" placeholder="Поиск по клиенту" oninput="renderList()"></div>
+    <span class="stat" id="statTotal"></span>
+    <span class="stat" id="statLate"></span>
+    <span class="updated" id="updated"></span>
+  </div>
+  <div id="list"><div class="empty">Загружаем очередь…</div></div>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+if(!Auth.require()) throw 'redirect';
+initTheme();
+const canEdit=['manager','admin','director'].includes(Auth.role());
+document.getElementById('lnkMenu').innerHTML=icon('list')+'Меню';
+document.getElementById('lnkNew').innerHTML=icon('plus')+'Заказ';
+document.getElementById('lnkDisplay').innerHTML=icon('board')+'Табло';
+document.getElementById('btnOut').innerHTML=icon('logout');
+function bellIcon(){document.getElementById('bellBtn').innerHTML= (('Notification' in window)&&Notification.permission==='granted')?icon('bellOn'):icon('bell');}
+async function enableNotif(){await Notify.ask();bellIcon();}
+bellIcon();
+document.getElementById('searchIco').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>';
+if(!canEdit) document.getElementById('lnkNew').style.display='none';
+
+let ORDERS=[], PLAN=new Map(), MODAL_ID=null;
+
+async function load(){
+  await loadSettings();
+  ORDERS=(await fetchOrders()).filter(o=>!o.loaded_at);
+  // в расчёте очереди аппаратов участвуют только незавершённые (готовые уже сделаны, ждут выдачи)
+  PLAN=computeQueue(ORDERS.filter(o=>o.status_ready!=='done'));
+  renderTimeline(); renderList();
+  checkNotifications();
+  if(MODAL_ID){ const o=ORDERS.find(x=>x.id===MODAL_ID); if(o) openModal(o.id); }
+  document.getElementById('updated').innerHTML=icon('clock')+' '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+}
+
+// уведомления: просрочка приёмки + этап пора начинать
+function checkNotifications(){
+  for(const o of ORDERS){
+    const plan=PLAN.get(o.id); if(!plan)continue;
+    // 1) просрочка приёмки
+    const lateKey='late:'+o.id;
+    if(isLate(o)) Notify.push('Заказ задерживается', o.customer+' — груз не принят вовремя', lateKey);
+    else Notify.clear(lateKey);
+    // 2) этап пора начинать (план наступил, галочки нет)
+    const stageNames={s:'Распил',e:'Кромка',d:'Присадка'};
+    ['s','e','d'].forEach(m=>{
+      const key='due:'+o.id+':'+m;
+      if(hasStage(o,plan,m) && stageDue(o,plan,m))
+        Notify.push('Пора начинать: '+stageNames[m], o.customer, key);
+      else Notify.clear(key);
+    });
+  }
+  // плашка просрочки (только реальные задержки приёмки, не «пора начинать»)
+  const lateList=ORDERS.filter(isLate);
+  const banner=document.getElementById('lateBanner');
+  if(lateList.length){
+    banner.style.display='flex';
+    banner.querySelector('.lb-ico').innerHTML=icon('clock');
+    banner.querySelector('.txt').textContent=lateList.length===1
+      ? ('Задержка приёмки: '+lateList[0].customer)
+      : ('Задержек приёмки: '+lateList.length);
+    banner.querySelector('.lb-x').innerHTML=icon('x');
+  }else banner.style.display='none';
+  // бейдж на колокольчике
+  const bell=document.getElementById('bellBtn'), n=Notify.count();
+  if(n>0){ bell.classList.add('bell-badge'); bell.setAttribute('data-n',n); }
+  else{ bell.classList.remove('bell-badge'); bell.removeAttribute('data-n'); }
+}
+
+/* ---------- таймлайн ---------- */
+function stStatus(o,m){
+  const map={s:'status_saw',e:'status_edge',d:'status_drill'};
+  return o[map[m]]||'pending';
+}
+function renderTimeline(){
+  const el=document.getElementById('tracks');
+  const rows=ORDERS.map(o=>({o,st:PLAN.get(o.id)})).filter(r=>r.st);
+  let minT=Infinity,maxT=-Infinity;
+  rows.forEach(r=>r.st.stages.forEach(s=>{if(s.a!=null){minT=Math.min(minT,s.a);maxT=Math.max(maxT,s.b)}}));
+  if(!isFinite(minT)){el.innerHTML='<div class="empty" style="padding:20px">Очередь пуста</div>';return;}
+  const span=Math.max(maxT-minT,60);
+  const dayStartAbs=workCfg().dayStart;
+  const machs=[['s','Пила'],['e','Кромка'],['d','Присадка']];
+  let html='';
+  // линии перехода дня внутри диапазона
+  let breaks='';
+  for(let d=Math.floor(minT/1440)+1; d<=Math.floor(maxT/1440); d++){
+    const pos=(d*1440+dayStartAbs-minT)/span*100;
+    if(pos>=0&&pos<=100){
+      const lbl=d===1?'ЗАВТРА':('+'+d+' ДН');
+      breaks+=`<div class="daybreak" style="left:${pos}%"><span>${lbl}</span></div>`;
+    }
+  }
+  for(const[key,label]of machs){
+    let blocks=breaks;
+    rows.forEach(r=>r.st.stages.forEach(s=>{
+      if(s.m!==key||s.a==null)return;
+      const l=(s.a-minT)/span*100,w=Math.max((s.b-s.a)/span*100,4);
+      const nm=r.o.customer.split(' ')[0];
+      const status=stStatus(r.o,key);
+      const cls=status==='done'?'st-done':(status==='running'?'st-run':'m-'+key);
+      blocks+=`<div class="blk ${cls}" style="left:${l}%;width:${w}%" onclick="openModal('${r.o.id}')" title="${r.o.customer} · ${fmtHM(s.a)}–${fmtHM(s.b)}"><span class="bn">${nm}</span><span class="bt">${fmtHM(s.a)}–${fmtHM(s.b)}</span></div>`;
+    }));
+    html+=`<div class="mach"><div class="name">${label}</div><div class="track">${blocks}</div></div>`;
+  }
+  let ticks='';
+  for(let i=0;i<=6;i++){const t=minT+span/6*i;ticks+=`<div class="tick" style="left:${i/6*100}%">${fmtHM(t)}</div>`}
+  html+=`<div class="axis"><div></div><div class="ticks">${ticks}</div></div>`;
+  el.innerHTML=html;
+}
+
+/* ---------- helpers ---------- */
+function sumSheets(o){return (o.sheets||[]).reduce((s,x)=>s+(x.qty||0),0)}
+function edgeInfo(o){
+  const m=(o.edges||[]).reduce((s,x)=>s+Number(x.meters||0),0);
+  const ov=(o.edges||[]).reduce((s,x)=>s+Number(x.oval_pcs||0),0);
+  return {m,ov,byClient:(o.edges||[]).length>0&&(o.edges||[]).every(x=>x.by_client)};
+}
+function compoText(o){
+  const e=edgeInfo(o);const parts=[sumSheets(o)+' лист.'];
+  if(e.m)parts.push(e.m+'м кромки'); if(e.ov)parts.push(e.ov+' овал.');
+  if(o.has_drill)parts.push('присадка'); return parts.join(' · ');
+}
+function hasStage(o,plan,m){return plan.stages.some(s=>s.m===m)}
+function stageDue(o,plan,m){
+  const st=plan.stages.find(s=>s.m===m&&s.a!=null); if(!st)return false;
+  return stStatus(o,m)!=='done' && nowAbs()>=st.a;
+}
+function isLate(o){
+  // задержка приёмки: заказ создан давно, а кнопку «принял» не нажали.
+  // порог = норматив доставки + 60 мин запаса, но считаем только в рабочее время.
+  if(o.accepted_at) return false;
+  if(!o.created_at) return false;
+  const created=new Date(o.created_at);
+  const deliver=(SETTINGS.norms&&SETTINGS.norms.deliver_minutes)||60;
+  const elapsedMin=(Date.now()-created.getTime())/60000;
+  return elapsedMin > deliver+60;
+}
+function dayClass(abs){const d=Math.floor(abs/1440);return d===0?'today':(d===1?'tomorrow':'later')}
+function dayWord(abs){const d=Math.floor(abs/1440);return d===0?'сегодня':(d===1?'завтра':(d===2?'послезавтра':'+'+d+' дн'))}
+
+/* ---------- список ---------- */
+function renderList(){
+  const q=(document.getElementById('search').value||'').trim().toLowerCase();
+  // включаем и заказы в очереди (есть план), и готовые ждущие выдачи (плана нет)
+  const rows=ORDERS.map(o=>({o,plan:PLAN.get(o.id)}))
+    .filter(r=>(!q||r.o.customer.toLowerCase().includes(q)))
+    .sort((a,b)=>{
+      // готовые (ждут выдачи) — вниз; остальные по срочности/очереди
+      const aReady=a.o.status_ready==='done'?1:0, bReady=b.o.status_ready==='done'?1:0;
+      if(aReady-bReady) return aReady-bReady;
+      if(!!b.o.is_urgent-!!a.o.is_urgent)return(!!b.o.is_urgent)-(!!a.o.is_urgent);
+      return(a.o.seq||0)-(b.o.seq||0);
+    });
+
+  const lateCount=ORDERS.filter(isLate).length;
+  const readyCount=ORDERS.filter(o=>o.status_ready==='done').length;
+  document.getElementById('statTotal').innerHTML=icon('list')+' В работе: <b>'+(ORDERS.length-readyCount)+'</b>'+(readyCount?' · '+icon('box')+' Ждут выдачи: <b>'+readyCount+'</b>':'');
+  document.getElementById('statLate').innerHTML= lateCount?('<span style="color:var(--late)">'+icon('clock')+' Задержек: <b>'+lateCount+'</b></span>'):'';
+
+  if(!rows.length){document.getElementById('list').innerHTML='<div class="empty">Нет активных заказов</div>';return;}
+  let html='';
+  rows.forEach((r,idx)=>{
+    const o=r.o,plan=r.plan,e=edgeInfo(o),late=isLate(o);
+    const isReady=o.status_ready==='done';
+    let readyHtml;
+    if(isReady) readyHtml=`<div class="lbl">статус</div><div class="hh" style="color:var(--ok);font-size:14px">готов, ждёт выдачи</div>`;
+    else if(e.byClient) readyHtml=`<div class="lbl">готовность</div><div class="hh wait">ждём кромку</div>`;
+    else readyHtml=`<div class="lbl">готовность</div><div class="hh">${fmtHM(plan.ready)}</div><div class="day ${dayClass(plan.ready)}">${dayWord(plan.ready)}</div>`;
+
+    let badges='';
+    if(o.is_urgent)badges+=`<span class="badge urgent">${icon('bolt')}экстренный</span>`;
+    if(late&&!isReady)badges+=`<span class="badge late">${icon('clock')}задержка</span>`;
+    if(isReady)badges+=`<span class="badge ok">${icon('check')}готов</span>`;
+    if(o.manual_add_min)badges+=`<span class="badge info">+${o.manual_add_min} мин</span>`;
+
+    // кнопки
+    let acts='';
+    if(isReady){
+      acts=`<button class="stbtn done" onclick="event.stopPropagation();unready('${o.id}','${o.customer.replace(/'/g,'')}')" title="Вернуть в работу">${icon('check')}Готово</button>
+        <button class="stbtn accept" onclick="event.stopPropagation();deliver('${o.id}','${o.customer.replace(/'/g,'')}')">${icon('truck')}Выдать клиенту</button>`;
+    }else{
+      acts=`<button class="stbtn accept ${o.accepted_at?'':'pending'}" onclick="event.stopPropagation();accept('${o.id}',${!!o.accepted_at})">${icon('truck')}${o.accepted_at?'принят':'принять груз'}</button>`;
+      if(hasStage(o,plan,'s'))acts+=stBtn(o,plan,'s','saw','Распил','status_saw');
+      if(hasStage(o,plan,'e')||e.byClient)acts+=stBtn(o,plan,'e','edge','Кромка','status_edge');
+      if(o.has_drill)acts+=stBtn(o,plan,'d','drill','Присадка','status_drill');
+      acts+=stBtnReady(o,plan);
+    }
+    acts+=`<div class="spacer-a"></div><button class="stbtn" onclick="event.stopPropagation();openModal('${o.id}')">${icon('info')}детали</button>`;
+
+    html+=`<div class="qcard ${late&&!isReady?'late':''}" ${isReady?'style="border-color:var(--ok)"':''}>
+      <div class="qtop" onclick="openModal('${o.id}')">
+        <div class="qpos">${isReady?icon('check'):(idx+1)}</div>
+        <div>
+          <div class="qname">${o.customer}${o.phone?` <a class="tel" href="tel:+${o.phone}" onclick="event.stopPropagation()">${icon('phone')}</a>`:''}</div>
+          <div class="qmeta">${compoText(o)}${o.realization?' · реал. '+o.realization:''}</div>
+          ${badges?`<div class="qbadges">${badges}</div>`:''}
+        </div>
+        <div class="qready">${readyHtml}</div>
+      </div>
+      <div class="qactions">${acts}</div>
+    </div>`;
+  });
+  document.getElementById('list').innerHTML=html;
+}
+function stBtn(o,plan,m,ic,label,field){
+  const done=o[field]==='done',due=stageDue(o,plan,m);
+  return `<button class="stbtn mi-${m} ${done?'done':(due?'due':'')}" onclick="event.stopPropagation();markStage('${o.id}','${field}')">
+    ${done?icon('check'):`<span class="mi"></span>`}${label}</button>`;
+}
+function stBtnReady(o,plan){
+  const done=o.status_ready==='done';
+  return `<button class="stbtn ${done?'done':''}" onclick="event.stopPropagation();markStage('${o.id}','status_ready')">${done?icon('check'):icon('box')}Готово</button>`;
+}
+
+/* ---------- модалка ---------- */
+function openModal(id){
+  const o=ORDERS.find(x=>x.id===id); if(!o)return;
+  MODAL_ID=id;
+  const plan=PLAN.get(id),e=edgeInfo(o);
+  const sheetById={}; (o.sheets||[]).forEach((s,i)=>sheetById[s.id]=s.material||('Лист '+(i+1)));
+
+  let sheetsHtml=(o.sheets||[]).map(s=>`<div class="mrow"><span class="k">${s.material||'—'}</span><span class="v">${s.qty} шт</span></div>`).join('')||'<div class="hint">Нет листов</div>';
+  let edgesHtml=(o.edges||[]).map(x=>{
+    const link=x.sheet_id?sheetById[x.sheet_id]:'—';
+    const t=x.by_client?'клиент сам':(x.meters?x.meters+'м':'')+(x.oval_pcs?' · '+x.oval_pcs+' овал.':'');
+    return `<div class="mrow"><span class="k">${link}</span><span class="v">${t||'—'}</span></div>`;
+  }).join('')||'<div class="hint">Без кромки</div>';
+  let invHtml=(o.invoices||[]).map(i=>`<span class="badge info">${i.number}</span>`).join(' ')||'<span class="hint">Нет накладных</span>';
+
+  const steps=[
+    ['Принят груз',o.accepted_at],
+    ['Распил',o.saw_done_at],
+    ['Кромка',o.edge_done_at],
+    ['Присадка',o.has_drill?o.drill_done_at:null,!o.has_drill],
+    ['Готово',o.ready_at]
+  ].filter(s=>!s[2]);
+  const stepsHtml=steps.map(([lbl,ts])=>`<div class="tstep ${ts?'done':''}"><span class="tdot"></span><span class="tt">${lbl}</span><span class="tv">${ts?new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</span></div>`).join('');
+
+  const shelves=[['shelf_unload','Разгрузка'],['shelf_saw','Распил'],['shelf_edge','Кромка'],['shelf_ready','Готово']];
+  const shelfHtml=shelves.map(([f,l])=>`<div class="mini-field"><div class="field-label">${l}</div><input value="${o[f]||''}" onchange="setField('${o.id}','${f}',this.value)" placeholder="полка"></div>`).join('');
+
+  document.getElementById('modal').innerHTML=`
+    <div class="modal-head">
+      <h3>${o.customer}</h3>
+      ${o.is_urgent?`<span class="badge urgent">${icon('bolt')}экстренный</span>`:''}
+      <div class="spacer"></div>
+      <button class="icon-btn" onclick="closeModal()">${icon('x')}</button>
+    </div>
+    <div class="modal-body">
+      <div class="mblock"><div class="h">${icon('info')}Заказ</div>
+        <div class="mrow"><span class="k">Телефон</span><span class="v">${o.phone?'+'+o.phone:'—'}</span></div>
+        <div class="mrow"><span class="k">Готовность</span><span class="v">${e.byClient?'ждём кромку':fmtHM(plan.ready)+' · '+dayWord(plan.ready)}</span></div>
+      </div>
+      <div class="mblock"><div class="h">${icon('box')}Листы</div>${sheetsHtml}</div>
+      <div class="mblock"><div class="h">${icon('edge')}Кромка → лист</div>${edgesHtml}</div>
+      <div class="mblock"><div class="h">Накладные</div>${invHtml}</div>
+      <div class="mblock"><div class="h">${icon('clock')}Этапы</div><div class="timeline-steps">${stepsHtml}</div></div>
+      ${canEdit?`
+      <div class="mblock"><div class="h">${icon('box')}Полки</div><div class="mini-grid">${shelfHtml}</div></div>
+      <div class="mblock"><div class="h">${icon('truck')}Выдача</div>
+        <div class="mini-grid">
+          <div class="mini-field"><div class="field-label">Авто</div><input value="${o.car_number||''}" onchange="setField('${o.id}','car_number',this.value)" placeholder="номер"></div>
+          <div class="mini-field"><div class="field-label">+ время, мин</div><input type="number" value="${o.manual_add_min||0}" onchange="setManual('${o.id}',this.value)"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn ghost sm" href="receipt.html?id=${o.id}" target="_blank">${icon('receipt')}Квитанция</a>
+        <div class="spacer"></div>
+        <button class="btn danger sm" onclick="delOrder('${o.id}','${o.customer.replace(/'/g,'')}')">${icon('trash')}Удалить заказ</button>
+      </div>
+      `:''}
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal(){document.getElementById('overlay').classList.remove('open');MODAL_ID=null;}
+
+/* ---------- действия ---------- */
+async function accept(id,already){
+  await sb.from('queue_orders').update({accepted_at:already?null:new Date().toISOString()}).eq('id',id);await load();
+}
+async function markStage(id,field){
+  const o=ORDERS.find(x=>x.id===id);const now=o[field]==='done'?'pending':'done';
+  // подтверждение при переводе заказа в «Готово» (легко нажать случайно)
+  if(field==='status_ready' && now==='done'){
+    if(!confirm('Отметить заказ «'+o.customer+'» как ГОТОВЫЙ?')) return;
+  }
+  const patch={[field]:now};
+  const ts={status_saw:'saw_done_at',status_edge:'edge_done_at',status_drill:'drill_done_at',status_ready:'ready_at'};
+  if(ts[field])patch[ts[field]]=now==='done'?new Date().toISOString():null;
+  await sb.from('queue_orders').update(patch).eq('id',id);await load();
+}
+async function setField(id,field,val){await sb.from('queue_orders').update({[field]:val||null}).eq('id',id);
+  const o=ORDERS.find(x=>x.id===id);if(o)o[field]=val;}
+async function setManual(id,val){await sb.from('queue_orders').update({manual_add_min:parseInt(val)||0}).eq('id',id);await load();}
+async function delOrder(id,name){if(!confirm('Удалить заказ '+name+'?'))return;await sb.from('queue_orders').delete().eq('id',id);closeModal();await load();}
+async function deliver(id,name){
+  const car=prompt('Выдать заказ «'+name+'».\nНомер авто (можно пусто):','');
+  if(car===null)return; // отмена
+  await sb.from('queue_orders').update({loaded_at:new Date().toISOString(), car_number:car||null}).eq('id',id);
+  closeModal(); await load();
+}
+async function unready(id,name){
+  if(!confirm('Вернуть заказ «'+name+'» обратно в работу?')) return;
+  await sb.from('queue_orders').update({status_ready:'pending', ready_at:null}).eq('id',id);
+  await load();
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+load();
+setInterval(load,60000);
+</script>
+</body>
+</html>

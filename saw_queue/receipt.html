@@ -73,7 +73,7 @@ async function build(){
   if(!o){document.getElementById('sheet').innerHTML='<div style="padding:60px;text-align:center">Заказ не найден</div>';return;}
 
   // номер квитанции: реализация если есть, иначе короткий ID заказа
-  const num=o.realization||o.id.slice(0,8);
+  const num=esc(o.realization||o.id.slice(0,8));
   const dt=new Date(o.created_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   // QR не критичен — если библиотека не загрузилась, строим квитанцию без него
   let qrImg='';
@@ -93,8 +93,8 @@ async function build(){
     <div class="dt">от ${dt}</div>
     <div class="meta">
       Склад: <b>PROMEBEL</b><br>
-      Покупатель: <b>${o.customer}</b><br>
-      ${o.phone?'Тел: '+o.phone:''}
+      Покупатель: <b>${esc(o.customer)}</b><br>
+      ${o.phone?'Тел: '+esc(o.phone):''}
     </div>
     <div class="rule"></div>
     <div class="para">${PARA_RU}</div>

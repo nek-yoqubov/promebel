@@ -283,7 +283,7 @@ function renderTimeline(){
       const nm=r.o.customer.split(' ')[0];
       const status=stStatus(r.o,t.key);
       const cls=status==='done'?'st-done':(status==='running'?'st-run':'m-'+t.key);
-      blocks+=`<div class="blk ${cls}" style="left:${l}%;width:${w}%" onclick="openModal('${r.o.id}')" title="${r.o.customer} · ${fmtHM(s.a)}–${fmtHM(s.b)}"><span class="bn">${nm}</span><span class="bt">${fmtHM(s.a)}–${fmtHM(s.b)}</span></div>`;
+      blocks+=`<div class="blk ${cls}" style="left:${l}%;width:${w}%" onclick="openModal('${r.o.id}')" title="${esc(r.o.customer)} · ${fmtHM(s.a)}–${fmtHM(s.b)}"><span class="bn">${nm}</span><span class="bt">${fmtHM(s.a)}–${fmtHM(s.b)}</span></div>`;
     }));
     html+=`<div class="mach"><div class="name">${t.label}</div><div class="track-wrap"><div class="track" style="width:${widthPct}%">${blocks}</div></div></div>`;
   }
@@ -382,8 +382,8 @@ function renderList(){
           </div>`:''}
         </div>
         <div>
-          <div class="qname">${o.customer}${o.phone?` <a class="tel" href="tel:+${o.phone}" onclick="event.stopPropagation()">${icon('phone')}</a>`:''}</div>
-          <div class="qmeta">${compoText(o)}${o.realization?' · реал. '+o.realization:''}</div>
+          <div class="qname">${esc(o.customer)}${o.phone?` <a class="tel" href="tel:+${esc(o.phone)}" onclick="event.stopPropagation()">${icon('phone')}</a>`:''}</div>
+          <div class="qmeta">${compoText(o)}${o.realization?' · реал. '+esc(o.realization):''}</div>
           ${badges?`<div class="qbadges">${badges}</div>`:''}
         </div>
         <div class="qready">${readyHtml}</div>
@@ -408,9 +408,9 @@ function openModal(id){
   const o=ORDERS.find(x=>x.id===id); if(!o)return;
   MODAL_ID=id;
   const plan=PLAN.get(id),e=edgeInfo(o);
-  const sheetById={}; (o.sheets||[]).forEach((s,i)=>sheetById[s.id]=s.material||('Лист '+(i+1)));
+  const sheetById={}; (o.sheets||[]).forEach((s,i)=>sheetById[s.id]=esc(s.material||('Лист '+(i+1))));
 
-  let sheetsHtml=(o.sheets||[]).map(s=>`<div class="mrow"><span class="k">${s.material||'—'}</span><span class="v">${s.qty} шт</span></div>`).join('')||'<div class="hint">Нет листов</div>';
+  let sheetsHtml=(o.sheets||[]).map(s=>`<div class="mrow"><span class="k">${esc(s.material||'—')}</span><span class="v">${s.qty} шт</span></div>`).join('')||'<div class="hint">Нет листов</div>';
   let edgesHtml=(o.edges||[]).map(x=>{
     const link=x.sheet_id?sheetById[x.sheet_id]:'—';
     const t=x.by_client?'клиент сам':(x.meters?x.meters+'м':'')+(x.oval_pcs?' · '+x.oval_pcs+' овал.':'');
@@ -428,11 +428,11 @@ function openModal(id){
   const stepsHtml=steps.map(([lbl,ts])=>`<div class="tstep ${ts?'done':''}"><span class="tdot"></span><span class="tt">${lbl}</span><span class="tv">${ts?new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</span></div>`).join('');
 
   const shelves=[['shelf_unload','Разгрузка'],['shelf_saw','Распил'],['shelf_edge','Кромка'],['shelf_ready','Готово']];
-  const shelfHtml=shelves.map(([f,l])=>`<div class="mini-field"><div class="field-label">${l}</div><input value="${o[f]||''}" onchange="setField('${o.id}','${f}',this.value)" placeholder="полка"></div>`).join('');
+  const shelfHtml=shelves.map(([f,l])=>`<div class="mini-field"><div class="field-label">${l}</div><input value="${esc(o[f]||'')}" onchange="setField('${o.id}','${f}',this.value)" placeholder="полка"></div>`).join('');
 
   document.getElementById('modal').innerHTML=`
     <div class="modal-head">
-      <h3>${o.customer}</h3>
+      <h3>${esc(o.customer)}</h3>
       ${o.is_urgent?`<span class="badge urgent">${icon('bolt')}экстренный</span>`:''}
       <div class="spacer"></div>
       <button class="icon-btn" onclick="closeModal()">${icon('x')}</button>
@@ -457,7 +457,7 @@ function openModal(id){
       <div class="mblock"><div class="h">${icon('box')}Полки</div><div class="mini-grid">${shelfHtml}</div></div>
       <div class="mblock"><div class="h">${icon('truck')}Выдача</div>
         <div class="mini-grid">
-          <div class="mini-field"><div class="field-label">Авто</div><input value="${o.car_number||''}" onchange="setField('${o.id}','car_number',this.value)" placeholder="номер"></div>
+          <div class="mini-field"><div class="field-label">Авто</div><input value="${esc(o.car_number||'')}" onchange="setField('${o.id}','car_number',this.value)" placeholder="номер"></div>
           <div class="mini-field"><div class="field-label">+ время, мин</div><input type="number" value="${o.manual_add_min||0}" onchange="setManual('${o.id}',this.value)"></div>
         </div>
       </div>

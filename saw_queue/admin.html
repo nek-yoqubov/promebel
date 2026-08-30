@@ -48,10 +48,29 @@ if(!Auth.require(['admin'])) throw 'redirect';
 initTheme();
 document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Меню';
 function flash(t,ok){const m=document.getElementById('msg');m.textContent=t;m.className='msg '+(ok?'ok':'err')}
+
+const FN='https://yqspwkngntoklyggnosi.supabase.co/functions/v1/manage-users';
+let ADMIN_AUTH=null; // {login,password} — держим в памяти страницы, НЕ в localStorage
+
+async function callFn(action, extra){
+  const resp=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action, auth:ADMIN_AUTH, ...extra})});
+  return await resp.json();
+}
+function askAdminPassword(){
+  const p=prompt('Для управления пользователями введите свой пароль администратора:');
+  if(p===null) return false;
+  ADMIN_AUTH={login:Auth.user(), password:p};
+  return true;
+}
 async function loadU(){
-  const {data,error}=await sb.from('users').select('login,role').order('login');
-  if(error){flash('Не удалось загрузить');return;}
-  document.getElementById('list').innerHTML=data.map(u=>`
+  if(!ADMIN_AUTH && !askAdminPassword()){ document.getElementById('list').innerHTML='<div class="hint">Доступ не подтверждён</div>'; return; }
+  const r=await callFn('list');
+  if(!r.ok){
+    if(r.error==='forbidden'){ ADMIN_AUTH=null; flash('Неверный пароль или нет прав'); document.getElementById('list').innerHTML=''; return; }
+    flash('Не удалось загрузить'); return;
+  }
+  document.getElementById('list').innerHTML=r.users.map(u=>`
     <div class="urow"><span class="l">${u.login}</span><span class="r">[${u.role}]</span>
     <span class="spacer"></span>
     ${u.login==='admin'?'':`<button class="btn sm danger" onclick="delU('${u.login}')">Удалить</button>`}</div>`).join('');
@@ -61,13 +80,15 @@ async function addU(){
   const password=document.getElementById('np').value.trim();
   const role=document.getElementById('nr').value;
   if(!login||!password){flash('Заполни логин и пароль');return;}
-  const {error}=await sb.from('users').insert({login,password,role});
-  if(error){flash(error.code==='23505'?'Такой логин уже есть':'Ошибка: '+error.message);return;}
+  const r=await callFn('add',{login,password,role});
+  if(!r.ok){flash(r.error==='forbidden'?'Нет прав':(r.error&&r.error.includes('duplicate')?'Такой логин уже есть':'Ошибка: '+r.error));return;}
   flash('Добавлен',true);document.getElementById('nl').value='';document.getElementById('np').value='';loadU();
 }
 async function delU(login){
   if(!confirm('Удалить '+login+'?'))return;
-  await sb.from('users').delete().eq('login',login);loadU();
+  const r=await callFn('delete',{login});
+  if(!r.ok){flash('Не удалось удалить');return;}
+  loadU();
 }
 loadU();
 </script>

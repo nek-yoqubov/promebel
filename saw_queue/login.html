@@ -31,10 +31,21 @@ async function doLogin(){
   const msg=document.getElementById('msg'),btn=document.getElementById('btn');
   if(!login||!password){msg.textContent='Заполни логин и пароль';return;}
   btn.disabled=true;btn.textContent='Проверяем…';msg.textContent='';
-  const {data,error}=await sb.from('users').select('login,role,password').eq('login',login).maybeSingle();
-  if(error||!data||data.password!==password){msg.textContent='Неверный логин или пароль';btn.disabled=false;btn.textContent='Войти';return;}
-  localStorage.setItem('saw_token','1');localStorage.setItem('saw_login',data.login);localStorage.setItem('saw_role',data.role);
-  location.href='index.html';
+  try{
+    // проверка на сервере (пароль не хранится в браузере, хеш не покидает БД)
+    const resp=await fetch('https://yqspwkngntoklyggnosi.supabase.co/functions/v1/auth-login',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({login,password})
+    });
+    const data=await resp.json();
+    if(!data.ok){msg.textContent='Неверный логин или пароль';btn.disabled=false;btn.textContent='Войти';return;}
+    localStorage.setItem('saw_token',data.token||'1');
+    localStorage.setItem('saw_login',data.login);
+    localStorage.setItem('saw_role',data.role);
+    location.href='index.html';
+  }catch(e){
+    msg.textContent='Ошибка связи, попробуй ещё раз';btn.disabled=false;btn.textContent='Войти';
+  }
 }
 </script>
 </body>

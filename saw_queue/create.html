@@ -184,42 +184,20 @@ async function save(){
 
   const btn=document.getElementById('save'); btn.disabled=true; btn.textContent='Сохраняем…';
   try{
-    let order;
+    // единый атомарный payload (создание/обновление в одной транзакции на сервере)
+    const payload={
+      customer, phone: phoneRaw?('992'+phoneRaw):'', realization,
+      has_drill, is_urgent, saw_machine, edge_machine,
+      sheets: sheetRows.map(s=>({key:s.key, material:s.material, qty:s.qty})),
+      edges: edgeRows.map(e=>({linkKey:e.linkKey||'', meters:e.meters, oval_pcs:e.oval_pcs, by_client:e.by_client}))
+    };
+    let err;
     if(EDIT_ID){
-      // ОБНОВЛЕНИЕ существующего заказа
-      const { data:upd, error:eu } = await sb.from('queue_orders').update({
-        customer, phone: phoneRaw?('992'+phoneRaw):null, realization: realization||null,
-        has_drill, is_urgent, saw_machine, edge_machine
-      }).eq('id',EDIT_ID).select().single();
-      if(eu) throw eu;
-      order=upd;
-      // пересобираем состав: удаляем старые листы и кромки, вставляем заново
-      await sb.from('queue_edges').delete().eq('order_id',EDIT_ID);
-      await sb.from('queue_sheets').delete().eq('order_id',EDIT_ID);
+      ({error:err}=await sb.rpc('update_order',{p_id:EDIT_ID, payload}));
     }else{
-      const { data:ins, error:e1 } = await sb.from('queue_orders').insert({
-        customer, phone: phoneRaw?('992'+phoneRaw):null, realization: realization||null,
-        has_drill, is_urgent, saw_machine, edge_machine, source:'manual'
-      }).select().single();
-      if(e1) throw e1;
-      order=ins;
+      ({error:err}=await sb.rpc('create_order',{payload}));
     }
-
-    const keyToId={};
-    for(const s of sheetRows){
-      const { data:sh, error:e2 } = await sb.from('queue_sheets')
-        .insert({ order_id:order.id, material:s.material||null, qty:s.qty }).select().single();
-      if(e2) throw e2;
-      keyToId[s.key]=sh.id;
-    }
-    if(edgeRows.length){
-      const payload=edgeRows.map(e=>({
-        order_id:order.id, sheet_id: e.linkKey?keyToId[e.linkKey]:null,
-        meters:e.meters, oval_pcs:e.oval_pcs, by_client:e.by_client
-      }));
-      const { error:e3 } = await sb.from('queue_edges').insert(payload);
-      if(e3) throw e3;
-    }
+    if(err) throw err;
     flash(EDIT_ID?'Изменения сохранены':'Заказ создан', true);
     setTimeout(()=>location.href='orders.html', 700);
   }catch(err){

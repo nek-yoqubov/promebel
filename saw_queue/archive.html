@@ -86,11 +86,11 @@ function render(){
   const sheetName={};
   let html='';
   rows.forEach(o=>{
-    (o.sheets||[]).forEach((s,i)=>sheetName[s.id]=s.material||('Лист '+(i+1)));
+    (o.sheets||[]).forEach((s,i)=>sheetName[s.id]=esc(s.material||('Лист '+(i+1))));
     const num=o.realization||o.id.slice(0,8);
     const open=expanded.has(o.id);
 
-    const sheetsHtml=(o.sheets||[]).map(s=>`<div class="drow"><span class="k">${s.material||'—'}</span><span class="v">${s.qty} шт</span></div>`).join('')||'<div class="hint">—</div>';
+    const sheetsHtml=(o.sheets||[]).map(s=>`<div class="drow"><span class="k">${esc(s.material||'—')}</span><span class="v">${s.qty} шт</span></div>`).join('')||'<div class="hint">—</div>';
     const edgesHtml=(o.edges||[]).map(x=>{
       const link=x.sheet_id?sheetName[x.sheet_id]:'—';
       const t=x.by_client?'клиент сам':((x.meters?x.meters+'м':'')+(x.oval_pcs?' · '+x.oval_pcs+' овал.':''))||'—';
@@ -105,11 +105,11 @@ function render(){
     const stepsHtml=steps.map(([l,t])=>`<div class="ts"><span class="d"></span><span class="l">${l}</span><span class="t">${fmtDT(t)}</span></div>`).join('');
 
     const shelves=[['shelf_unload','Разгрузка'],['shelf_saw','Распил'],['shelf_edge','Кромка'],['shelf_ready','Готово']]
-      .filter(([f])=>o[f]).map(([f,l])=>`<div class="drow"><span class="k">${l}</span><span class="v">${o[f]}</span></div>`).join('')||'<div class="hint">—</div>';
+      .filter(([f])=>o[f]).map(([f,l])=>`<div class="drow"><span class="k">${l}</span><span class="v">${esc(o[f])}</span></div>`).join('')||'<div class="hint">—</div>';
 
     html+=`<div class="arow">
       <div class="ahead" onclick="toggle('${o.id}')">
-        <div><div class="aname">${o.customer}${o.is_urgent?' ⚡':''}</div>
+        <div><div class="aname">${esc(o.customer)}${o.is_urgent?' ⚡':''}</div>
           <div class="ameta">№ ${num} · ${sumSheets(o)} лист.${o.phone?' · '+o.phone:''}</div></div>
         <div class="adate"><span class="lbl">выдан</span>${fmtDT(o.loaded_at)}</div>
         <div>${icon('chevron')}</div>
@@ -119,7 +119,7 @@ function render(){
           <div class="dblock"><div class="h">${icon('box')}Листы</div>${sheetsHtml}</div>
           <div class="dblock"><div class="h">${icon('edge')}Кромка → лист</div>${edgesHtml}</div>
           <div class="dblock"><div class="h">${icon('box')}Полки</div>${shelves}
-            ${o.car_number?`<div class="drow"><span class="k">Авто выдачи</span><span class="v">${o.car_number}</span></div>`:''}</div>
+            ${o.car_number?`<div class="drow"><span class="k">Авто выдачи</span><span class="v">${esc(o.car_number)}</span></div>`:''}</div>
           <div class="dblock"><div class="h">${icon('clock')}Хронология</div><div class="tsteps">${stepsHtml}</div></div>
         </div>
         <div style="margin-top:14px"><a class="btn ghost sm" href="receipt.html?id=${o.id}" target="_blank">${icon('receipt')}Квитанция</a></div>

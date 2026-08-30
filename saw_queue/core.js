@@ -190,6 +190,13 @@ async function fetchOrders(){
 /* ============================================================
    ИКОНКИ (inline SVG, feather-стиль) + тема
    ============================================================ */
+/* Экранирование пользовательского ввода перед вставкой в innerHTML (защита от XSS) */
+function esc(s){
+  if(s==null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 const ICONS={
   check:'<svg class="i" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
   saw:'<svg class="i" viewBox="0 0 24 24"><path d="M3 9h18M3 9l2 3 2-3 2 3 2-3 2 3 2-3 2 3 2-3"/><rect x="3" y="12" width="18" height="8" rx="1"/></svg>',

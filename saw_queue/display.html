@@ -78,7 +78,7 @@ async function load(){
     const d=Math.floor((r.ready||0)/1440);const dw=d===0?'сегодня':(d===1?'завтра':'+'+d+' дн');
     const time=byClient?`<div class="time wait">ждём кромку</div>`:`<div class="time">${fmtHM(r.ready)}<span class="dw">${dw}</span></div>`;
     const stage=stageLabel(o,r);
-    return `<div class="d ${cls}"><div><div class="who">${o.customer}</div><div class="stg">${stage}</div><div class="sub">${sh} лист.${o.is_urgent?' · срочно':''}</div></div>${time}</div>`;
+    return `<div class="d ${cls}"><div><div class="who">${esc(o.customer)}</div><div class="stg">${stage}</div><div class="sub">${sh} лист.${o.is_urgent?' · срочно':''}</div></div>${time}</div>`;
   }).join('');
   document.getElementById('upd').textContent='Обновлено '+new Date().toLocaleTimeString('ru-RU');
 }

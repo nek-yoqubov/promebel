@@ -66,6 +66,21 @@
   </div>
 
   <div class="panel">
+    <div class="sec-title">Станки</div>
+    <div class="row2">
+      <div class="field">
+        <label class="field-label">Пила</label>
+        <select id="saw_machine"><option value="1">Пила 1</option><option value="2">Пила 2</option></select>
+      </div>
+      <div class="field">
+        <label class="field-label">Кромочный</label>
+        <select id="edge_machine"><option value="1">Кромка 1</option><option value="2">Кромка 2</option></select>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:0">Можно поменять станок потом, в окне заказа (директор/админ).</div>
+  </div>
+
+  <div class="panel">
     <div class="sec-title">Дополнительно</div>
     <label class="chk" style="margin-bottom:12px"><input type="checkbox" id="has_drill">Есть присадка</label>
     <label class="chk"><input type="checkbox" id="is_urgent">Экстренный (вне очереди)</label>
@@ -147,6 +162,8 @@ async function save(){
   const realization=document.getElementById('realization').value.trim();
   const has_drill=document.getElementById('has_drill').checked;
   const is_urgent=document.getElementById('is_urgent').checked;
+  const saw_machine=parseInt(document.getElementById('saw_machine').value)||1;
+  const edge_machine=parseInt(document.getElementById('edge_machine').value)||1;
 
   const sheetRows=[...sheetsEl.querySelectorAll('[data-sheet]')].map(s=>({
     key:s.dataset.sheet,
@@ -167,11 +184,26 @@ async function save(){
 
   const btn=document.getElementById('save'); btn.disabled=true; btn.textContent='Сохраняем…';
   try{
-    const { data:order, error:e1 } = await sb.from('queue_orders').insert({
-      customer, phone: phoneRaw?('992'+phoneRaw):null, realization: realization||null,
-      has_drill, is_urgent, source:'manual'
-    }).select().single();
-    if(e1) throw e1;
+    let order;
+    if(EDIT_ID){
+      // ОБНОВЛЕНИЕ существующего заказа
+      const { data:upd, error:eu } = await sb.from('queue_orders').update({
+        customer, phone: phoneRaw?('992'+phoneRaw):null, realization: realization||null,
+        has_drill, is_urgent, saw_machine, edge_machine
+      }).eq('id',EDIT_ID).select().single();
+      if(eu) throw eu;
+      order=upd;
+      // пересобираем состав: удаляем старые листы и кромки, вставляем заново
+      await sb.from('queue_edges').delete().eq('order_id',EDIT_ID);
+      await sb.from('queue_sheets').delete().eq('order_id',EDIT_ID);
+    }else{
+      const { data:ins, error:e1 } = await sb.from('queue_orders').insert({
+        customer, phone: phoneRaw?('992'+phoneRaw):null, realization: realization||null,
+        has_drill, is_urgent, saw_machine, edge_machine, source:'manual'
+      }).select().single();
+      if(e1) throw e1;
+      order=ins;
+    }
 
     const keyToId={};
     for(const s of sheetRows){
@@ -188,16 +220,62 @@ async function save(){
       const { error:e3 } = await sb.from('queue_edges').insert(payload);
       if(e3) throw e3;
     }
-    flash('Заказ создан', true);
+    flash(EDIT_ID?'Изменения сохранены':'Заказ создан', true);
     setTimeout(()=>location.href='orders.html', 700);
   }catch(err){
     console.error(err);
     flash('Не удалось сохранить: '+(err.message||err));
-    btn.disabled=false; btn.textContent='Создать заказ';
+    btn.disabled=false; btn.textContent=EDIT_ID?'Сохранить изменения':'Создать заказ';
   }
 }
 
-addSheet(); addEdge();
+// режим редактирования: ?edit=<id> грузит заказ и заполняет форму
+const EDIT_ID=new URLSearchParams(location.search).get('edit');
+async function loadForEdit(){
+  const {data:o,error}=await sb.from('queue_orders')
+    .select('*, sheets:queue_sheets(*), edges:queue_edges(*)')
+    .eq('id',EDIT_ID).maybeSingle();
+  if(error||!o){ flash('Заказ не найден'); return; }
+  // шапка
+  document.getElementById('customer').value=o.customer||'';
+  document.getElementById('phone').value=(o.phone||'').replace(/^992/,'');
+  document.getElementById('realization').value=o.realization||'';
+  document.getElementById('has_drill').checked=!!o.has_drill;
+  document.getElementById('is_urgent').checked=!!o.is_urgent;
+  document.getElementById('saw_machine').value=o.saw_machine||1;
+  document.getElementById('edge_machine').value=o.edge_machine||1;
+  // листы — восстанавливаем с их id (чтобы знать связки кромок)
+  const sheetKeyById={};
+  (o.sheets||[]).forEach(s=>{
+    addSheet();
+    const row=sheetsEl.lastElementChild;
+    row.querySelector('.s-mat').value=s.material||'';
+    row.querySelector('.s-qty').value=s.qty||1;
+    row.dataset.dbid=s.id;                 // запомним id листа в БД
+    sheetKeyById[s.id]=row.dataset.sheet;  // db id -> ключ формы
+  });
+  if(!(o.sheets||[]).length) addSheet();
+  refreshEdgeLinks();
+  // кромки — восстанавливаем и привязку к листу
+  (o.edges||[]).forEach(e=>{
+    addEdge();
+    const row=edgesEl.lastElementChild;
+    row.querySelector('.e-m').value=e.meters||0;
+    row.querySelector('.e-oval').value=e.oval_pcs||0;
+    row.querySelector('.e-client').checked=!!e.by_client;
+    if(e.sheet_id && sheetKeyById[e.sheet_id]) row.querySelector('.e-link').value=sheetKeyById[e.sheet_id];
+  });
+  // переключаем интерфейс в режим редактирования
+  document.getElementById('save').textContent='Сохранить изменения';
+  document.querySelector('h1').textContent='Изменение заказа';
+  document.title='PRO MEBEL — Изменение заказа';
+}
+
+if(EDIT_ID){
+  loadForEdit();
+}else{
+  addSheet(); addEdge();
+}
 </script>
 </body>
 </html>

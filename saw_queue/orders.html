@@ -13,6 +13,12 @@
 .legend .dot{width:10px;height:10px;border-radius:3px}
 .mach{display:grid;grid-template-columns:78px 1fr;gap:12px;align-items:center;margin-bottom:9px}
 .mach .name{font:600 12px 'Manrope';text-align:right;color:var(--ink-2)}
+.track-wrap{overflow-x:auto;overflow-y:hidden;border-radius:8px}
+.track-wrap::-webkit-scrollbar{height:7px}
+.track-wrap::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px}
+.zoom-btn{width:30px;height:30px;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:8px;font:700 17px 'Manrope';cursor:pointer;line-height:1;transition:all .12s}
+.zoom-btn:hover{border-color:var(--brand);color:var(--brand)}
 .track{position:relative;height:42px;border:1px solid var(--line);border-radius:8px;overflow:hidden;
   background:var(--card)}
 .daybreak{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--late);opacity:.6;z-index:3}
@@ -46,7 +52,11 @@
 .qcard.late{border-color:var(--late)}
 .qtop{display:grid;grid-template-columns:36px 1fr auto;gap:14px;align-items:center;padding:14px 16px;cursor:pointer}
 .qtop:hover{background:var(--card)}
-.qpos{font:800 17px 'Manrope';color:var(--muted);text-align:center}
+.qpos{font:800 17px 'Manrope';color:var(--muted);text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
+.qmove{display:flex;flex-direction:column;gap:2px}
+.qmove button{width:22px;height:18px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);
+  border-radius:5px;cursor:pointer;font-size:9px;line-height:1;padding:0;transition:all .12s}
+.qmove button:hover{border-color:var(--brand);color:var(--brand)}
 .qname{font:700 15px 'Manrope';display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .qmeta{font:500 12px 'IBM Plex Mono';color:var(--muted);margin-top:3px}
 .qbadges{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
@@ -130,7 +140,13 @@
   </div>
 
   <div class="panel">
-    <div class="sec-title">Загрузка аппаратов · сегодня</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="sec-title" style="margin:0">Загрузка аппаратов · сегодня</div>
+      <div style="display:flex;gap:6px">
+        <button class="zoom-btn" onclick="zoomOut()" title="Отдалить">−</button>
+        <button class="zoom-btn" onclick="zoomIn()" title="Приблизить">+</button>
+      </div>
+    </div>
     <div class="legend">
       <span class="lg"><span class="dot" style="background:var(--saw)"></span>Пила</span>
       <span class="lg"><span class="dot" style="background:var(--edge)"></span>Кромка</span>
@@ -160,6 +176,7 @@
 if(!Auth.require()) throw 'redirect';
 initTheme();
 const canEdit=['manager','admin','director'].includes(Auth.role());
+const canManage=['admin','director'].includes(Auth.role()); // перенос станков + порядок
 document.getElementById('lnkMenu').innerHTML=icon('list')+'Меню';
 document.getElementById('lnkNew').innerHTML=icon('plus')+'Заказ';
 document.getElementById('lnkDisplay').innerHTML=icon('board')+'Табло';
@@ -222,6 +239,16 @@ function stStatus(o,m){
   const map={s:'status_saw',e:'status_edge',d:'status_drill'};
   return o[map[m]]||'pending';
 }
+let ZOOM=1; // масштаб таймлайна (1 = весь диапазон помещается)
+function zoomIn(){ ZOOM=Math.min(ZOOM*1.5,8); renderTimeline(); }
+function zoomOut(){ ZOOM=Math.max(ZOOM/1.5,1); renderTimeline(); }
+
+function nMach(key){ // сколько станков данного типа
+  const N=SETTINGS.norms||{};
+  if(key==='s') return Math.max(1,parseInt(N.saw_machines)||2);
+  if(key==='e') return Math.max(1,parseInt(N.edge_machines)||2);
+  return 1;
+}
 function renderTimeline(){
   const el=document.getElementById('tracks');
   const rows=ORDERS.map(o=>({o,st:PLAN.get(o.id)})).filter(r=>r.st);
@@ -230,9 +257,14 @@ function renderTimeline(){
   if(!isFinite(minT)){el.innerHTML='<div class="empty" style="padding:20px">Очередь пуста</div>';return;}
   const span=Math.max(maxT-minT,60);
   const dayStartAbs=workCfg().dayStart;
-  const machs=[['s','Пила'],['e','Кромка'],['d','Присадка']];
-  let html='';
-  // линии перехода дня внутри диапазона
+  const widthPct=100*ZOOM; // при зуме дорожка шире контейнера, появляется горизонтальная прокрутка
+
+  // строим список дорожек: Пила 1..N, Кромка 1..N, Присадка
+  const tracks=[];
+  for(let i=1;i<=nMach('s');i++) tracks.push({key:'s',machine:i,label:nMach('s')>1?('Пила '+i):'Пила'});
+  for(let i=1;i<=nMach('e');i++) tracks.push({key:'e',machine:i,label:nMach('e')>1?('Кромка '+i):'Кромка'});
+  tracks.push({key:'d',machine:1,label:'Присадка'});
+
   let breaks='';
   for(let d=Math.floor(minT/1440)+1; d<=Math.floor(maxT/1440); d++){
     const pos=(d*1440+dayStartAbs-minT)/span*100;
@@ -241,21 +273,23 @@ function renderTimeline(){
       breaks+=`<div class="daybreak" style="left:${pos}%"><span>${lbl}</span></div>`;
     }
   }
-  for(const[key,label]of machs){
+  let html='';
+  for(const t of tracks){
     let blocks=breaks;
     rows.forEach(r=>r.st.stages.forEach(s=>{
-      if(s.m!==key||s.a==null)return;
-      const l=(s.a-minT)/span*100,w=Math.max((s.b-s.a)/span*100,4);
+      if(s.m!==t.key || s.a==null) return;
+      if((s.machine||1)!==t.machine) return; // только блоки этого станка
+      const l=(s.a-minT)/span*100,w=Math.max((s.b-s.a)/span*100,3);
       const nm=r.o.customer.split(' ')[0];
-      const status=stStatus(r.o,key);
-      const cls=status==='done'?'st-done':(status==='running'?'st-run':'m-'+key);
+      const status=stStatus(r.o,t.key);
+      const cls=status==='done'?'st-done':(status==='running'?'st-run':'m-'+t.key);
       blocks+=`<div class="blk ${cls}" style="left:${l}%;width:${w}%" onclick="openModal('${r.o.id}')" title="${r.o.customer} · ${fmtHM(s.a)}–${fmtHM(s.b)}"><span class="bn">${nm}</span><span class="bt">${fmtHM(s.a)}–${fmtHM(s.b)}</span></div>`;
     }));
-    html+=`<div class="mach"><div class="name">${label}</div><div class="track">${blocks}</div></div>`;
+    html+=`<div class="mach"><div class="name">${t.label}</div><div class="track-wrap"><div class="track" style="width:${widthPct}%">${blocks}</div></div></div>`;
   }
   let ticks='';
   for(let i=0;i<=6;i++){const t=minT+span/6*i;ticks+=`<div class="tick" style="left:${i/6*100}%">${fmtHM(t)}</div>`}
-  html+=`<div class="axis"><div></div><div class="ticks">${ticks}</div></div>`;
+  html+=`<div class="axis"><div></div><div class="track-wrap"><div class="ticks" style="width:${widthPct}%">${ticks}</div></div></div>`;
   el.innerHTML=html;
 }
 
@@ -340,7 +374,13 @@ function renderList(){
 
     html+=`<div class="qcard ${late&&!isReady?'late':''}" ${isReady?'style="border-color:var(--ok)"':''}>
       <div class="qtop" onclick="openModal('${o.id}')">
-        <div class="qpos">${isReady?icon('check'):(idx+1)}</div>
+        <div class="qpos">
+          ${isReady?icon('check'):(idx+1)}
+          ${(canManage && !isReady)?`<div class="qmove">
+            <button onclick="event.stopPropagation();moveOrder('${o.id}',-1)" title="Выше">▲</button>
+            <button onclick="event.stopPropagation();moveOrder('${o.id}',1)" title="Ниже">▼</button>
+          </div>`:''}
+        </div>
         <div>
           <div class="qname">${o.customer}${o.phone?` <a class="tel" href="tel:+${o.phone}" onclick="event.stopPropagation()">${icon('phone')}</a>`:''}</div>
           <div class="qmeta">${compoText(o)}${o.realization?' · реал. '+o.realization:''}</div>
@@ -406,6 +446,13 @@ function openModal(id){
       <div class="mblock"><div class="h">${icon('edge')}Кромка → лист</div>${edgesHtml}</div>
       <div class="mblock"><div class="h">Накладные</div>${invHtml}</div>
       <div class="mblock"><div class="h">${icon('clock')}Этапы</div><div class="timeline-steps">${stepsHtml}</div></div>
+      ${canManage?`
+      <div class="mblock"><div class="h">${icon('saw')}Станки</div>
+        <div class="mini-grid">
+          <div class="mini-field"><div class="field-label">Пила</div>${machSelect(o,'saw_machine','s')}</div>
+          <div class="mini-field"><div class="field-label">Кромочный</div>${machSelect(o,'edge_machine','e')}</div>
+        </div>
+      </div>`:''}
       ${canEdit?`
       <div class="mblock"><div class="h">${icon('box')}Полки</div><div class="mini-grid">${shelfHtml}</div></div>
       <div class="mblock"><div class="h">${icon('truck')}Выдача</div>
@@ -415,6 +462,7 @@ function openModal(id){
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn ghost sm" href="create.html?edit=${o.id}">${icon('edit')}Изменить состав</a>
         <a class="btn ghost sm" href="receipt.html?id=${o.id}" target="_blank">${icon('receipt')}Квитанция</a>
         <div class="spacer"></div>
         <button class="btn danger sm" onclick="delOrder('${o.id}','${o.customer.replace(/'/g,'')}')">${icon('trash')}Удалить заказ</button>
@@ -443,6 +491,34 @@ async function markStage(id,field){
 async function setField(id,field,val){await sb.from('queue_orders').update({[field]:val||null}).eq('id',id);
   const o=ORDERS.find(x=>x.id===id);if(o)o[field]=val;}
 async function setManual(id,val){await sb.from('queue_orders').update({manual_add_min:parseInt(val)||0}).eq('id',id);await load();}
+function machSelect(o,field,key){
+  const cur=parseInt(o[field])||1, count=nMach(key), label=key==='s'?'Пила':'Кромка';
+  let opts='';
+  for(let i=1;i<=count;i++) opts+=`<option value="${i}" ${i===cur?'selected':''}>${label} ${i}</option>`;
+  return `<select onchange="setMachine('${o.id}','${field}',this.value)">${opts}</select>`;
+}
+async function setMachine(id,field,val){
+  await sb.from('queue_orders').update({[field]:parseInt(val)||1}).eq('id',id);
+  await load();
+}
+// перемещение заказа в очереди: меняем seq местами с соседним активным заказом
+async function moveOrder(id,dir){
+  // активные заказы (не готовые), в текущем порядке очереди
+  const active=ORDERS.filter(o=>o.status_ready!=='done')
+    .sort((a,b)=>{
+      if(!!b.is_urgent-!!a.is_urgent)return(!!b.is_urgent)-(!!a.is_urgent);
+      return(a.seq||0)-(b.seq||0);
+    });
+  const i=active.findIndex(o=>o.id===id);
+  const j=i+dir;
+  if(i<0||j<0||j>=active.length) return;
+  const A=active[i], B=active[j];
+  // меняем seq местами (если seq не заданы — присвоим по позиции)
+  const seqA=A.seq!=null?A.seq:i, seqB=B.seq!=null?B.seq:j;
+  await sb.from('queue_orders').update({seq:seqB}).eq('id',A.id);
+  await sb.from('queue_orders').update({seq:seqA}).eq('id',B.id);
+  await load();
+}
 async function delOrder(id,name){if(!confirm('Удалить заказ '+name+'?'))return;await sb.from('queue_orders').delete().eq('id',id);closeModal();await load();}
 async function deliver(id,name){
   const car=prompt('Выдать заказ «'+name+'».\nНомер авто (можно пусто):','');

@@ -101,10 +101,11 @@ function computeQueue(orders){
   };
   const c=workCfg();
   const dayStart=c.dayStart;
-  // очередь считается от «сейчас» (а не всегда от начала смены).
-  // snapToWork перенесёт на ближайший рабочий момент: если сейчас до 09:00 — на 09:00,
-  // если после конца дня — на утро завтра, если обед — на 13:00.
   const nowWork=snapToWork(nowAbs());
+
+  // сколько станков каждого типа (из настроек, по умолчанию 2 пилы + 2 кромки)
+  const nSaw = Math.max(1, n('saw_machines',2));
+  const nEdge= Math.max(1, n('edge_machines',2));
 
   // порядок: экстренные вперёд, затем по seq
   const ord=[...orders].sort((a,b)=>{
@@ -112,11 +113,15 @@ function computeQueue(orders){
     return (a.seq||0)-(b.seq||0);
   });
 
-  let free={saw:nowWork, edge:nowWork, drill:nowWork};
+  // линия освобождения каждого станка: free.saw[1..nSaw], free.edge[1..nEdge], free.drill
+  const free={ saw:{}, edge:{}, drill:nowWork };
+  for(let i=1;i<=nSaw;i++)  free.saw[i]=nowWork;
+  for(let i=1;i<=nEdge;i++) free.edge[i]=nowWork;
+
+  const clampMachine=(v,max)=>{ v=parseInt(v)||1; return (v>=1&&v<=max)?v:1; };
   const out=new Map();
 
   for(const o of ord){
-    // суммарно по составу заказа
     const sheets=(o.sheets||[]).reduce((s,x)=>s+(x.qty||0),0);
     const edges=(o.edges||[]);
     const edgeM=edges.reduce((s,x)=>s+Number(x.meters||0),0);
@@ -125,7 +130,10 @@ function computeQueue(orders){
     const hasEdge=edgeM>0||ovalPc>0;
     const hasDrill=!!o.has_drill;
 
-    // приёмка: если нажата кнопка «принял» — от неё; иначе плановая доставка от «сейчас»
+    // назначенные станки (ручной выбор; если вне диапазона — станок 1)
+    const sawM = clampMachine(o.saw_machine, nSaw);
+    const edgeM_ = clampMachine(o.edge_machine, nEdge);
+
     let readyAt;
     if(o.accepted_at){
       const d=new Date(o.accepted_at);
@@ -136,34 +144,34 @@ function computeQueue(orders){
     }
 
     const stages=[];
-    // РАСПИЛ
-    let sS=snapToWork(Math.max(free.saw, readyAt));
+    // РАСПИЛ — на назначенной пиле
+    let sS=snapToWork(Math.max(free.saw[sawM], readyAt));
     let sE=addWork(sS, sheets*norm.saw + (o.manual_add_min||0));
-    free.saw=addWork(sE, norm.bSaw);
-    stages.push({m:'s',a:sS,b:sE});
+    free.saw[sawM]=addWork(sE, norm.bSaw);
+    stages.push({m:'s',a:sS,b:sE,machine:sawM});
     let handoff=sE;
 
-    // КРОМКА
+    // КРОМКА — на назначенном кромочном
     if(hasEdge){
       if(byClient){
-        stages.push({m:'e',side:true,after:handoff});
+        stages.push({m:'e',side:true,after:handoff,machine:edgeM_});
       }else{
-        let eS=snapToWork(Math.max(free.edge, handoff));
+        let eS=snapToWork(Math.max(free.edge[edgeM_], handoff));
         let eE=addWork(eS, (edgeM/100)*norm.edge + ovalPc*norm.oval);
-        free.edge=addWork(eE, norm.bEdge);
-        stages.push({m:'e',a:eS,b:eE});
+        free.edge[edgeM_]=addWork(eE, norm.bEdge);
+        stages.push({m:'e',a:eS,b:eE,machine:edgeM_});
         handoff=eE;
       }
     }
-    // ПРИСАДКА
+    // ПРИСАДКА — один станок
     if(hasDrill){
       let dS=snapToWork(Math.max(free.drill, handoff));
       let dE=addWork(dS, norm.drill);
       free.drill=dE;
-      stages.push({m:'d',a:dS,b:dE});
+      stages.push({m:'d',a:dS,b:dE,machine:1});
       handoff=dE;
     }
-    out.set(o.id, { stages, ready: byClient?null:handoff });
+    out.set(o.id, { stages, ready: byClient?null:handoff, sawM, edgeM:edgeM_ });
   }
   return out;
 }
@@ -205,7 +213,9 @@ const ICONS={
   settings:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
   list:'<svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   bell:'<svg class="i" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
-  bellOn:'<svg class="i" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/><circle cx="18" cy="5" r="3" fill="currentColor" stroke="none"/></svg>'
+  bellOn:'<svg class="i" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/><circle cx="18" cy="5" r="3" fill="currentColor" stroke="none"/></svg>',
+  receipt:'<svg class="i" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1V2l-2 1-2-1-2 1-2-1-2 1-2-1zM8 7h8M8 11h8M8 15h5"/></svg>',
+  edit:'<svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>'
 };
 function icon(name){ return ICONS[name]||''; }
 

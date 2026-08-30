@@ -13,7 +13,11 @@
   display:flex;align-items:center;justify-content:space-between;gap:14px;border-left:4px solid var(--line-2)}
 .d.ready{border-left-color:var(--ok)} .d.wait{border-left-color:var(--warn)} .d.urgent{border-left-color:var(--late)}
 .d .who{font:800 21px 'Manrope'}
-.d .sub{font:500 12px 'IBM Plex Mono';color:var(--muted);margin-top:4px}
+.d .stg{display:inline-block;margin-top:6px;font:700 13px 'Manrope';color:var(--brand);
+  background:color-mix(in srgb,var(--brand) 14%,transparent);padding:3px 10px;border-radius:7px}
+.d.ready .stg{color:var(--edge);background:color-mix(in srgb,var(--edge) 14%,transparent)}
+.d.wait .stg{color:var(--warn);background:var(--warn-bg)}
+.d .sub{font:500 12px 'IBM Plex Mono';color:var(--muted);margin-top:6px}
 .d .time{font:700 18px 'IBM Plex Mono';color:var(--ok);white-space:nowrap;text-align:right}
 .d .time .dw{display:block;font:700 11px 'Manrope';margin-top:2px}
 .d .time.wait{color:var(--warn);font-size:14px}
@@ -37,6 +41,28 @@
 <script>
 initTheme();
 document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Управление';
+// текущий этап заказа словами (что сейчас происходит / чего ждёт)
+function stageLabel(o,r){
+  const nS=nMach2('s'), nE=nMach2('e');
+  const sawName = nS>1 ? ('Пила '+(o.saw_machine||1)) : 'Пила';
+  const edgeName= nE>1 ? ('Кромка '+(o.edge_machine||1)) : 'Кромка';
+  const hasEdge=(r.stages||[]).some(s=>s.m==='e');
+  const hasDrill=(r.stages||[]).some(s=>s.m==='d');
+  if(!o.accepted_at) return 'Ждёт листы';                    // ещё не принят груз
+  if(o.status_saw!=='done') return 'В распиле · '+sawName;
+  if(hasEdge){
+    const byClient=(o.edges||[]).length>0&&(o.edges||[]).every(x=>x.by_client);
+    if(o.status_edge!=='done') return byClient?'Ждёт кромку клиента':('В кромке · '+edgeName);
+  }
+  if(hasDrill && o.status_drill!=='done') return 'В присадке';
+  return 'Финишная проверка';
+}
+function nMach2(key){
+  const N=SETTINGS.norms||{};
+  if(key==='s') return Math.max(1,parseInt(N.saw_machines)||2);
+  if(key==='e') return Math.max(1,parseInt(N.edge_machines)||2);
+  return 1;
+}
 async function load(){
   await loadSettings();
   const orders=(await fetchOrders()).filter(o=>o.status_ready!=='done');
@@ -51,7 +77,8 @@ async function load(){
     const cls=o.is_urgent?'urgent':(byClient?'wait':'ready');
     const d=Math.floor((r.ready||0)/1440);const dw=d===0?'сегодня':(d===1?'завтра':'+'+d+' дн');
     const time=byClient?`<div class="time wait">ждём кромку</div>`:`<div class="time">${fmtHM(r.ready)}<span class="dw">${dw}</span></div>`;
-    return `<div class="d ${cls}"><div><div class="who">${o.customer}</div><div class="sub">${sh} лист.${o.is_urgent?' · срочно':''}</div></div>${time}</div>`;
+    const stage=stageLabel(o,r);
+    return `<div class="d ${cls}"><div><div class="who">${o.customer}</div><div class="stg">${stage}</div><div class="sub">${sh} лист.${o.is_urgent?' · срочно':''}</div></div>${time}</div>`;
   }).join('');
   document.getElementById('upd').textContent='Обновлено '+new Date().toLocaleTimeString('ru-RU');
 }

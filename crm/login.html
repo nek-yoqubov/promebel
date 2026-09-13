@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL CRM — Вход</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+body{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px 16px}
+.box{width:100%;max-width:390px}
+.logo-c{display:flex;justify-content:center;margin-bottom:6px}
+.logo-c img{width:220px;max-width:70%;height:auto;display:block}
+.tagline{text-align:center;color:var(--muted);font-size:14px;margin:0 0 22px}
+.theme-fab{position:fixed;top:16px;right:16px}
+</style>
+</head>
+<body>
+<button class="icon-btn theme-fab" id="themeBtn" title="Тема"></button>
+<div class="box">
+  <div class="logo-c">
+    <img id="loginLogo" src="logo-vertical-dark.png"
+         data-dark="logo-vertical-dark.png" data-light="logo-vertical-light.png"
+         alt="PRO MEBEL" width="220">
+  </div>
+  <p class="tagline">Платформа задач и контроля</p>
+  <div class="panel">
+    <div class="field">
+      <label class="field-label" for="email">Почта</label>
+      <input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label class="field-label" for="password">Пароль</label>
+      <input id="password" type="password" autocomplete="current-password">
+    </div>
+    <button class="btn btn-block" id="btn">Войти</button>
+    <div class="msg err" id="msg"></div>
+  </div>
+</div>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();   // initTheme сам подставит логотип под тему
+document.getElementById('themeBtn').onclick = toggleTheme;
+
+const msg = document.getElementById('msg');
+const btn = document.getElementById('btn');
+
+// профиль не найден — сюда нас отправил requireAuth()
+if(new URLSearchParams(location.search).get('nouser')){
+  msg.textContent = 'Пользователь не заведён в платформе, обратитесь к администратору';
+}
+
+// уже вошли — на меню
+(async () => {
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session) location.replace('index.html');
+})();
+
+async function doLogin(){
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  if(!email || !password){ msg.textContent = 'Введите почту и пароль'; return; }
+  btn.disabled = true; btn.textContent = 'Проверяем…'; msg.textContent = '';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){
+    msg.textContent = errText(error);
+    btn.disabled = false; btn.textContent = 'Войти';
+    return;
+  }
+  // профиль обязателен: без него в платформе делать нечего
+  const { data:prof, error:pErr } = await sb.from('employees')
+    .select('id').eq('id', data.user.id).maybeSingle();
+  if(pErr){
+    msg.textContent = errText(pErr);
+    btn.disabled = false; btn.textContent = 'Войти';
+    return;
+  }
+  if(!prof){
+    await sb.auth.signOut();
+    msg.textContent = 'Пользователь не заведён в платформе, обратитесь к администратору';
+    btn.disabled = false; btn.textContent = 'Войти';
+    return;
+  }
+  location.replace('index.html');
+}
+
+btn.onclick = doLogin;
+document.getElementById('email').addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
+document.getElementById('password').addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>

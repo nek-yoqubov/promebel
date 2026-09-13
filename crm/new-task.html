@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL CRM — Новая задача</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<div class="page-narrow">
+  <div class="topbar" id="topbar"></div>
+
+  <h1>Новая задача</h1>
+  <p class="sub">Постановщик — вы. Задачу можно поставить себе или своему подчинённому.</p>
+
+  <div class="panel" style="margin-top:16px">
+    <div class="field">
+      <label class="field-label" for="title">Название <span class="req">*</span></label>
+      <input id="title" maxlength="200" placeholder="Что нужно сделать">
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="description">Описание</label>
+      <textarea id="description" rows="4" placeholder="Подробности, вводные, ссылки"></textarea>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="assignee">Исполнитель <span class="req">*</span></label>
+      <select id="assignee"></select>
+      <div class="hint" id="assigneeHint"></div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label class="field-label" for="due">Срок</label>
+        <input id="due" class="mono" type="datetime-local">
+      </div>
+      <div class="field">
+        <label class="field-label" for="priority">Приоритет</label>
+        <select id="priority">
+          <option value="low">Низкий</option>
+          <option value="normal" selected>Обычный</option>
+          <option value="high">Высокий</option>
+          <option value="critical">Критический</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="criteria">Критерий выполнения</label>
+      <textarea id="criteria" rows="2" placeholder="По чему считаем задачу закрытой"></textarea>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label class="field-label" for="branch">Филиал</label>
+        <select id="branch"></select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="parent">Родительская задача</label>
+        <select id="parent"></select>
+        <div class="hint">Для декомпозиции цели на подзадачи</div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:6px">
+      <button class="btn" id="save" style="flex:1">Поставить задачу</button>
+      <a class="btn ghost" href="tasks.html">Отмена</a>
+    </div>
+    <div class="msg err" id="msg"></div>
+  </div>
+</div>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+
+(async () => {
+  if(!await requireAuth()) return;
+  renderTopbar({ back:'tasks.html' });
+
+  await Promise.all([loadEmployees(), loadBranches()]);
+  fillAssignees();
+  fillBranches();
+  await fillParents();
+
+  $('save').onclick = save;
+  $('title').focus();
+})();
+
+/* Исполнители: сверху те, кому база точно разрешит (я и мои подчинённые) */
+function fillAssignees(){
+  const mine = EMPS.filter(e => canAssignTo(e.id));
+  const rest = EMPS.filter(e => !canAssignTo(e.id));
+  const opt = e => '<option value="' + esc(e.id) + '">' + esc(e.full_name) +
+    (e.position ? ' — ' + esc(e.position) : '') + '</option>';
+
+  let html = '<option value="">Выберите исполнителя</option>';
+  if(mine.length) html += '<optgroup label="Я и мои подчинённые">' + mine.map(opt).join('') + '</optgroup>';
+  if(rest.length) html += '<optgroup label="Остальные сотрудники">' + rest.map(opt).join('') + '</optgroup>';
+  $('assignee').innerHTML = html;
+
+  $('assignee').onchange = () => {
+    const v = $('assignee').value;
+    $('assigneeHint').textContent = (v && !canAssignTo(v))
+      ? 'Это не ваш подчинённый — база, скорее всего, откажет в постановке.'
+      : '';
+  };
+}
+
+function fillBranches(){
+  $('branch').innerHTML = '<option value="">Не указан</option>' +
+    BRANCHES.map(b => '<option value="' + b.id + '"' +
+      (b.id === ME.branch_id ? ' selected' : '') + '>' + esc(b.name) + '</option>').join('');
+}
+
+/* Родительская задача: только живые, что мне видны */
+async function fillParents(){
+  const { data, error } = await sb.from('v_tasks')
+    .select('id,title,status')
+    .in('status', ['new','in_progress','review'])
+    .is('archived_at', null)
+    .order('created_at', { ascending:false }).limit(200);
+  if(error){ console.error('parents', error); }
+  const rows = data || [];
+  const pre = qs.get('parent');
+  $('parent').innerHTML = '<option value="">Нет, самостоятельная задача</option>' +
+    rows.map(t => '<option value="' + t.id + '"' + (String(t.id) === pre ? ' selected' : '') + '>#' +
+      t.id + ' — ' + esc(t.title) + '</option>').join('');
+  // родитель передан ссылкой, но в список не попал (например, уже закрыт)
+  if(pre && !rows.some(t => String(t.id) === pre)){
+    $('parent').insertAdjacentHTML('beforeend',
+      '<option value="' + esc(pre) + '" selected>#' + esc(pre) + '</option>');
+  }
+}
+
+async function save(){
+  const msg = $('msg'), btn = $('save');
+  msg.className = 'msg err'; msg.textContent = '';
+
+  const title = $('title').value.trim();
+  const assignee_id = $('assignee').value;
+  if(!title){ msg.textContent = 'Впишите название задачи'; $('title').focus(); return; }
+  if(!assignee_id){ msg.textContent = 'Выберите исполнителя'; $('assignee').focus(); return; }
+
+  const due = localToISO($('due').value);
+  if($('due').value && !due){ msg.textContent = 'Срок указан неверно'; return; }
+
+  const row = {
+    title,
+    description: $('description').value.trim() || null,
+    author_id: ME.id,                       // постановщик всегда я
+    assignee_id,
+    parent_id: $('parent').value ? Number($('parent').value) : null,
+    branch_id: $('branch').value ? Number($('branch').value) : null,
+    priority: $('priority').value,
+    status: 'new',
+    due_at: due,
+    done_criteria: $('criteria').value.trim() || null
+  };
+
+  btn.disabled = true; btn.textContent = 'Сохраняем…';
+  const { error } = await sb.from('tasks').insert(row);
+  if(error){
+    msg.textContent = errText(error, 'task-add');
+    btn.disabled = false; btn.textContent = 'Поставить задачу';
+    return;
+  }
+  msg.className = 'msg ok'; msg.textContent = 'Задача поставлена';
+  location.replace('tasks.html?tab=author');
+}
+</script>
+</body>
+</html>

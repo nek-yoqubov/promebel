@@ -1,0 +1,363 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+/* ============================================================
+   PRO MEBEL · CRM — общие стили
+   Единый визуальный язык с «Очередью распила».
+   Тёмная тема по умолчанию, светлая через body.light.
+   ============================================================ */
+
+/* ---------- Тёмная тема (по умолчанию) ---------- */
+:root{
+  --bg:#14161A; --panel:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#2E343D; --line-2:#3A424D;
+  --ink:#EDEFF2; --ink-2:#AEB6C1; --muted:#7A828E;
+  --brand:#F97316; --brand-ink:#0f1114;
+  --ok:#26B673; --ok-bg:#12281f; --warn:#F5B301; --warn-bg:#2a2410;
+  --late:#F0546A; --late-bg:#2a1418;
+  --info:#3B9EFF; --info-bg:#0f2233;
+  --plan:#A96BFF; --plan-bg:#20143010;
+  --shadow:0 6px 24px #0007; --radius:14px;
+}
+/* ---------- Светлая тема ---------- */
+body.light{
+  --bg:#F4F5F7; --panel:#FFFFFF; --card:#FBFBFC; --card-2:#F1F2F5;
+  --line:#E4E7EC; --line-2:#D3D8DF;
+  --ink:#1A1D23; --ink-2:#4A515B; --muted:#828A95;
+  --brand:#EA6A12; --brand-ink:#FFFFFF;
+  --ok:#159A5E; --ok-bg:#E3F6EC; --warn:#B87D00; --warn-bg:#FBF1D8;
+  --late:#DC3A54; --late-bg:#FBE6EA;
+  --info:#1F76D2; --info-bg:#E6F1FC;
+  --plan:#7B3FD4; --plan-bg:#F1E9FD;
+  --shadow:0 6px 20px #0000000f;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Manrope',system-ui,sans-serif;font-size:16px;line-height:1.45;
+  transition:background .2s,color .2s}
+.page{max-width:1100px;margin:0 auto;padding:16px 20px 72px}
+.page-narrow{max-width:660px;margin:0 auto;padding:16px 20px 72px}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* ---------- Логотип ---------- */
+.logo{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink);flex:none}
+.logo svg{width:30px;height:30px;flex:none}
+.logo .lt{font:800 17px 'Manrope';letter-spacing:-.01em;white-space:nowrap}
+.logo .lt b{color:var(--brand);font-weight:800}
+
+/* ---------- Топбар ---------- */
+.topbar{display:flex;align-items:center;gap:10px;padding:12px 0 14px;flex-wrap:wrap}
+.topbar .sep{color:var(--muted);font-size:14px;font-weight:600}
+.spacer{flex:1}
+.navlink{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);text-decoration:none;
+  font-weight:700;font-size:15px;padding:9px 13px;border-radius:10px;transition:background .12s,color .12s}
+.navlink:hover{background:var(--card-2);color:var(--ink)}
+.navlink.primary{background:var(--brand);color:var(--brand-ink)}
+.navlink.primary:hover{filter:brightness(1.06)}
+.icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:42px;height:42px;border:1px solid var(--line);background:var(--card);border-radius:11px;
+  cursor:pointer;color:var(--ink-2);transition:border-color .12s,color .12s;flex:none}
+.icon-btn:hover{border-color:var(--line-2);color:var(--ink)}
+.icon-btn .dot{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;
+  border-radius:10px;background:var(--late);color:#fff;font:700 11px 'IBM Plex Mono',monospace;
+  display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
+svg.i{width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:15px;height:15px}
+svg.i.lg{width:22px;height:22px}
+svg.i.fill{fill:currentColor;stroke:none}
+
+h1{font:800 26px 'Manrope';letter-spacing:-.015em;margin:0 0 4px}
+h2{font:800 19px 'Manrope';margin:0 0 10px}
+.sub{color:var(--muted);font-size:14px}
+
+/* ---------- Панели ---------- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+.panel+.panel{margin-top:14px}
+.sec-title{display:flex;align-items:center;gap:8px;font:700 11px 'Manrope';letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+
+/* ---------- Поля ---------- */
+.field{margin-bottom:14px}
+.field-label{display:block;font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:6px;letter-spacing:.02em}
+.field-label .req{color:var(--late)}
+input,select,textarea{width:100%;background:var(--card);border:1.5px solid var(--line);border-radius:10px;
+  padding:12px 13px;color:var(--ink);font:600 16px 'Manrope';transition:border-color .12s}
+textarea{resize:vertical;min-height:88px;line-height:1.5}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
+input.mono,select.mono{font-family:'IBM Plex Mono',monospace}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
+.msg{margin-top:12px;font-size:15px;font-weight:700;min-height:20px}
+.msg.err{color:var(--late)} .msg.ok{color:var(--ok)}
+
+/* ---------- Кнопки ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--brand);
+  color:var(--brand-ink);border:none;border-radius:10px;padding:12px 17px;font:700 15px 'Manrope';
+  cursor:pointer;transition:filter .12s}
+.btn:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.5;cursor:default;filter:none}
+.btn-block{width:100%}
+.btn.ghost{background:var(--card);color:var(--ink);border:1.5px solid var(--line)}
+.btn.ghost:hover{border-color:var(--line-2);filter:none}
+.btn.sm{padding:9px 13px;font-size:14px}
+.btn.ok{background:var(--ok-bg);color:var(--ok);border:1.5px solid transparent}
+.btn.warn{background:var(--warn-bg);color:var(--warn);border:1.5px solid transparent}
+.btn.danger{background:var(--late-bg);color:var(--late);border:1.5px solid transparent}
+.btn.info{background:var(--info-bg);color:var(--info);border:1.5px solid transparent}
+.btn-row{display:flex;flex-wrap:wrap;gap:9px}
+
+/* ---------- Бейджи: статус, приоритет, просрочка ---------- */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;
+  font:700 12px 'Manrope';letter-spacing:.01em;white-space:nowrap}
+.badge.st-new{background:var(--card-2);color:var(--ink-2)}
+.badge.st-in_progress{background:var(--info-bg);color:var(--info)}
+.badge.st-review{background:var(--warn-bg);color:var(--warn)}
+.badge.st-done{background:var(--ok-bg);color:var(--ok)}
+.badge.st-canceled{background:var(--card-2);color:var(--muted)}
+.badge.p-low{background:var(--card-2);color:var(--muted)}
+.badge.p-normal{background:var(--card-2);color:var(--ink-2)}
+.badge.p-high{background:var(--warn-bg);color:var(--warn)}
+.badge.p-critical{background:var(--late-bg);color:var(--late)}
+.badge.late{background:var(--late-bg);color:var(--late)}
+.badge.info{background:var(--card-2);color:var(--ink-2)}
+
+/* ---------- Вкладки ---------- */
+.tabs{display:flex;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:5px;margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{flex:1;min-width:132px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  background:none;border:none;color:var(--ink-2);font:700 15px 'Manrope';padding:11px 12px;
+  border-radius:9px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
+.tab:hover{color:var(--ink)}
+.tab.active{background:var(--brand);color:var(--brand-ink)}
+.tab .cnt{font-family:'IBM Plex Mono',monospace;font-size:13px;opacity:.75}
+
+/* ---------- Фильтры ---------- */
+.filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.filters .f-search{position:relative}
+.filters .f-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.filters .f-search input{padding-left:38px}
+
+/* ---------- Карточка задачи ---------- */
+.tlist{display:flex;flex-direction:column;gap:10px}
+.tcard{position:relative;display:block;width:100%;text-align:left;background:var(--panel);
+  border:1px solid var(--line);border-left:4px solid var(--line-2);border-radius:12px;
+  padding:14px 16px;cursor:pointer;font-family:inherit;color:inherit;
+  transition:border-color .12s,transform .12s}
+.tcard:hover{border-color:var(--line-2);transform:translateY(-1px)}
+.tcard.pl-low{border-left-color:var(--muted)}
+.tcard.pl-normal{border-left-color:var(--line-2)}
+.tcard.pl-high{border-left-color:var(--warn)}
+.tcard.pl-critical{border-left-color:var(--late)}
+.tcard.is-overdue{background:linear-gradient(90deg,var(--late-bg),var(--panel) 55%)}
+.tcard.is-done{opacity:.72}
+.tcard .t-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
+.tcard .t-title{flex:1;font:700 17px 'Manrope';line-height:1.35;color:var(--ink);word-break:break-word}
+.tcard .t-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:14px;color:var(--ink-2)}
+.tcard .t-meta .it{display:inline-flex;align-items:center;gap:6px}
+.tcard .t-meta .due{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.tcard .t-meta .due.late{color:var(--late)}
+.tcard .t-meta .due.warn{color:var(--warn)}
+.tcard .t-meta .due.ok{color:var(--ink-2)}
+.tcard .t-meta .due.muted{color:var(--muted)}
+.tcard .t-sub{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--ink-2)}
+.tcard .t-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)}
+
+/* ---------- Модалка ---------- */
+.modal{position:fixed;inset:0;background:#0009;backdrop-filter:blur(2px);z-index:60;
+  display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}
+.modal[hidden]{display:none}
+.modal-box{width:100%;max-width:760px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow);margin:auto}
+.modal-head{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--panel);border-radius:var(--radius) var(--radius) 0 0;z-index:2}
+.modal-head h2{flex:1;margin:0;font:800 20px 'Manrope';line-height:1.3;word-break:break-word}
+.modal-body{padding:18px 20px 22px}
+.mblock{margin-bottom:20px}
+.mblock:last-child{margin-bottom:0}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:15px}
+.dl dt{color:var(--muted);font-size:13px;font-weight:700;padding-top:2px}
+.dl dd{margin:0;color:var(--ink)}
+.text-block{white-space:pre-wrap;word-break:break-word;font-size:15px;color:var(--ink);line-height:1.55}
+.crit{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ok);
+  border-radius:9px;padding:12px 14px}
+.sublist{display:flex;flex-direction:column;gap:8px}
+.subrow{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+  border-radius:9px;padding:10px 12px;font-size:15px;cursor:pointer}
+.subrow:hover{border-color:var(--line-2)}
+.subrow .s-t{flex:1;font-weight:600;word-break:break-word}
+.comments{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.cm{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
+.cm .cm-h{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:13px}
+.cm .cm-a{font-weight:700;color:var(--ink)}
+.cm .cm-d{font-family:'IBM Plex Mono',monospace;color:var(--muted);font-size:12px}
+.cm .cm-b{white-space:pre-wrap;word-break:break-word;font-size:15px;color:var(--ink-2)}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{position:relative;padding:0 0 14px 22px;border-left:1.5px solid var(--line);margin-left:5px}
+.tl li:last-child{border-left-color:transparent;padding-bottom:0}
+.tl li::before{content:'';position:absolute;left:-5.5px;top:5px;width:9px;height:9px;border-radius:50%;
+  background:var(--line-2)}
+.tl li.acc::before{background:var(--brand)}
+.tl .ev{font-size:15px;font-weight:600;color:var(--ink)}
+.tl .ev-d{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)}
+
+/* ---------- Уведомления (поповер) ---------- */
+.pop{position:absolute;right:0;top:50px;width:340px;max-width:calc(100vw - 32px);background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);z-index:70;overflow:hidden}
+.pop[hidden]{display:none}
+.pop-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.pop-h .t{flex:1;font:700 14px 'Manrope'}
+.pop-h button{background:none;border:none;color:var(--brand);font:700 13px 'Manrope';cursor:pointer;padding:0}
+.pop-list{max-height:min(60vh,420px);overflow:auto}
+.nrow{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);
+  padding:11px 14px;cursor:pointer;font-family:inherit;color:inherit}
+.nrow:hover{background:var(--card)}
+.nrow.unread{background:var(--card-2)}
+.nrow .n-t{font:700 14px 'Manrope';color:var(--ink);margin-bottom:3px}
+.nrow .n-b{font-size:13px;color:var(--ink-2);word-break:break-word}
+.nrow .n-d{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-top:3px}
+.bell-wrap{position:relative}
+
+/* ---------- Меню-плитки ---------- */
+.menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.mcard{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px;text-decoration:none;transition:border-color .12s,transform .12s;position:relative}
+.mcard:hover{border-color:var(--brand);transform:translateY(-2px)}
+.mcard.soon{opacity:.6;cursor:default}
+.mcard.soon:hover{border-color:var(--line);transform:none}
+.mcard .ic{width:42px;height:42px;border-radius:11px;background:var(--card-2);display:flex;
+  align-items:center;justify-content:center;color:var(--brand);margin-bottom:13px}
+.mcard h3{margin:0 0 5px;font:700 17px 'Manrope';color:var(--ink)}
+.mcard p{margin:0;font-size:14px;color:var(--muted)}
+.mcard .soon-tag{position:absolute;top:16px;right:16px;font:700 10px 'Manrope';letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);background:var(--card-2);padding:4px 8px;border-radius:6px}
+
+/* ---------- Админка: таблица и строки добавления ---------- */
+.adm-bar{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;margin-bottom:14px}
+.adm-bar .f-search{position:relative}
+.adm-bar .f-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.adm-bar .f-search input{padding-left:38px}
+
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
+.tbl th{text-align:left;font:700 11px 'Manrope';letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);padding:0 12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl .nm{font-weight:700;color:var(--ink)}
+.tbl .dim{color:var(--muted)}
+.tbl tr.off .nm{color:var(--muted)}
+.tbl .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+
+.addrow{display:grid;grid-template-columns:1.2fr 1fr 1.4fr auto;gap:10px;align-items:start;
+  margin-top:14px;padding-top:14px;border-top:1px dashed var(--line-2)}
+.addrow.two{grid-template-columns:1fr auto}
+.addrow .field{margin:0}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:15px;
+  font-weight:600;user-select:none}
+.chk input{width:auto;margin:0}
+.cred{background:var(--ok-bg);color:var(--ok);border-radius:10px;padding:12px 14px;
+  font-size:15px;font-weight:600;margin-bottom:12px}
+.cred .mono{color:var(--ink);background:var(--card);padding:2px 7px;border-radius:6px}
+
+/* ---------- Личное дело ---------- */
+.person{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.person .ava{width:52px;height:52px;border-radius:14px;background:var(--card-2);color:var(--brand);
+  display:flex;align-items:center;justify-content:center;font:800 20px 'Manrope';flex:none}
+.person .pn{font:800 22px 'Manrope';letter-spacing:-.01em;margin:0}
+.person .pp{color:var(--muted);font-size:14px;margin:2px 0 0}
+
+.docrow{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:11px 13px;margin-bottom:9px}
+.docrow .di{color:var(--brand);flex:none}
+.docrow .dm{flex:1;min-width:0}
+.docrow .dt{font-weight:700;color:var(--ink);word-break:break-word}
+.docrow .ds{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px}
+.docrow .da{display:flex;gap:6px;flex:none}
+
+.dots{display:inline-flex;gap:5px;align-items:center}
+.dots i{width:11px;height:11px;border-radius:50%;background:var(--line-2);display:block}
+.dots i.on{background:var(--brand)}
+.dots.pick i{cursor:pointer;width:22px;height:22px}
+.dots.pick i.on{background:var(--brand)}
+
+.skillrow{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:11px 13px;margin-bottom:9px;flex-wrap:wrap}
+.skillrow .sn{flex:1;min-width:140px;font-weight:700;color:var(--ink)}
+.skillrow .sd{font-size:13px;color:var(--muted);width:100%}
+
+/* ---------- Ссылки и планы ---------- */
+.lgroup{margin-bottom:22px}
+.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.lcard{position:relative;display:flex;flex-direction:column;gap:6px;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:16px;text-decoration:none;
+  transition:border-color .12s,transform .12s}
+.lcard:hover{border-color:var(--brand);transform:translateY(-2px)}
+.lcard .lt{font:700 16px 'Manrope';color:var(--ink);display:flex;align-items:center;gap:8px}
+.lcard .lt svg{color:var(--muted);flex:none}
+.lcard .ld{font-size:14px;color:var(--muted)}
+.lcard .lh{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lcard.off{opacity:.55}
+.lcard .lt::after{content:'';position:absolute;inset:0}   /* кликабельна вся карточка */
+.ladmin{display:flex;gap:6px;margin-top:8px;position:relative;z-index:1}
+
+.pickbox{max-height:210px;overflow:auto;border:1.5px solid var(--line);border-radius:10px;
+  padding:10px 12px;background:var(--card)}
+.pickbox .chk{display:flex;padding:5px 0;font-size:14px}
+.rolegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:4px 12px}
+.inline-add{display:flex;gap:8px;align-items:stretch}
+.inline-add input{flex:1;min-width:0}
+.inline-add .btn{flex:none;padding:0 14px}
+
+/* ---------- Прочее ---------- */
+.empty{color:var(--muted);text-align:center;padding:46px 16px;font-size:15px}
+.loading{color:var(--muted);text-align:center;padding:38px 0;font-size:15px}
+.fatal{max-width:430px;margin:18vh auto;text-align:center;padding:0 20px}
+.fatal .t{font:700 18px 'Manrope';margin:16px 0 8px}
+.fatal .d{color:var(--muted);font-size:15px;margin-bottom:18px}
+
+/* ---------- Мобильная вёрстка ---------- */
+@media (max-width:760px){
+  .page,.page-narrow{padding:12px 14px 64px}
+  h1{font-size:22px}
+  .filters{grid-template-columns:1fr 1fr}
+  .filters .f-search{grid-column:1 / -1}
+  .row2{grid-template-columns:1fr}
+  .tab{min-width:0;font-size:14px;padding:10px 8px}
+  .topbar .sep{display:none}
+  .modal{padding:0}
+  .modal-box{max-width:none;border:none;border-radius:0;min-height:100%}
+  .modal-head{border-radius:0;padding:14px 16px 12px}
+  .modal-body{padding:16px 16px 32px}
+  .dl{grid-template-columns:1fr;gap:2px 0}
+  .dl dd{margin-bottom:10px}
+  .pop{position:fixed;left:14px;right:14px;top:auto;bottom:14px;width:auto;max-width:none}
+  .btn-row .btn{flex:1;min-width:calc(50% - 5px)}
+  .adm-bar{grid-template-columns:1fr 1fr}
+  .adm-bar .f-search{grid-column:1 / -1}
+  .adm-bar .btn{grid-column:1 / -1}
+  .addrow,.addrow.two{grid-template-columns:1fr}
+  .tbl thead{display:none}
+  .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+  .tbl tr{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;margin-bottom:10px}
+  .tbl td{border:none;padding:4px 0;display:flex;gap:10px;align-items:baseline}
+  .tbl td::before{content:attr(data-label);flex:none;width:104px;font-size:12px;
+    font-weight:700;color:var(--muted)}
+  .tbl td.acts-cell{padding-top:10px}
+  .tbl td.acts-cell::before{display:none}
+  .tbl .acts{justify-content:flex-start}
+  .lgrid{grid-template-columns:1fr}
+  .docrow{flex-wrap:wrap}
+  .docrow .da{width:100%;margin-top:4px}
+  .person .pn{font-size:19px}
+}
+
+@media (max-width:430px){
+  .tab{font-size:13px;padding:10px 4px}
+  .tcard .t-title{font-size:16px}
+  .btn{padding:12px 13px}
+}

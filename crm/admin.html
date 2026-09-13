@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL CRM — Сотрудники</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<div class="page">
+  <div class="topbar" id="topbar"></div>
+
+  <h1>Сотрудники и филиалы</h1>
+  <p class="sub">Кто работает в платформе, кому подчиняется и в каком филиале</p>
+
+  <div class="tabs" id="tabs" style="margin-top:16px">
+    <button class="tab active" data-pane="emp">Сотрудники</button>
+    <button class="tab" data-pane="br">Филиалы</button>
+  </div>
+
+  <!-- ---------- Сотрудники ---------- -->
+  <section id="paneEmp">
+    <div class="adm-bar">
+      <div class="f-search">
+        <span id="searchIcon"></span>
+        <input id="fSearch" type="search" placeholder="Поиск по имени или должности" autocomplete="off">
+      </div>
+      <select id="fRole"><option value="">Любая роль</option></select>
+      <select id="fActive">
+        <option value="1">Работают</option>
+        <option value="">Все</option>
+        <option value="0">Отключённые</option>
+      </select>
+      <button class="btn" id="addEmp"></button>
+    </div>
+    <div id="empMsg"></div>
+    <div class="panel" id="empBox"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Филиалы ---------- -->
+  <section id="paneBr" hidden>
+    <div class="panel">
+      <div class="sec-title" id="brTitle">Филиалы</div>
+      <div id="brBox"><div class="loading">Загрузка…</div></div>
+      <div class="addrow">
+        <div class="field">
+          <label class="field-label" for="brName">Название <span class="req">*</span></label>
+          <input id="brName" maxlength="80" placeholder="Например, Юнусабад">
+        </div>
+        <div class="field">
+          <label class="field-label" for="brRegion">Регион</label>
+          <select id="brRegion"></select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="brAddr">Адрес</label>
+          <input id="brAddr" maxlength="200" placeholder="Необязательно">
+        </div>
+        <div class="field">
+          <label class="field-label">&nbsp;</label>
+          <button class="btn" id="brAdd"></button>
+        </div>
+      </div>
+      <div class="msg err" id="brMsg"></div>
+    </div>
+
+    <div class="panel">
+      <div class="sec-title">Регионы</div>
+      <p class="sub" style="margin:-6px 0 12px">Нужны, только если филиалы надо группировать по направлениям</p>
+      <div id="rgBox"></div>
+      <div class="addrow two">
+        <div class="field">
+          <label class="field-label" for="rgName">Название региона</label>
+          <input id="rgName" maxlength="80" placeholder="Например, Ташкент">
+        </div>
+        <div class="field">
+          <label class="field-label">&nbsp;</label>
+          <button class="btn ghost" id="rgAdd"></button>
+        </div>
+      </div>
+      <div class="msg err" id="rgMsg"></div>
+    </div>
+  </section>
+</div>
+
+<!-- ---------- Общая модалка ---------- -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" style="max-width:580px">
+    <div class="modal-head">
+      <h2 id="mTitle"></h2>
+      <button class="icon-btn" id="mClose" title="Закрыть"></button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+
+const $ = id => document.getElementById(id);
+let REGIONS = [];
+let CAN_MANAGE = false;
+
+(async () => {
+  if(!await requireAuth()) return;
+  // список сотрудников открыт админу, директору и HR;
+  // заводить людей, менять доступы и филиалы могут только админ с директором
+  if(!isBossRole() && ME.role !== 'hr'){ location.replace('index.html'); return; }
+  CAN_MANAGE = isBossRole();
+  if(!CAN_MANAGE){
+    document.querySelector('[data-pane="br"]').hidden = true;
+    $('addEmp').hidden = true;
+    document.querySelector('h1').textContent = 'Сотрудники';
+  }
+
+  renderTopbar({ back:'index.html' });
+  $('searchIcon').innerHTML = icon('search');
+  $('mClose').innerHTML = icon('x');
+  $('addEmp').innerHTML = icon('plus') + 'Сотрудник';
+  $('brAdd').innerHTML = icon('plus') + 'Добавить';
+  $('rgAdd').innerHTML = icon('plus') + 'Регион';
+  $('fRole').innerHTML = '<option value="">Любая роль</option>' + roleOptions('');
+
+  $('mClose').onclick = closeModal;
+  $('modal').onclick = e => { if(e.target === $('modal')) closeModal(); };
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('modal').hidden) closeModal(); });
+
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => showPane(b.dataset.pane));
+  ['fRole','fActive'].forEach(id => $(id).onchange = paintEmployees);
+  let t = null;
+  $('fSearch').oninput = () => { clearTimeout(t); t = setTimeout(paintEmployees, 200); };
+
+  $('addEmp').onclick = () => openEmpForm(null);
+  $('brAdd').onclick = addBranch;
+  $('rgAdd').onclick = addRegion;
+
+  await loadAll();
+  paintEmployees();
+  paintBranches();
+})();
+
+function showPane(p){
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.pane === p));
+  $('paneEmp').hidden = p !== 'emp';
+  $('paneBr').hidden = p !== 'br';
+}
+
+/* ============================================================
+   ЗАГРУЗКА СПРАВОЧНИКОВ
+   В админке нужны и отключённые записи, поэтому грузим всё сами.
+   ============================================================ */
+async function loadAll(){
+  const [e, b, r] = await Promise.all([
+    sb.from('employees')
+      .select('id, full_name, role, position, branch_id, manager_id, phone, telegram_chat_id, is_active')
+      .order('full_name'),
+    sb.from('branches').select('id, name, region_id, address, is_active').order('name'),
+    sb.from('regions').select('id, name').order('name')
+  ]);
+  if(e.error){ $('empBox').innerHTML = '<div class="empty">' + esc(errText(e.error)) + '</div>'; }
+  EMPS = e.data || [];
+  EMP_BY_ID = {}; EMPS.forEach(x => EMP_BY_ID[x.id] = x);
+  BRANCHES = b.data || [];
+  BRANCH_BY_ID = {}; BRANCHES.forEach(x => BRANCH_BY_ID[x.id] = x);
+  REGIONS = r.data || [];
+}
+function branchName(id){
+  const b = id ? BRANCH_BY_ID[id] : null;
+  return b ? b.name : null;
+}
+function regionName(id){
+  const r = REGIONS.find(x => x.id === id);
+  return r ? r.name : null;
+}
+
+/* ============================================================
+   СОТРУДНИКИ
+   ============================================================ */
+function paintEmployees(){
+  const q = $('fSearch').value.trim().toLowerCase();
+  const role = $('fRole').value;
+  const act = $('fActive').value;
+
+  const rows = EMPS.filter(e => {
+    if(role && e.role !== role) return false;
+    if(act === '1' && !e.is_active) return false;
+    if(act === '0' && e.is_active) return false;
+    if(q && !((e.full_name || '').toLowerCase().includes(q) ||
+              (e.position || '').toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  if(!rows.length){
+    $('empBox').innerHTML = '<div class="empty">' +
+      (EMPS.length ? 'Никого не нашлось по фильтрам' : 'Сотрудников пока нет — заведите первого') + '</div>';
+    return;
+  }
+
+  $('empBox').innerHTML =
+    '<table class="tbl"><thead><tr>' +
+      '<th>Имя</th><th>Должность</th><th>Роль</th><th>Филиал</th><th>Руководитель</th><th>Доступ</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(empRow).join('') + '</tbody></table>';
+
+  $('empBox').querySelectorAll('[data-act]').forEach(b => {
+    const e = EMP_BY_ID[b.dataset.id];
+    if(b.dataset.act === 'edit') b.onclick = () => openEmpForm(e);
+    if(b.dataset.act === 'pwd') b.onclick = () => openPwdForm(e);
+    if(b.dataset.act === 'active') b.onclick = () => toggleActive(e);
+  });
+}
+
+function empRow(e){
+  const mgr = e.manager_id ? empName(e.manager_id) : null;
+  const br = branchName(e.branch_id);
+  return '<tr class="' + (e.is_active ? '' : 'off') + '">' +
+    '<td data-label="Имя"><span class="nm">' + esc(e.full_name) + '</span></td>' +
+    '<td data-label="Должность">' + (e.position ? esc(e.position) : '<span class="dim">—</span>') + '</td>' +
+    '<td data-label="Роль">' + esc(ROLE_RU[e.role] || e.role) + '</td>' +
+    '<td data-label="Филиал">' + (br ? esc(br) : '<span class="dim">—</span>') + '</td>' +
+    '<td data-label="Руководитель">' + (mgr ? esc(mgr) : '<span class="dim">не указан</span>') + '</td>' +
+    '<td data-label="Доступ">' + (e.is_active
+        ? '<span class="badge st-done">Работает</span>'
+        : '<span class="badge st-canceled">Отключён</span>') + '</td>' +
+    '<td class="acts-cell"><div class="acts">' +
+      '<a class="btn ghost sm" href="employee.html?id=' + encodeURIComponent(e.id) + '">Личное дело</a>' +
+      (CAN_MANAGE
+        ? '<button class="btn ghost sm" data-act="edit" data-id="' + esc(e.id) + '">Изменить</button>' +
+          '<button class="btn ghost sm" data-act="pwd" data-id="' + esc(e.id) + '">Пароль</button>' +
+          '<button class="btn ' + (e.is_active ? 'danger' : 'ok') + ' sm" data-act="active" data-id="' + esc(e.id) + '">' +
+            (e.is_active ? 'Отключить' : 'Включить') + '</button>'
+        : '') +
+    '</div></td></tr>';
+}
+
+/* Руководителем нельзя сделать самого себя или своего же подчинённого —
+   иначе в подчинении получится кольцо, и база не сможет посчитать права. */
+function isUnder(candidateId, ancestorId){
+  let cur = candidateId;
+  for(let i = 0; i < 50 && cur; i++){
+    const e = EMP_BY_ID[cur];
+    if(!e) return false;
+    if(e.manager_id === ancestorId) return true;
+    cur = e.manager_id;
+  }
+  return false;
+}
+
+function openEmpForm(e){
+  const isNew = !e;
+  const managers = EMPS.filter(x =>
+    x.is_active && (isNew || (x.id !== e.id && !isUnder(x.id, e.id))));
+
+  // закрытый филиал не предлагаем, но у кого он уже стоит — оставляем в списке
+  const brOpts = BRANCHES.filter(b => b.is_active || (!isNew && e.branch_id === b.id)).map(b =>
+    '<option value="' + b.id + '"' + (!isNew && e.branch_id === b.id ? ' selected' : '') + '>' +
+    esc(b.name) + (b.is_active ? '' : ' (неактивен)') + '</option>').join('');
+
+  const mgrOpts = managers.map(x =>
+    '<option value="' + esc(x.id) + '"' + (!isNew && e.manager_id === x.id ? ' selected' : '') + '>' +
+    esc(x.full_name) + (x.position ? ' — ' + esc(x.position) : '') + '</option>').join('');
+
+  const html =
+    '<div class="field">' +
+      '<label class="field-label" for="fName">Имя и фамилия <span class="req">*</span></label>' +
+      '<input id="fName" maxlength="120" value="' + (isNew ? '' : esc(e.full_name)) + '">' +
+    '</div>' +
+    '<div class="field">' +
+      '<label class="field-label" for="fPos">Должность</label>' +
+      '<input id="fPos" maxlength="120" placeholder="Например, менеджер напольного ламината" value="' +
+        (isNew || !e.position ? '' : esc(e.position)) + '">' +
+      '<div class="hint">Как должность называется у вас в компании — свободный текст</div>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field">' +
+        '<label class="field-label" for="fRoleSel">Роль <span class="req">*</span></label>' +
+        '<select id="fRoleSel">' + roleOptions(isNew ? 'sales' : e.role) + '</select>' +
+        '<div class="hint">Роль отвечает только за права в платформе</div>' +
+      '</div>' +
+      '<div class="field">' +
+        '<label class="field-label" for="fBranch">Филиал</label>' +
+        '<select id="fBranch"><option value="">Не указан</option>' + brOpts + '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="field">' +
+      '<label class="field-label" for="fMgr">Руководитель</label>' +
+      '<select id="fMgr"><option value="">Не указан</option>' + mgrOpts + '</select>' +
+      '<div class="hint">Кому сотрудник подчиняется. От этого зависят права и эскалация просрочек</div>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field">' +
+        '<label class="field-label" for="fPhone">Телефон</label>' +
+        '<input id="fPhone" class="mono" maxlength="30" placeholder="+998 90 123 45 67" value="' +
+          (isNew || !e.phone ? '' : esc(e.phone)) + '">' +
+      '</div>' +
+      '<div class="field">' +
+        '<label class="field-label" for="fTg">Telegram ID</label>' +
+        '<input id="fTg" class="mono" maxlength="40" inputmode="numeric" value="' +
+          (isNew || !e.telegram_chat_id ? '' : esc(e.telegram_chat_id)) + '">' +
+        '<div class="hint">Нужен для уведомлений. Узнать: написать боту @userinfobot, он пришлёт номер</div>' +
+      '</div>' +
+    '</div>' +
+    (isNew
+      ? '<div class="row2">' +
+          '<div class="field">' +
+            '<label class="field-label" for="fEmail">Почта для входа <span class="req">*</span></label>' +
+            '<input id="fEmail" type="email" autocapitalize="off" spellcheck="false" placeholder="ivanov@promebel.uz">' +
+          '</div>' +
+          '<div class="field">' +
+            '<label class="field-label" for="fPass">Пароль <span class="req">*</span></label>' +
+            '<input id="fPass" class="mono" minlength="8">' +
+            '<div class="hint"><a href="#" id="genPass" style="color:var(--brand);font-weight:700">придумать пароль</a> · не короче 8 символов</div>' +
+          '</div>' +
+        '</div>'
+      : '<div class="hint" style="margin-bottom:14px">Почта входа меняется только через администратора базы. ' +
+        'Пароль сбрасывается кнопкой «Пароль» в списке.</div>');
+
+  openModal(isNew ? 'Новый сотрудник' : 'Изменить сотрудника', html,
+    isNew ? 'Завести сотрудника' : 'Сохранить', () => saveEmp(e));
+
+  if(isNew){
+    $('genPass').onclick = ev => { ev.preventDefault(); $('fPass').value = genPassword(); };
+  }
+  $('fName').focus();
+}
+
+async function saveEmp(e){
+  const isNew = !e;
+  const full_name = $('fName').value.trim();
+  const position = $('fPos').value.trim() || null;
+  const role = $('fRoleSel').value;
+  const branch_id = $('fBranch').value ? Number($('fBranch').value) : null;
+  const manager_id = $('fMgr').value || null;
+  const phone = $('fPhone').value.trim() || null;
+  const telegram_chat_id = $('fTg').value.trim() || null;   // пустое поле пишем как null
+
+  if(!full_name) return mFail('Впишите имя и фамилию');
+  if(!role) return mFail('Выберите роль');
+
+  if(isNew){
+    const email = $('fEmail').value.trim().toLowerCase();
+    const password = $('fPass').value;
+    if(!email) return mFail('Впишите почту для входа');
+    if(password.length < 8) return mFail('Пароль не короче 8 символов');
+
+    mBusy(true, 'Заводим…');
+    const res = await callUsersFn({ action:'create', email, password, full_name, role,
+      position, branch_id, manager_id, phone, telegram_chat_id });
+    if(res.error){ mBusy(false, 'Завести сотрудника'); return mFail(errText(res.error)); }
+
+    closeModal();
+    await loadAll();
+    paintEmployees();
+    flash('Сотрудник заведён. Почта <span class="mono">' + esc(email) +
+      '</span>, пароль <span class="mono">' + esc(password) + '</span> — передайте их сотруднику.');
+    return;
+  }
+
+  mBusy(true, 'Сохраняем…');
+  const { error } = await sb.from('employees')
+    .update({ full_name, position, role, branch_id, manager_id, phone, telegram_chat_id }).eq('id', e.id);
+  if(error){ mBusy(false, 'Сохранить'); return mFail(errText(error, 'update')); }
+
+  closeModal();
+  await loadAll();
+  paintEmployees();
+}
+
+function openPwdForm(e){
+  openModal('Новый пароль — ' + e.full_name,
+    '<div class="field">' +
+      '<label class="field-label" for="fPass2">Пароль <span class="req">*</span></label>' +
+      '<input id="fPass2" class="mono" minlength="8">' +
+      '<div class="hint"><a href="#" id="genPass2" style="color:var(--brand);font-weight:700">придумать пароль</a> · не короче 8 символов</div>' +
+    '</div>' +
+    '<p class="sub">Старый пароль перестанет работать сразу. Новый передайте сотруднику лично.</p>',
+    'Сменить пароль', async () => {
+      const password = $('fPass2').value;
+      if(password.length < 8) return mFail('Пароль не короче 8 символов');
+      mBusy(true, 'Меняем…');
+      const res = await callUsersFn({ action:'set_password', id:e.id, password });
+      if(res.error){ mBusy(false, 'Сменить пароль'); return mFail(errText(res.error)); }
+      closeModal();
+      flash('Пароль для ' + esc(e.full_name) + ' изменён: <span class="mono">' + esc(password) + '</span>');
+    });
+  $('genPass2').onclick = ev => { ev.preventDefault(); $('fPass2').value = genPassword(); };
+  $('fPass2').value = genPassword();
+}
+
+async function toggleActive(e){
+  const on = !e.is_active;
+  openModal(on ? 'Вернуть доступ?' : 'Отключить доступ?',
+    '<p class="text-block">' + esc(e.full_name) + (on
+      ? ' снова сможет входить в платформу и получать задачи.'
+      : ' не сможет войти в платформу. Его задачи и история останутся на месте.') + '</p>',
+    on ? 'Включить' : 'Отключить', async () => {
+      mBusy(true, '…');
+      const res = await callUsersFn({ action:'set_active', id:e.id, is_active:on });
+      if(res.error){ mBusy(false, on ? 'Включить' : 'Отключить'); return mFail(errText(res.error)); }
+      closeModal();
+      await loadAll();
+      paintEmployees();
+    });
+}
+
+/* ============================================================
+   ФИЛИАЛЫ И РЕГИОНЫ
+   Удалять нельзя — на филиалы ссылаются задачи и сотрудники.
+   ============================================================ */
+function paintBranches(){
+  $('brRegion').innerHTML = '<option value="">Без региона</option>' +
+    REGIONS.map(r => '<option value="' + r.id + '">' + esc(r.name) + '</option>').join('');
+
+  $('brBox').innerHTML = BRANCHES.length
+    ? '<table class="tbl"><thead><tr><th>Название</th><th>Регион</th><th>Адрес</th><th>Статус</th><th></th></tr></thead><tbody>' +
+      BRANCHES.map(b =>
+        '<tr class="' + (b.is_active ? '' : 'off') + '">' +
+          '<td data-label="Название"><span class="nm">' + esc(b.name) + '</span></td>' +
+          '<td data-label="Регион">' + (regionName(b.region_id) ? esc(regionName(b.region_id)) : '<span class="dim">—</span>') + '</td>' +
+          '<td data-label="Адрес">' + (b.address ? esc(b.address) : '<span class="dim">—</span>') + '</td>' +
+          '<td data-label="Статус">' + (b.is_active
+            ? '<span class="badge st-done">Работает</span>'
+            : '<span class="badge st-canceled">Неактивен</span>') + '</td>' +
+          '<td class="acts-cell"><div class="acts">' +
+            '<button class="btn ghost sm" data-br="' + b.id + '">Изменить</button>' +
+          '</div></td></tr>').join('') + '</tbody></table>'
+    : '<div class="empty">Филиалов пока нет — добавьте первый</div>';
+
+  $('brBox').querySelectorAll('[data-br]').forEach(btn =>
+    btn.onclick = () => openBranchForm(BRANCH_BY_ID[Number(btn.dataset.br)]));
+
+  $('rgBox').innerHTML = REGIONS.length
+    ? '<div class="chips">' + REGIONS.map(r => '<span class="badge info">' + esc(r.name) + '</span>').join('') + '</div>'
+    : '<p class="sub" style="margin:0 0 4px">Регионов пока нет</p>';
+}
+
+async function addBranch(){
+  const name = $('brName').value.trim();
+  const msg = $('brMsg');
+  msg.className = 'msg err'; msg.textContent = '';
+  if(!name){ msg.textContent = 'Впишите название филиала'; return; }
+
+  $('brAdd').disabled = true;
+  const { error } = await sb.from('branches').insert({
+    name,
+    region_id: $('brRegion').value ? Number($('brRegion').value) : null,
+    address: $('brAddr').value.trim() || null
+  });
+  $('brAdd').disabled = false;
+  if(error){ msg.textContent = errText(error, 'insert'); return; }
+
+  $('brName').value = ''; $('brAddr').value = ''; $('brRegion').value = '';
+  await loadAll(); paintBranches();
+  msg.className = 'msg ok'; msg.textContent = 'Филиал добавлен';
+}
+
+function openBranchForm(b){
+  openModal('Филиал — ' + b.name,
+    '<div class="field">' +
+      '<label class="field-label" for="bName">Название <span class="req">*</span></label>' +
+      '<input id="bName" maxlength="80" value="' + esc(b.name) + '">' +
+    '</div>' +
+    '<div class="field">' +
+      '<label class="field-label" for="bRegion">Регион</label>' +
+      '<select id="bRegion"><option value="">Без региона</option>' +
+        REGIONS.map(r => '<option value="' + r.id + '"' + (b.region_id === r.id ? ' selected' : '') + '>' +
+          esc(r.name) + '</option>').join('') + '</select>' +
+    '</div>' +
+    '<div class="field">' +
+      '<label class="field-label" for="bAddr">Адрес</label>' +
+      '<input id="bAddr" maxlength="200" value="' + (b.address ? esc(b.address) : '') + '">' +
+    '</div>' +
+    '<label class="chk"><input type="checkbox" id="bActive"' + (b.is_active ? ' checked' : '') + '>' +
+      'Филиал работает</label>' +
+    '<div class="hint" style="margin-top:8px">Филиалы не удаляются — на них ссылаются задачи. ' +
+      'Снимите галочку, чтобы убрать филиал из выбора.</div>',
+    'Сохранить', async () => {
+      const name = $('bName').value.trim();
+      if(!name) return mFail('Впишите название филиала');
+      mBusy(true, 'Сохраняем…');
+      const { error } = await sb.from('branches').update({
+        name,
+        region_id: $('bRegion').value ? Number($('bRegion').value) : null,
+        address: $('bAddr').value.trim() || null,
+        is_active: $('bActive').checked
+      }).eq('id', b.id);
+      if(error){ mBusy(false, 'Сохранить'); return mFail(errText(error, 'update')); }
+      closeModal();
+      await loadAll(); paintBranches(); paintEmployees();
+    });
+}
+
+async function addRegion(){
+  const name = $('rgName').value.trim();
+  const msg = $('rgMsg');
+  msg.className = 'msg err'; msg.textContent = '';
+  if(!name){ msg.textContent = 'Впишите название региона'; return; }
+
+  $('rgAdd').disabled = true;
+  const { error } = await sb.from('regions').insert({ name });
+  $('rgAdd').disabled = false;
+  if(error){ msg.textContent = errText(error, 'insert'); return; }
+
+  $('rgName').value = '';
+  await loadAll(); paintBranches();
+  msg.className = 'msg ok'; msg.textContent = 'Регион добавлен';
+}
+
+/* ============================================================
+   МОДАЛКА И МЕЛОЧИ
+   ============================================================ */
+function openModal(title, bodyHTML, saveLabel, onSave){
+  $('mTitle').textContent = title;
+  $('mBody').innerHTML = bodyHTML +
+    '<div class="btn-row" style="margin-top:16px">' +
+      (saveLabel ? '<button class="btn" id="mSave" style="flex:1">' + esc(saveLabel) + '</button>' : '') +
+      '<button class="btn ghost" id="mCancel">Отмена</button>' +
+    '</div><div class="msg err" id="mMsg"></div>';
+  $('modal').hidden = false;
+  document.body.style.overflow = 'hidden';
+  $('mCancel').onclick = closeModal;
+  if(saveLabel) $('mSave').onclick = onSave;
+}
+function closeModal(){
+  $('modal').hidden = true;
+  document.body.style.overflow = '';
+}
+function mFail(text){
+  const m = $('mMsg');
+  if(m){ m.className = 'msg err'; m.textContent = text; }
+}
+function mBusy(on, label){
+  const b = $('mSave');
+  if(!b) return;
+  b.disabled = on;
+  b.textContent = label;
+  if(on) mFail('');
+}
+function flash(html){
+  $('empMsg').innerHTML = '<div class="cred">' + html + '</div>';
+}
+/* Пароль без похожих символов — его диктуют голосом */
+function genPassword(){
+  const low = 'abcdefghijkmnpqrstuvwxyz', up = 'ABCDEFGHJKLMNPQRSTUVWXYZ', dig = '23456789';
+  const pick = s => s[Math.floor(Math.random() * s.length)];
+  return [pick(up), pick(low), pick(low), pick(low), pick(dig),
+          pick(dig), pick(low), pick(low), pick(up), pick(dig)].join('');
+}
+</script>
+</body>
+</html>

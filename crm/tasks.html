@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRO MEBEL CRM — Задачи</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<div class="page">
+  <div class="topbar" id="topbar"></div>
+
+  <h1>Задачи</h1>
+  <p class="sub" id="sub">Просроченные сверху, дальше по дедлайну</p>
+
+  <div class="tabs" id="tabs" style="margin-top:16px">
+    <button class="tab" data-tab="mine">Мои задачи</button>
+    <button class="tab" data-tab="author">Поставленные мной</button>
+    <button class="tab" data-tab="all">Все</button>
+  </div>
+
+  <div class="filters">
+    <div class="f-search">
+      <span id="searchIcon"></span>
+      <input id="fSearch" type="search" placeholder="Поиск по названию" autocomplete="off">
+    </div>
+    <select id="fStatus">
+      <option value="active">Активные</option>
+      <option value="">Любой статус</option>
+      <option value="new">Новая</option>
+      <option value="in_progress">В работе</option>
+      <option value="review">На проверке</option>
+      <option value="done">Выполнена</option>
+      <option value="canceled">Отменена</option>
+    </select>
+    <select id="fPrio">
+      <option value="">Любой приоритет</option>
+      <option value="critical">Критический</option>
+      <option value="high">Высокий</option>
+      <option value="normal">Обычный</option>
+      <option value="low">Низкий</option>
+    </select>
+    <select id="fDue">
+      <option value="">Любой срок</option>
+      <option value="today">Сегодня</option>
+      <option value="week">Неделя</option>
+      <option value="overdue">Просроченные</option>
+    </select>
+  </div>
+
+  <div id="list" class="tlist"><div class="loading">Загрузка…</div></div>
+</div>
+
+<!-- Модалка задачи -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="mTitle"></h2>
+      <button class="icon-btn" id="mClose" title="Закрыть"></button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+
+const qs = new URLSearchParams(location.search);
+let TAB = ['mine','author','all'].includes(qs.get('tab')) ? qs.get('tab') : 'mine';
+let ROWS = [];
+let CUR = null;               // открытая задача
+const PRIO_RANK = { critical:4, high:3, normal:2, low:1 };
+
+const $ = id => document.getElementById(id);
+
+(async () => {
+  if(!await requireAuth()) return;
+  renderTopbar({
+    actionsHTML:'<a class="navlink primary" href="new-task.html">'+icon('plus')+'Поставить задачу</a>'
+  });
+  $('searchIcon').innerHTML = icon('search');
+  $('mClose').innerHTML = icon('x');
+
+  await Promise.all([loadEmployees(), loadBranches()]);
+
+  // вкладки
+  document.querySelectorAll('.tab').forEach(b => {
+    b.onclick = () => { TAB = b.dataset.tab; paintTabs(); syncUrl(); load(); };
+  });
+  paintTabs();
+
+  // фильтры
+  ['fStatus','fPrio','fDue'].forEach(id => $(id).onchange = load);
+  let t = null;
+  $('fSearch').oninput = () => { clearTimeout(t); t = setTimeout(load, 250); };
+
+  // модалка
+  $('mClose').onclick = closeTask;
+  $('modal').onclick = e => { if(e.target === $('modal')) closeTask(); };
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('modal').hidden) closeTask(); });
+
+  await load();
+
+  const openId = qs.get('task');
+  if(openId) openTask(Number(openId));
+})();
+
+function paintTabs(){
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === TAB));
+}
+function syncUrl(){
+  const u = new URL(location.href);
+  u.searchParams.set('tab', TAB);
+  u.searchParams.delete('task');
+  history.replaceState(null, '', u);
+}
+
+/* ============================================================
+   СПИСОК
+   Читаем из v_tasks — там уже есть is_overdue, имена и подзадачи.
+   Что человеку видно, решает RLS: вкладка «Все» открыта всем.
+   ============================================================ */
+async function load(){
+  $('list').innerHTML = '<div class="loading">Загрузка…</div>';
+
+  let q = sb.from('v_tasks')
+    .select('id,title,description,author_id,assignee_id,parent_id,branch_id,priority,status,due_at,'+
+            'done_criteria,created_at,is_overdue,assignee_name,assignee_role,author_name,branch_name,'+
+            'subtasks_total,subtasks_done')
+    .is('archived_at', null);
+
+  if(TAB === 'mine') q = q.eq('assignee_id', ME.id);
+  if(TAB === 'author') q = q.eq('author_id', ME.id);
+
+  const st = $('fStatus').value;
+  if(st === 'active') q = q.in('status', ['new','in_progress','review']);
+  else if(st) q = q.eq('status', st);
+
+  const pr = $('fPrio').value;
+  if(pr) q = q.eq('priority', pr);
+
+  const due = $('fDue').value;
+  if(due === 'overdue') q = q.eq('is_overdue', true);
+  else if(due === 'today') q = q.gte('due_at', startOfToday().toISOString()).lte('due_at', endOfToday().toISOString());
+  else if(due === 'week') q = q.gte('due_at', startOfToday().toISOString()).lte('due_at', endOfWeek().toISOString());
+
+  const s = $('fSearch').value.trim();
+  // % и _ — служебные символы LIKE, гасим их экранированием
+  if(s) q = q.ilike('title', '%' + s.replace(/[\\%_]/g, m => '\\' + m) + '%');
+
+  const { data, error } = await q.limit(500);
+  if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+
+  ROWS = (data || []).sort(cmpTasks);
+  paintList();
+}
+
+/* просроченные сверху, дальше по дедлайну, потом по приоритету */
+function cmpTasks(a, b){
+  if(!!b.is_overdue !== !!a.is_overdue) return (b.is_overdue ? 1 : 0) - (a.is_overdue ? 1 : 0);
+  const da = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+  const db = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+  if(da !== db) return da - db;
+  const pa = PRIO_RANK[a.priority] || 0, pb = PRIO_RANK[b.priority] || 0;
+  if(pa !== pb) return pb - pa;
+  return new Date(b.created_at) - new Date(a.created_at);
+}
+
+function paintList(){
+  if(!ROWS.length){
+    const empty = TAB === 'mine' ? 'На вас задач нет'
+      : TAB === 'author' ? 'Вы пока не ставили задач'
+      : 'Задач не найдено';
+    $('list').innerHTML = '<div class="empty">' + empty + '</div>';
+    return;
+  }
+  $('list').innerHTML = ROWS.map(cardHTML).join('');
+  $('list').querySelectorAll('.tcard').forEach(el => {
+    el.onclick = () => openTask(Number(el.dataset.id));
+  });
+}
+
+function cardHTML(t){
+  const d = dueInfo(t);
+  const done = t.status === 'done' || t.status === 'canceled';
+  const subs = Number(t.subtasks_total) > 0
+    ? '<span class="it t-sub">' + icon('layers') + ' ' + t.subtasks_done + ' / ' + t.subtasks_total + '</span>'
+    : '';
+  return '<button class="tcard pl-' + esc(t.priority) +
+      (t.is_overdue ? ' is-overdue' : '') + (done ? ' is-done' : '') + '" data-id="' + t.id + '">' +
+    '<div class="t-top">' +
+      '<span class="t-title">' + esc(t.title) + '</span>' +
+      statusBadge(t.status) +
+    '</div>' +
+    '<div class="t-meta">' +
+      '<span class="it">' + icon('user') + esc(t.assignee_name || empName(t.assignee_id)) + '</span>' +
+      '<span class="it due ' + d.cls + '">' + icon('clock') + esc(d.text) + '</span>' +
+      subs +
+      (t.is_overdue ? '<span class="badge late">' + icon('alert') + 'Просрочена</span>' : '') +
+      (t.priority === 'high' || t.priority === 'critical' ? priorityBadge(t.priority) : '') +
+      (t.parent_id ? '<span class="it t-id">подзадача #' + t.parent_id + '</span>' : '') +
+    '</div></button>';
+}
+
+/* ============================================================
+   МОДАЛКА ЗАДАЧИ
+   ============================================================ */
+async function openTask(id){
+  if(!id) return;
+  $('modal').hidden = false;
+  document.body.style.overflow = 'hidden';
+  $('mTitle').textContent = 'Задача #' + id;
+  $('mBody').innerHTML = '<div class="loading">Загрузка…</div>';
+
+  const { data:t, error } = await sb.from('v_tasks').select('*').eq('id', id).maybeSingle();
+  if(error){ $('mBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!t){ $('mBody').innerHTML = '<div class="empty">Задача не найдена или закрыта для вас</div>'; return; }
+  CUR = t;
+
+  const [subs, comments, events] = await Promise.all([
+    sb.from('v_tasks').select('id,title,status,assignee_id,assignee_name,due_at,is_overdue,priority')
+      .eq('parent_id', id).order('created_at'),
+    sb.from('task_comments').select('id,body,author_id,created_at')
+      .eq('task_id', id).order('created_at'),
+    sb.from('task_events').select('id,event_type,from_status,to_status,actor_id,created_at')
+      .eq('task_id', id).order('created_at')
+  ]);
+
+  paintTask(t, subs.data || [], comments.data || [], events.data || []);
+}
+
+function closeTask(){
+  $('modal').hidden = true;
+  document.body.style.overflow = '';
+  CUR = null;
+}
+
+function paintTask(t, subs, comments, events){
+  const d = dueInfo(t);
+  $('mTitle').textContent = t.title;
+
+  const rows = [
+    ['Номер', '<span class="mono">#' + t.id + '</span>'],
+    ['Статус', statusBadge(t.status) + (t.is_overdue ? ' <span class="badge late">Просрочена</span>' : '')],
+    ['Приоритет', priorityBadge(t.priority)],
+    ['Исполнитель', esc(t.assignee_name || empName(t.assignee_id)) +
+      (t.assignee_role ? ' <span class="sub">· ' + esc(ROLE_RU[t.assignee_role] || t.assignee_role) + '</span>' : '')],
+    ['Постановщик', esc(t.author_name || empName(t.author_id))],
+    ['Срок', t.due_at
+      ? '<span class="mono">' + esc(fmtDateTime(t.due_at)) + '</span> <span class="due ' + d.cls + '">· ' + esc(d.text) + '</span>'
+      : '<span class="sub">без срока</span>'],
+    ['Филиал', t.branch_name ? esc(t.branch_name) : '<span class="sub">не указан</span>'],
+    ['Создана', '<span class="mono">' + esc(fmtDateTime(t.created_at)) + '</span>']
+  ];
+  if(t.parent_id){
+    rows.push(['Родительская', '<a href="#" class="navlink" style="padding:0;color:var(--brand)" ' +
+      'data-open="' + t.parent_id + '">#' + t.parent_id + ' — открыть</a>']);
+  }
+
+  let html =
+    '<div class="mblock"><dl class="dl">' +
+      rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('') +
+    '</dl></div>';
+
+  // кнопки смены статуса
+  const acts = statusActions(t);
+  html += '<div class="mblock" id="actBlock">' +
+    (acts.length
+      ? '<div class="btn-row">' + acts.map(a =>
+          '<button class="btn ' + a.cls + '" data-st="' + a.to + '">' + icon(a.icon) + a.label + '</button>').join('') + '</div>'
+      : '<div class="sub">Доступных действий по статусу нет</div>') +
+    '<div class="msg err" id="actMsg"></div></div>';
+
+  if(t.description){
+    html += '<div class="mblock"><div class="sec-title">' + icon('list') + 'Описание</div>' +
+      '<div class="text-block">' + esc(t.description) + '</div></div>';
+  }
+  if(t.done_criteria){
+    html += '<div class="mblock"><div class="sec-title">' + icon('checkCircle') + 'Критерий выполнения</div>' +
+      '<div class="crit text-block">' + esc(t.done_criteria) + '</div></div>';
+  }
+
+  // подзадачи
+  html += '<div class="mblock"><div class="sec-title">' + icon('layers') + 'Подзадачи' +
+    (Number(t.subtasks_total) ? ' <span class="mono">' + t.subtasks_done + ' / ' + t.subtasks_total + '</span>' : '') +
+    '</div>';
+  html += subs.length
+    ? '<div class="sublist">' + subs.map(s => {
+        const sd = dueInfo(s);
+        return '<div class="subrow" data-open="' + s.id + '">' +
+          '<span class="s-t">' + esc(s.title) + '</span>' +
+          '<span class="due mono ' + sd.cls + '" style="font-size:13px">' + esc(sd.text) + '</span>' +
+          statusBadge(s.status) + '</div>';
+      }).join('') + '</div>'
+    : '<div class="sub">Подзадач нет</div>';
+  html += '<div class="btn-row" style="margin-top:10px">' +
+    '<a class="btn ghost sm" href="new-task.html?parent=' + t.id + '">' + icon('plus') + 'Поставить подзадачу</a></div>';
+  html += '</div>';
+
+  // комментарии
+  html += '<div class="mblock"><div class="sec-title">' + icon('message') + 'Комментарии</div>' +
+    (comments.length
+      ? '<div class="comments">' + comments.map(c =>
+          '<div class="cm"><div class="cm-h"><span class="cm-a">' + esc(empName(c.author_id)) + '</span>' +
+          '<span class="cm-d">' + esc(fmtWhen(c.created_at)) + '</span></div>' +
+          '<div class="cm-b">' + esc(c.body) + '</div></div>').join('') + '</div>'
+      : '<div class="sub" style="margin-bottom:12px">Комментариев нет</div>') +
+    '<textarea id="cmBody" placeholder="Написать комментарий" rows="3"></textarea>' +
+    '<div class="btn-row" style="margin-top:9px">' +
+      '<button class="btn sm" id="cmSend">' + icon('send') + 'Отправить</button></div>' +
+    '<div class="msg err" id="cmMsg"></div></div>';
+
+  // хронология
+  html += '<div class="mblock"><div class="sec-title">' + icon('history') + 'Хронология</div>' +
+    (events.length
+      ? '<ul class="tl">' + events.map((e, i) =>
+          '<li' + (i === events.length - 1 ? ' class="acc"' : '') + '>' +
+            '<div class="ev">' + esc(eventText(e)) + '</div>' +
+            '<div class="ev-d">' + esc(e.actor_id ? empName(e.actor_id) : 'Платформа') +
+              ' · ' + esc(fmtWhen(e.created_at)) + '</div>' +
+          '</li>').join('') + '</ul>'
+      : '<div class="sub">Событий нет</div>') +
+    '</div>';
+
+  $('mBody').innerHTML = html;
+
+  // обработчики
+  $('mBody').querySelectorAll('[data-st]').forEach(b => {
+    b.onclick = () => changeStatus(t.id, b.dataset.st, b);
+  });
+  $('mBody').querySelectorAll('[data-open]').forEach(el => {
+    el.onclick = e => { e.preventDefault(); openTask(Number(el.dataset.open)); };
+  });
+  $('cmSend').onclick = () => addComment(t.id);
+}
+
+function eventText(e){
+  if(e.event_type === 'status_changed'){
+    const from = STATUS_RU[e.from_status] || e.from_status;
+    const to = STATUS_RU[e.to_status] || e.to_status;
+    return from ? 'Статус: ' + from + ' → ' + to : 'Статус: ' + to;
+  }
+  return EVENT_RU[e.event_type] || e.event_type;
+}
+
+/* Кнопки зависят от того, кто смотрит. Окончательное слово — за базой:
+   триггер crm.tasks_guard() не даст исполнителю закрыть задачу сам. */
+function statusActions(t){
+  const out = [];
+  const push = (to, label, cls, ic) => { if(!out.some(a => a.to === to)) out.push({ to, label, cls, icon:ic }); };
+  const s = t.status;
+
+  if(isAssignee(t)){
+    if(s === 'new') push('in_progress', 'Взять в работу', 'info', 'play');
+    if(s === 'new' || s === 'in_progress') push('review', 'Отправить на проверку', 'warn', 'send');
+  }
+  if(canBoss(t)){
+    if(s === 'review') push('done', 'Принять', 'ok', 'check');
+    else if(s === 'new' || s === 'in_progress') push('done', 'Принять', 'ok', 'check');
+    if(s === 'review' || s === 'done' || s === 'canceled') push('in_progress', 'Вернуть в работу', 'info', 'back');
+    if(s !== 'canceled' && s !== 'done') push('canceled', 'Отменить', 'danger', 'ban');
+  }
+  return out;
+}
+
+async function changeStatus(id, status, btn){
+  const msg = $('actMsg');
+  msg.textContent = '';
+  document.querySelectorAll('[data-st]').forEach(b => b.disabled = true);
+  const { error } = await sb.from('tasks').update({ status }).eq('id', id);
+  if(error){
+    // сообщения триггеров написаны по-русски — показываем как есть
+    msg.textContent = errText(error, 'task-edit');
+    document.querySelectorAll('[data-st]').forEach(b => b.disabled = false);
+    return;
+  }
+  await openTask(id);   // перечитываем задачу с новым журналом
+  await load();         // и список
+}
+
+async function addComment(id){
+  const box = $('cmBody'), msg = $('cmMsg'), btn = $('cmSend');
+  const body = box.value.trim();
+  msg.textContent = '';
+  if(!body){ msg.textContent = 'Комментарий пустой'; return; }
+  btn.disabled = true;
+  const { error } = await sb.from('task_comments').insert({ task_id:id, author_id:ME.id, body });
+  if(error){ msg.textContent = errText(error); btn.disabled = false; return; }
+  await openTask(id);
+}
+</script>
+</body>
+</html>

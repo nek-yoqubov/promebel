@@ -66,7 +66,8 @@ button{font-family:inherit}
 svg.i{width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none;
   stroke-linecap:round;stroke-linejoin:round;flex:none}
 svg.i.sm{width:17px;height:17px}
-svg.mark{display:block;flex:none}
+svg.mark,img.mark{display:block;flex:none}
+.pagehead{display:none}
 
 /* ---------- Нижние вкладки (телефон) ---------- */
 .tabbar{
@@ -208,8 +209,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 }
 .stat:active{transform:scale(.97)}
 .stat:hover{border-color:var(--line-2)}
-.stat .n{font:800 26px 'Manrope';font-variant-numeric:tabular-nums;line-height:1.1}
-.stat .c{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.25}
+.stat .n{display:block;font:800 26px 'Manrope';font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .c{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.25}
 .stat.late .n{color:var(--late)}
 .stat.today .n{color:var(--warn)}
 .stat.review .n{color:var(--info)}
@@ -438,8 +439,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
     display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;width:var(--side);
     background:var(--panel);border-right:1px solid var(--line);padding:16px 10px;z-index:40;
   }
-  .slogo{display:flex;align-items:center;gap:10px;padding:6px 8px 18px;font:800 17px 'Manrope'}
-  .slogo b{color:var(--brand)}
+  .slogo{display:block;padding:6px 8px 18px}
+  .slogo img{display:block;width:100%;max-width:200px;height:auto}
   .snav{display:flex;flex-direction:column;gap:2px;flex:1;overflow:auto}
   .sd{
     position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;

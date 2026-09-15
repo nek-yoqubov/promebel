@@ -385,11 +385,7 @@ function icon(name){ return ICONS[name] || ''; }
    ============================================================ */
 function logoMark(size){
   const s = size || 30;
-  return '<svg class="mark" width="' + s + '" height="' + s + '" viewBox="0 0 64 64" aria-hidden="true">' +
-    '<path d="M32 4.6 55.7 18.3a3.4 3.4 0 0 1 1.7 3v25.4a3.4 3.4 0 0 1-1.7 3L32 63.4 8.3 49.7a3.4 3.4 0 0 1-1.7-3V21.3a3.4 3.4 0 0 1 1.7-3z" ' +
-      'fill="none" stroke="var(--brand)" stroke-width="5.4" stroke-linejoin="round"/>' +
-    '<path d="M24.5 46V18h11.2a8.6 8.6 0 0 1 0 17.2h-7.1" fill="none" stroke="var(--brand)" ' +
-      'stroke-width="6.4" stroke-linecap="square"/></svg>';
+  return '<img class="mark" src="logo-mark.png" width="' + s + '" height="' + s + '" alt="">';
 }
 
 /* ============================================================
@@ -444,8 +440,9 @@ function renderShell(opts){
       '<span class="lb">' + esc(n.label) + '</span></a>';
   }).join('');
 
-  const sideItems = NAV_MAIN.filter(n => !n.fab)
-    .concat(NAV_EXTRA.filter(n => !n.roles || (ME && n.roles.includes(ME.role))))
+  const main = NAV_MAIN.filter(n => !n.fab && n.key !== 'profile');
+  const sideItems = main.slice(0, 2).concat(NAV_EXTRA.slice(0, 1), main.slice(2), NAV_EXTRA.slice(1))
+    .filter(n => !n.roles || (ME && n.roles.includes(ME.role)))
     .map(n => {
       const on = n.key === tab;
       if(n.soon){
@@ -469,7 +466,7 @@ function renderShell(opts){
       '</div>' +
     '</header>' +
     '<aside class="side">' +
-      '<a class="slogo" href="index.html">' + logoMark(30) + '<span>PRO <b>MEBEL</b></span></a>' +
+      '<a class="slogo" href="index.html"><img src="logo-h-dark.png" data-dark="logo-h-dark.png" data-light="logo-h-light.png" alt="PRO MEBEL"></a>' +
       '<nav class="snav">' + sideItems + '</nav>' +
       '<a class="sme" href="profile.html">' +
         '<span class="ava">' + esc(ME ? initials(ME.full_name) : '') + '</span>' +

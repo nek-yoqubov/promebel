@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PRO MEBEL CRM — Ссылки и планы</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -11,20 +11,17 @@
 <link rel="stylesheet" href="crm.css">
 </head>
 <body>
-<div class="page">
-  <div class="topbar" id="topbar"></div>
+<main class="main">
+  <div class="pagehead"><h1>Ссылки и планы</h1></div>
 
-  <h1>Ссылки и планы</h1>
-  <p class="sub">KPI, планы продаж и рабочие документы. Открываются в отдельной вкладке.</p>
-
-  <div id="list" style="margin-top:18px"><div class="loading">Загрузка…</div></div>
-</div>
+  <div id="list"><div class="loading">Загрузка…</div></div>
+</main>
 
 <div class="modal" id="modal" hidden>
   <div class="modal-box" style="max-width:620px">
     <div class="modal-head">
       <h2 id="mTitle"></h2>
-      <button class="icon-btn" id="mClose" title="Закрыть"></button>
+      <button class="ib" id="mClose" title="Закрыть"></button>
     </div>
     <div class="modal-body" id="mBody"></div>
   </div>
@@ -43,11 +40,10 @@ let CAN_EDIT = false;
   if(!await requireAuth()) return;
   CAN_EDIT = isBossRole();
 
-  renderTopbar({
-    back:'index.html',
-    actionsHTML: CAN_EDIT
-      ? '<button class="navlink primary" id="addLink">' + icon('plus') + 'Ссылка</button>'
-      : ''
+  renderShell({
+    title:'Ссылки и планы',
+    tab:'links',
+    actions: CAN_EDIT ? '<button class="ib" id="addLink" aria-label="Добавить ссылку">' + icon('plus') + '</button>' : ''
   });
   if(CAN_EDIT) $('addLink').onclick = () => openForm(null);
 
@@ -86,13 +82,13 @@ function paint(){
   LINK_CAT_ORDER.forEach(cat => {
     const rows = LINKS.filter(l => l.category === cat);
     if(!rows.length) return;
-    html += '<div class="lgroup"><div class="sec-title">' + esc(LINK_CAT_RU[cat]) + '</div>' +
+    html += '<div class="lgroup"><div class="sec">' + esc(LINK_CAT_RU[cat]) + '</div>' +
       '<div class="lgrid">' + rows.map(cardHTML).join('') + '</div></div>';
   });
   // категория, которой нет в словаре
   const rest = LINKS.filter(l => LINK_CAT_ORDER.indexOf(l.category) === -1);
   if(rest.length){
-    html += '<div class="lgroup"><div class="sec-title">Прочее</div>' +
+    html += '<div class="lgroup"><div class="sec">Прочее</div>' +
       '<div class="lgrid">' + rest.map(cardHTML).join('') + '</div></div>';
   }
   $('list').innerHTML = html;
@@ -109,7 +105,7 @@ function cardHTML(l){
       esc(l.title) + icon('external') + '</a>' +
     (l.description ? '<div class="ld">' + esc(l.description) + '</div>' : '') +
     '<div class="lh">' + esc(host(l.url)) + '</div>' +
-    (l.is_active ? '' : '<div><span class="badge st-canceled">выключена</span></div>') +
+    (l.is_active ? '' : '<div><span class="tag-off">выключена</span></div>') +
     (CAN_EDIT
       ? '<div class="ladmin">' +
           '<button class="btn ghost sm" data-edit="' + l.id + '">' + icon('edit') + 'Изменить</button>' +
@@ -148,7 +144,7 @@ function openForm(l){
       '</div>' +
       '<div class="field">' +
         '<label class="field-label" for="fSort">Порядок</label>' +
-        '<input id="fSort" class="mono" type="number" min="1" max="999" value="' +
+        '<input id="fSort" class="num" type="number" min="1" max="999" value="' +
           (l ? l.sort : 100) + '">' +
         '<div class="hint">Меньше — выше в списке</div>' +
       '</div>' +

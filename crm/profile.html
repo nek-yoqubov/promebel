@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Профиль</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.wrap{max-width:620px;margin:0 auto}
+.me{display:flex;align-items:center;gap:14px;padding:18px 16px}
+.me .ava{width:56px;height:56px;border-radius:16px;font-size:20px}
+.me .mn{font:800 19px 'Manrope'}
+.me .mr{color:var(--muted);font-size:14px;margin-top:2px}
+.state{padding:10px 16px 14px;font-size:14px;color:var(--muted)}
+.state b{color:var(--ink)}
+.okmark{color:var(--ok);font-weight:700}
+</style>
+</head>
+<body>
+<main class="main wrap" id="main">
+  <div class="pagehead"><h1>Профиль</h1></div>
+
+  <div class="me">
+    <span class="ava" id="ava"></span>
+    <div><div class="mn" id="mName"></div><div class="mr" id="mRole"></div></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">Уведомления</div>
+    <div class="glist" id="pushBox"><div class="loading">Проверяем…</div></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">Telegram</div>
+    <div class="glist" id="tgBox"></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">Приложение</div>
+    <div class="glist" id="appBox"></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">Разделы</div>
+    <div class="glist" id="navBox"></div>
+  </div>
+
+  <div class="group">
+    <div class="glist">
+      <button class="gi" id="outBtn">
+        <span class="gic" style="color:var(--late)"></span>
+        <span class="gl" style="color:var(--late)">Выйти из платформы</span>
+      </button>
+    </div>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+(async () => {
+  if(!await requireAuth()) return;
+  renderShell({ title:'Профиль', tab:'profile' });
+
+  $('ava').textContent = initials(ME.full_name);
+  $('mName').textContent = ME.full_name;
+  $('mRole').textContent = [ME.position, ROLE_RU[ME.role] || ME.role, ME.email].filter(Boolean).join(' · ');
+  $('outBtn').querySelector('.gic').innerHTML = icon('logout');
+  $('outBtn').onclick = logout;
+
+  paintApp();
+  paintNav();
+  paintTelegram();
+  await paintPush();
+})();
+
+/* ============================================================
+   УВЕДОМЛЕНИЯ НА ТЕЛЕФОН
+   ============================================================ */
+async function paintPush(){
+  const box = $('pushBox');
+
+  if(!pushSupported()){
+    box.innerHTML = row('bell', 'Уведомления', 'Этот браузер их не умеет', '', true);
+    return;
+  }
+  if(isIOS() && !isStandalone()){
+    box.innerHTML = row('bell', 'Уведомления на телефон',
+      'Сначала установите приложение на экран «Домой» — на iPhone уведомления работают только так',
+      '', true);
+    return;
+  }
+  if(pushPermission() === 'denied'){
+    box.innerHTML = row('bell', 'Уведомления заблокированы',
+      'Разрешите их в настройках браузера: замок рядом с адресом сайта → Уведомления → Разрешить',
+      '', true);
+    return;
+  }
+
+  let sub = null;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    sub = await reg.pushManager.getSubscription();
+  }catch(e){}
+
+  if(pushPermission() === 'granted' && sub){
+    box.innerHTML =
+      row('bell', 'Уведомления на телефон', 'Приходят на этот телефон', '<span class="okmark">Включены</span>', true) +
+      '<button class="gi" id="pTest"><span class="gic">' + icon('send') + '</span>' +
+        '<span class="gl">Проверить</span><span class="gv">' + icon('chevron') + '</span></button>' +
+      '<button class="gi" id="pOff"><span class="gic">' + icon('ban') + '</span>' +
+        '<span class="gl">Выключить уведомления</span></button>';
+    $('pTest').onclick = async () => {
+      const r = await pushTest();
+      toast(r.error ? r.error : 'Уведомление отправлено — проверьте шторку');
+      setTimeout(refreshUnread, 1500);
+    };
+    $('pOff').onclick = async () => {
+      const r = await disablePush();
+      toast(r.error ? r.error : 'Уведомления выключены');
+      await paintPush();
+    };
+    return;
+  }
+
+  box.innerHTML =
+    '<button class="gi" id="pOn"><span class="gic">' + icon('bell') + '</span>' +
+      '<span class="gl">Включить уведомления<i>Чтобы не пропускать новые задачи и сроки</i></span>' +
+      '<span class="gv">' + icon('chevron') + '</span></button>';
+  $('pOn').onclick = async () => {
+    $('pOn').disabled = true;
+    const r = await enablePush();
+    toast(r.error ? r.error : 'Уведомления включены');
+    await paintPush();
+  };
+}
+
+/* ============================================================
+   TELEGRAM
+   ============================================================ */
+let tgStop = null;
+function paintTelegram(){
+  const box = $('tgBox');
+  if(ME.telegram_chat_id){
+    box.innerHTML =
+      row('telegram', 'Telegram', 'Уведомления дублируются в бот', '<span class="okmark">Подключён</span>', true) +
+      '<button class="gi" id="tgOff"><span class="gic">' + icon('ban') + '</span>' +
+        '<span class="gl">Отключить Telegram</span></button>';
+    $('tgOff').onclick = async () => {
+      const r = await tgUnlink();
+      toast(r.error ? r.error : 'Telegram отключён');
+      paintTelegram();
+    };
+    return;
+  }
+  box.innerHTML =
+    '<button class="gi" id="tgOn"><span class="gic">' + icon('telegram') + '</span>' +
+      '<span class="gl">Подключить Telegram<i>Бот пришлёт задачу, даже если приложение закрыто</i></span>' +
+      '<span class="gv">' + icon('chevron') + '</span></button>' +
+    '<div class="state" id="tgState" hidden></div>';
+  $('tgOn').onclick = startTelegram;
+}
+
+async function startTelegram(){
+  const st = $('tgState');
+  st.hidden = false;
+  st.textContent = 'Готовим код…';
+  // окно открываем до запроса к базе: после await браузер считает его всплывающим и блокирует
+  const win = window.open('', '_blank');
+  const r = await tgLinkStart();
+  if(r.error){ if(win) win.close(); st.textContent = r.error; return; }
+  if(win) win.location.href = r.url;
+  else location.href = r.url;
+  st.innerHTML = 'Откройте бота и нажмите <b>Start</b>. Ждём ответа…';
+  if(tgStop) tgStop();
+  tgStop = waitForTelegram(ok => {
+    if(ok){
+      toast('Telegram подключён');
+      paintTelegram();
+    }else{
+      st.innerHTML = 'Пока не видим привязки. Если бот не открылся, ' +
+        '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--brand)">откройте его по ссылке</a> ' +
+        'и нажмите Start, затем вернитесь сюда.';
+    }
+  });
+}
+
+/* ============================================================
+   ПРИЛОЖЕНИЕ И РАЗДЕЛЫ
+   ============================================================ */
+function paintApp(){
+  let html = '';
+  if(!isStandalone()){
+    html += '<button class="gi" id="instBtn"><span class="gic">' + icon('download') + '</span>' +
+      '<span class="gl">Установить на телефон<i id="instHint">Чтобы открывать с рабочего стола</i></span>' +
+      '<span class="gv">' + icon('chevron') + '</span></button>';
+  }
+  html += '<button class="gi" id="themeBtn"><span class="gic">' + icon('sun') + '</span>' +
+    '<span class="gl">Тема оформления</span>' +
+    '<span class="gv"><span data-theme-label></span>' + icon('chevron') + '</span></button>';
+  $('appBox').innerHTML = html;
+
+  $('themeBtn').onclick = () => { toggleTheme(); };
+  applyTheme(localStorage.getItem('crm_theme') || 'dark');
+
+  const inst = $('instBtn');
+  if(inst){
+    if(isIOS()){
+      $('instHint').textContent = 'На iPhone: Поделиться → На экран «Домой»';
+      inst.onclick = () => toast('В Safari: Поделиться → На экран «Домой»');
+    }else{
+      inst.onclick = async () => {
+        const ok = await doInstall();
+        if(!ok) toast('Браузер пока не предлагает установку. Откройте меню браузера → «Установить приложение»');
+      };
+    }
+  }
+}
+
+function paintNav(){
+  let html = '<a class="gi" href="links.html"><span class="gic">' + icon('link') + '</span>' +
+    '<span class="gl">Ссылки и планы</span><span class="gv">' + icon('chevron') + '</span></a>';
+  if(isHrRole()){
+    html += '<a class="gi" href="admin.html"><span class="gic">' + icon('users') + '</span>' +
+      '<span class="gl">Сотрудники</span><span class="gv">' + icon('chevron') + '</span></a>';
+  }
+  $('navBox').innerHTML = html;
+}
+
+function row(ic, title, note, value, plain){
+  return '<div class="gi' + (plain ? ' static' : '') + '">' +
+    '<span class="gic">' + icon(ic) + '</span>' +
+    '<span class="gl">' + esc(title) + (note ? '<i>' + esc(note) + '</i>' : '') + '</span>' +
+    (value ? '<span class="gv">' + value + '</span>' : '') + '</div>';
+}
+</script>
+</body>
+</html>

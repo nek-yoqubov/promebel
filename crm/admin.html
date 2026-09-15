@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PRO MEBEL CRM — Сотрудники</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -11,15 +11,12 @@
 <link rel="stylesheet" href="crm.css">
 </head>
 <body>
-<div class="page">
-  <div class="topbar" id="topbar"></div>
+<main class="main">
+  <div class="pagehead"><h1>Сотрудники</h1></div>
 
-  <h1>Сотрудники и филиалы</h1>
-  <p class="sub">Кто работает в платформе, кому подчиняется и в каком филиале</p>
-
-  <div class="tabs" id="tabs" style="margin-top:16px">
-    <button class="tab active" data-pane="emp">Сотрудники</button>
-    <button class="tab" data-pane="br">Филиалы</button>
+  <div class="seg" id="seg">
+    <button class="on" data-pane="emp">Сотрудники</button>
+    <button data-pane="br">Филиалы</button>
   </div>
 
   <!-- ---------- Сотрудники ---------- -->
@@ -44,7 +41,7 @@
   <!-- ---------- Филиалы ---------- -->
   <section id="paneBr" hidden>
     <div class="panel">
-      <div class="sec-title" id="brTitle">Филиалы</div>
+      <div class="sec" id="brTitle">Филиалы</div>
       <div id="brBox"><div class="loading">Загрузка…</div></div>
       <div class="addrow">
         <div class="field">
@@ -68,7 +65,7 @@
     </div>
 
     <div class="panel">
-      <div class="sec-title">Регионы</div>
+      <div class="sec">Регионы</div>
       <p class="sub" style="margin:-6px 0 12px">Нужны, только если филиалы надо группировать по направлениям</p>
       <div id="rgBox"></div>
       <div class="addrow two">
@@ -91,7 +88,7 @@
   <div class="modal-box" style="max-width:580px">
     <div class="modal-head">
       <h2 id="mTitle"></h2>
-      <button class="icon-btn" id="mClose" title="Закрыть"></button>
+      <button class="ib" id="mClose" title="Закрыть"></button>
     </div>
     <div class="modal-body" id="mBody"></div>
   </div>
@@ -113,12 +110,12 @@ let CAN_MANAGE = false;
   if(!isBossRole() && ME.role !== 'hr'){ location.replace('index.html'); return; }
   CAN_MANAGE = isBossRole();
   if(!CAN_MANAGE){
-    document.querySelector('[data-pane="br"]').hidden = true;
+    document.querySelector('#seg [data-pane="br"]').hidden = true;
     $('addEmp').hidden = true;
-    document.querySelector('h1').textContent = 'Сотрудники';
+    
   }
 
-  renderTopbar({ back:'index.html' });
+  renderShell({ title:'Сотрудники', tab:'admin' });
   $('searchIcon').innerHTML = icon('search');
   $('mClose').innerHTML = icon('x');
   $('addEmp').innerHTML = icon('plus') + 'Сотрудник';
@@ -130,7 +127,7 @@ let CAN_MANAGE = false;
   $('modal').onclick = e => { if(e.target === $('modal')) closeModal(); };
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('modal').hidden) closeModal(); });
 
-  document.querySelectorAll('.tab').forEach(b => b.onclick = () => showPane(b.dataset.pane));
+  document.querySelectorAll('#seg button').forEach(b => b.onclick = () => showPane(b.dataset.pane));
   ['fRole','fActive'].forEach(id => $(id).onchange = paintEmployees);
   let t = null;
   $('fSearch').oninput = () => { clearTimeout(t); t = setTimeout(paintEmployees, 200); };
@@ -145,7 +142,7 @@ let CAN_MANAGE = false;
 })();
 
 function showPane(p){
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.pane === p));
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.pane === p));
   $('paneEmp').hidden = p !== 'emp';
   $('paneBr').hidden = p !== 'br';
 }
@@ -203,7 +200,8 @@ function paintEmployees(){
 
   $('empBox').innerHTML =
     '<table class="tbl"><thead><tr>' +
-      '<th>Имя</th><th>Должность</th><th>Роль</th><th>Филиал</th><th>Руководитель</th><th>Доступ</th><th></th>' +
+      '<th>Имя</th><th>Должность</th><th>Роль</th><th>Филиал</th><th>Руководитель</th>' +
+      '<th>Telegram</th><th>Доступ</th><th></th>' +
     '</tr></thead><tbody>' + rows.map(empRow).join('') + '</tbody></table>';
 
   $('empBox').querySelectorAll('[data-act]').forEach(b => {
@@ -223,9 +221,12 @@ function empRow(e){
     '<td data-label="Роль">' + esc(ROLE_RU[e.role] || e.role) + '</td>' +
     '<td data-label="Филиал">' + (br ? esc(br) : '<span class="dim">—</span>') + '</td>' +
     '<td data-label="Руководитель">' + (mgr ? esc(mgr) : '<span class="dim">не указан</span>') + '</td>' +
+    '<td data-label="Telegram">' + (e.telegram_chat_id
+        ? '<span class="tg-yes">✓</span>'
+        : '<span class="tg-no">—</span>') + '</td>' +
     '<td data-label="Доступ">' + (e.is_active
-        ? '<span class="badge st-done">Работает</span>'
-        : '<span class="badge st-canceled">Отключён</span>') + '</td>' +
+        ? '<span class="tag-ok">Работает</span>'
+        : '<span class="tag-off">Отключён</span>') + '</td>' +
     '<td class="acts-cell"><div class="acts">' +
       '<a class="btn ghost sm" href="employee.html?id=' + encodeURIComponent(e.id) + '">Личное дело</a>' +
       (CAN_MANAGE
@@ -291,18 +292,11 @@ function openEmpForm(e){
       '<select id="fMgr"><option value="">Не указан</option>' + mgrOpts + '</select>' +
       '<div class="hint">Кому сотрудник подчиняется. От этого зависят права и эскалация просрочек</div>' +
     '</div>' +
-    '<div class="row2">' +
-      '<div class="field">' +
-        '<label class="field-label" for="fPhone">Телефон</label>' +
-        '<input id="fPhone" class="mono" maxlength="30" placeholder="+998 90 123 45 67" value="' +
-          (isNew || !e.phone ? '' : esc(e.phone)) + '">' +
-      '</div>' +
-      '<div class="field">' +
-        '<label class="field-label" for="fTg">Telegram ID</label>' +
-        '<input id="fTg" class="mono" maxlength="40" inputmode="numeric" value="' +
-          (isNew || !e.telegram_chat_id ? '' : esc(e.telegram_chat_id)) + '">' +
-        '<div class="hint">Нужен для уведомлений. Узнать: написать боту @userinfobot, он пришлёт номер</div>' +
-      '</div>' +
+    '<div class="field">' +
+      '<label class="field-label" for="fPhone">Телефон</label>' +
+      '<input id="fPhone" class="num" maxlength="30" placeholder="+998 90 123 45 67" value="' +
+        (isNew || !e.phone ? '' : esc(e.phone)) + '">' +
+      '<div class="hint">Telegram сотрудник подключает сам в своём профиле</div>' +
     '</div>' +
     (isNew
       ? '<div class="row2">' +
@@ -312,7 +306,7 @@ function openEmpForm(e){
           '</div>' +
           '<div class="field">' +
             '<label class="field-label" for="fPass">Пароль <span class="req">*</span></label>' +
-            '<input id="fPass" class="mono" minlength="8">' +
+            '<input id="fPass" class="num" minlength="8">' +
             '<div class="hint"><a href="#" id="genPass" style="color:var(--brand);font-weight:700">придумать пароль</a> · не короче 8 символов</div>' +
           '</div>' +
         '</div>'
@@ -336,7 +330,6 @@ async function saveEmp(e){
   const branch_id = $('fBranch').value ? Number($('fBranch').value) : null;
   const manager_id = $('fMgr').value || null;
   const phone = $('fPhone').value.trim() || null;
-  const telegram_chat_id = $('fTg').value.trim() || null;   // пустое поле пишем как null
 
   if(!full_name) return mFail('Впишите имя и фамилию');
   if(!role) return mFail('Выберите роль');
@@ -349,20 +342,20 @@ async function saveEmp(e){
 
     mBusy(true, 'Заводим…');
     const res = await callUsersFn({ action:'create', email, password, full_name, role,
-      position, branch_id, manager_id, phone, telegram_chat_id });
+      position, branch_id, manager_id, phone });
     if(res.error){ mBusy(false, 'Завести сотрудника'); return mFail(errText(res.error)); }
 
     closeModal();
     await loadAll();
     paintEmployees();
-    flash('Сотрудник заведён. Почта <span class="mono">' + esc(email) +
-      '</span>, пароль <span class="mono">' + esc(password) + '</span> — передайте их сотруднику.');
+    flash('Сотрудник заведён. Почта <span class="num">' + esc(email) +
+      '</span>, пароль <span class="num">' + esc(password) + '</span> — передайте их сотруднику.');
     return;
   }
 
   mBusy(true, 'Сохраняем…');
   const { error } = await sb.from('employees')
-    .update({ full_name, position, role, branch_id, manager_id, phone, telegram_chat_id }).eq('id', e.id);
+    .update({ full_name, position, role, branch_id, manager_id, phone }).eq('id', e.id);
   if(error){ mBusy(false, 'Сохранить'); return mFail(errText(error, 'update')); }
 
   closeModal();
@@ -374,7 +367,7 @@ function openPwdForm(e){
   openModal('Новый пароль — ' + e.full_name,
     '<div class="field">' +
       '<label class="field-label" for="fPass2">Пароль <span class="req">*</span></label>' +
-      '<input id="fPass2" class="mono" minlength="8">' +
+      '<input id="fPass2" class="num" minlength="8">' +
       '<div class="hint"><a href="#" id="genPass2" style="color:var(--brand);font-weight:700">придумать пароль</a> · не короче 8 символов</div>' +
     '</div>' +
     '<p class="sub">Старый пароль перестанет работать сразу. Новый передайте сотруднику лично.</p>',
@@ -385,7 +378,7 @@ function openPwdForm(e){
       const res = await callUsersFn({ action:'set_password', id:e.id, password });
       if(res.error){ mBusy(false, 'Сменить пароль'); return mFail(errText(res.error)); }
       closeModal();
-      flash('Пароль для ' + esc(e.full_name) + ' изменён: <span class="mono">' + esc(password) + '</span>');
+      flash('Пароль для ' + esc(e.full_name) + ' изменён: <span class="num">' + esc(password) + '</span>');
     });
   $('genPass2').onclick = ev => { ev.preventDefault(); $('fPass2').value = genPassword(); };
   $('fPass2').value = genPassword();
@@ -423,8 +416,8 @@ function paintBranches(){
           '<td data-label="Регион">' + (regionName(b.region_id) ? esc(regionName(b.region_id)) : '<span class="dim">—</span>') + '</td>' +
           '<td data-label="Адрес">' + (b.address ? esc(b.address) : '<span class="dim">—</span>') + '</td>' +
           '<td data-label="Статус">' + (b.is_active
-            ? '<span class="badge st-done">Работает</span>'
-            : '<span class="badge st-canceled">Неактивен</span>') + '</td>' +
+            ? '<span class="tag-ok">Работает</span>'
+            : '<span class="tag-off">Неактивен</span>') + '</td>' +
           '<td class="acts-cell"><div class="acts">' +
             '<button class="btn ghost sm" data-br="' + b.id + '">Изменить</button>' +
           '</div></td></tr>').join('') + '</tbody></table>'
@@ -434,7 +427,7 @@ function paintBranches(){
     btn.onclick = () => openBranchForm(BRANCH_BY_ID[Number(btn.dataset.br)]));
 
   $('rgBox').innerHTML = REGIONS.length
-    ? '<div class="chips">' + REGIONS.map(r => '<span class="badge info">' + esc(r.name) + '</span>').join('') + '</div>'
+    ? '<div class="chips-plain">' + REGIONS.map(r => '<span class="tagbox">' + esc(r.name) + '</span>').join('') + '</div>'
     : '<p class="sub" style="margin:0 0 4px">Регионов пока нет</p>';
 }
 

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PRO MEBEL CRM — Вход</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -15,11 +15,11 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
 .logo-c{display:flex;justify-content:center;margin-bottom:6px}
 .logo-c img{width:220px;max-width:70%;height:auto;display:block}
 .tagline{text-align:center;color:var(--muted);font-size:14px;margin:0 0 22px}
-.theme-fab{position:fixed;top:16px;right:16px}
+.theme-fab{position:fixed;top:16px;right:16px;border:1px solid var(--line);background:var(--card)}
 </style>
 </head>
 <body>
-<button class="icon-btn theme-fab" id="themeBtn" title="Тема"></button>
+<button class="ib theme-fab" id="themeBtn" title="Тема"></button>
 <div class="box">
   <div class="logo-c">
     <img id="loginLogo" src="logo-vertical-dark.png"
@@ -36,7 +36,7 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
       <label class="field-label" for="password">Пароль</label>
       <input id="password" type="password" autocomplete="current-password">
     </div>
-    <button class="btn btn-block" id="btn">Войти</button>
+    <button class="btn block" id="btn">Войти</button>
     <div class="msg err" id="msg"></div>
   </div>
 </div>
@@ -45,7 +45,13 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
 <script src="core.js"></script>
 <script>
 initTheme();   // initTheme сам подставит логотип под тему
-document.getElementById('themeBtn').onclick = toggleTheme;
+document.getElementById('themeBtn').innerHTML =
+  document.body.classList.contains('light') ? icon('moon') : icon('sun');
+document.getElementById('themeBtn').onclick = () => {
+  toggleTheme();
+  document.getElementById('themeBtn').innerHTML =
+    document.body.classList.contains('light') ? icon('moon') : icon('sun');
+};
 
 const msg = document.getElementById('msg');
 const btn = document.getElementById('btn');

@@ -2,88 +2,78 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRO MEBEL CRM — Меню</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Сегодня</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#11131a">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="crm.css">
-<style>
-.hello{margin-bottom:22px}
-.hello .who{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:15px}
-.ios-hint{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
-  border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px;color:var(--ink-2)}
-.ios-hint b{color:var(--ink)}
-.ios-hint svg{color:var(--brand);flex:none}
-</style>
 </head>
 <body>
-<div class="page">
-  <div class="topbar" id="topbar"></div>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Сегодня</h1></div>
+  <div class="pad" style="padding-bottom:0"><div id="hello" class="sub"></div></div>
 
-  <div class="hello">
-    <h1 id="greet">…</h1>
-    <div class="who" id="who"></div>
+  <div class="stats" id="stats">
+    <button class="stat late"><span class="n" id="nLate">—</span><span class="c">Просрочено</span></button>
+    <button class="stat today"><span class="n" id="nToday">—</span><span class="c">Срок сегодня</span></button>
+    <button class="stat review"><span class="n" id="nReview">—</span><span class="c">На проверке у меня</span></button>
   </div>
 
-  <div id="iosHint"></div>
-  <div class="menu" id="menu"></div>
-</div>
+  <div class="sec">Ближайшие задачи</div>
+  <div class="rows" id="soon"><div class="loading">Загрузка…</div></div>
+</main>
 
 <script src="supabase.min.js"></script>
 <script src="core.js"></script>
 <script>
 initTheme();
+const $ = id => document.getElementById(id);
 
 (async () => {
   if(!await requireAuth()) return;
-  renderTopbar({
-    actionsHTML:
-      '<button class="navlink primary" id="installBtn" hidden>' + icon('download') + 'Установить приложение</button>' +
-      '<a class="navlink primary" href="new-task.html">' + icon('plus') + 'Поставить задачу</a>'
-  });
-  document.getElementById('installBtn').onclick = doInstall;
-  showInstallBtn();   // событие могло прийти до отрисовки шапки
-
-  // в Safari на iPhone своего окна установки нет — объясняем словами
-  if(isIOS() && !isStandalone()){
-    document.getElementById('iosHint').innerHTML =
-      '<div class="ios-hint">' + icon('share') +
-      '<span>Чтобы добавить платформу на телефон: <b>Поделиться</b> → <b>На экран «Домой»</b></span></div>';
-  }
+  renderShell({ title:'Сегодня', tab:'home' });
+  await loadEmployees();
 
   const h = new Date().getHours();
   const hi = h < 6 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
-  document.getElementById('greet').textContent = hi + ', ' + ME.full_name;
-  document.getElementById('who').innerHTML =
-    (ME.position ? '<span>' + esc(ME.position) + '</span><span>·</span>' : '') +
-    '<span>' + esc(ROLE_RU[ME.role] || ME.role) + '</span>';
+  $('hello').textContent = hi + ', ' + ME.full_name;
 
-  const items = [
-    { t:'Мои задачи', d:'Что поручено мне: сроки, статусы, отчёт',
-      h:'tasks.html?tab=mine', i:'list' },
-    { t:'Поставленные мной', d:'Контроль исполнения по моим поручениям',
-      h:'tasks.html?tab=author', i:'target' },
-    { t:'Все задачи', d:'Полный список в рамках моих прав',
-      h:'tasks.html?tab=all', i:'layers' },
-    { t:'Сводный календарь', d:'Дедлайны по всем задачам на одной сетке',
-      i:'calendar', soon:true },
-    { t:'Ссылки и планы', d:'KPI, планы продаж и рабочие документы',
-      h:'links.html', i:'link' },
-    { t:'Сотрудники', d:'Люди, филиалы, подчинение и личные дела',
-      h:'admin.html', i:'users', roles:['admin','director','hr'] }
-  ];
+  const stats = $('stats').children;
+  stats[0].onclick = () => location.href = 'tasks.html?tab=mine&f=overdue';
+  stats[1].onclick = () => location.href = 'tasks.html?tab=mine&f=today';
+  stats[2].onclick = () => location.href = 'tasks.html?tab=author&f=review';
 
-  document.getElementById('menu').innerHTML = items
-    .filter(i => !i.roles || i.roles.includes(ME.role))
-    .map(i => i.soon
-      ? '<div class="mcard soon"><span class="soon-tag">скоро</span>' +
-        '<div class="ic">' + icon(i.i) + '</div><h3>' + esc(i.t) + '</h3><p>' + esc(i.d) + '</p></div>'
-      : '<a class="mcard" href="' + i.h + '"><div class="ic">' + icon(i.i) + '</div>' +
-        '<h3>' + esc(i.t) + '</h3><p>' + esc(i.d) + '</p></a>')
-    .join('');
+  await load();
+  maybeInviteNotifications();
 })();
+
+async function load(){
+  const active = ['new','in_progress','review'];
+  const [mine, review] = await Promise.all([
+    sb.from('v_tasks').select(TASK_COLS).is('archived_at', null)
+      .eq('assignee_id', ME.id).in('status', active).limit(200),
+    sb.from('v_tasks').select('id').is('archived_at', null)
+      .eq('author_id', ME.id).eq('status', 'review').limit(200)
+  ]);
+
+  if(mine.error){ $('soon').innerHTML = '<div class="empty">' + esc(errText(mine.error)) + '</div>'; return; }
+  const rows = (mine.data || []).sort(cmpTasks);
+
+  const endToday = endOfToday().getTime();
+  $('nLate').textContent = rows.filter(t => t.is_overdue).length;
+  $('nToday').textContent = rows.filter(t =>
+    t.due_at && !t.is_overdue && new Date(t.due_at).getTime() <= endToday).length;
+  $('nReview').textContent = (review.data || []).length;
+
+  const soon = rows.slice(0, 12);
+  $('soon').innerHTML = soon.length
+    ? soon.map(t => taskRowHTML(t)).join('')
+    : '<div class="empty">Активных задач нет</div>';
+  $('soon').querySelectorAll('[data-task]').forEach(b =>
+    b.onclick = () => location.href = 'tasks.html?task=' + b.dataset.task);
+}
 </script>
 </body>
 </html>

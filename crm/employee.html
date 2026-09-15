@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PRO MEBEL CRM — Личное дело</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -11,22 +11,20 @@
 <link rel="stylesheet" href="crm.css">
 </head>
 <body>
-<div class="page">
-  <div class="topbar" id="topbar"></div>
-
+<main class="main">
   <div class="person" id="person"></div>
 
   <!-- Кадровые данные -->
   <div class="panel" id="hrPanel" hidden>
-    <div class="sec-title" id="hrTitle">Кадровые данные</div>
+    <div class="sec" id="hrTitle">Кадровые данные</div>
     <div class="row2">
       <div class="field">
         <label class="field-label" for="hireDate">Дата приёма</label>
-        <input id="hireDate" class="mono" type="date">
+        <input id="hireDate" class="num" type="date">
       </div>
       <div class="field">
         <label class="field-label" for="birthDate">Дата рождения</label>
-        <input id="birthDate" class="mono" type="date">
+        <input id="birthDate" class="num" type="date">
       </div>
     </div>
     <div class="field">
@@ -35,17 +33,17 @@
     </div>
     <div class="field">
       <label class="field-label" for="passport">Номер паспорта</label>
-      <input id="passport" class="mono" maxlength="60">
+      <input id="passport" class="num" maxlength="60">
     </div>
     <div class="row2">
       <div class="field">
         <label class="field-label" for="salary">Оклад</label>
-        <input id="salary" class="mono" inputmode="decimal" placeholder="0">
+        <input id="salary" class="num" inputmode="decimal" placeholder="0">
         <div class="hint" id="salaryHint"></div>
       </div>
       <div class="field">
         <label class="field-label" for="currency">Валюта</label>
-        <input id="currency" class="mono" list="curList" maxlength="8" placeholder="TJS">
+        <input id="currency" class="num" list="curList" maxlength="8" placeholder="TJS">
         <datalist id="curList">
           <option value="TJS"><option value="USD"><option value="UZS"><option value="RUB"><option value="EUR">
         </datalist>
@@ -57,7 +55,7 @@
     </div>
     <div class="field">
       <label class="field-label" for="nda">Положение о конфиденциальности подписано</label>
-      <input id="nda" class="mono" type="date">
+      <input id="nda" class="num" type="date">
     </div>
     <div class="field">
       <label class="field-label" for="hrNotes">Заметки</label>
@@ -71,7 +69,7 @@
 
   <!-- Документы -->
   <div class="panel" id="docPanel" hidden>
-    <div class="sec-title">Документы</div>
+    <div class="sec">Документы</div>
     <div id="docList"><div class="loading">Загрузка…</div></div>
     <div class="addrow">
       <div class="field">
@@ -97,7 +95,7 @@
 
   <!-- Компетенции и оценка -->
   <div class="panel" id="skillPanel" hidden>
-    <div class="sec-title">Компетенции</div>
+    <div class="sec">Компетенции</div>
     <p class="sub" style="margin:-6px 0 14px">Оценка знаний: одна точка — не знает, пять — эксперт.
       Сотрудник свою оценку не видит.</p>
     <div id="skillList"><div class="loading">Загрузка…</div></div>
@@ -107,7 +105,7 @@
   </div>
 
   <div class="panel" id="reviewPanel" hidden>
-    <div class="sec-title">Оценка сотрудника</div>
+    <div class="sec">Оценка сотрудника</div>
     <div class="field">
       <label class="field-label" for="strengths">Сильные стороны</label>
       <textarea id="strengths" rows="3"></textarea>
@@ -133,7 +131,7 @@
   <div class="modal-box" style="max-width:520px">
     <div class="modal-head">
       <h2 id="mTitle"></h2>
-      <button class="icon-btn" id="mClose" title="Закрыть"></button>
+      <button class="ib" id="mClose" title="Закрыть"></button>
     </div>
     <div class="modal-body" id="mBody"></div>
   </div>
@@ -168,7 +166,7 @@ let CAN_REVIEW = false; // компетенции и оценка
   // ни кадровик, ни руководитель — смотреть нечего
   if(!CAN_REVIEW){ location.replace('index.html'); return; }
 
-  renderTopbar({ back:'admin.html' });
+  renderShell({ title:'Личное дело', tab:'admin', back:'admin.html' });
   $('mClose').innerHTML = icon('x');
   $('mClose').onclick = closeModal;
   $('modal').onclick = e => { if(e.target === $('modal')) closeModal(); };
@@ -206,7 +204,7 @@ function paintPerson(){
   $('person').innerHTML =
     '<div class="ava">' + esc(initials(TARGET.full_name)) + '</div>' +
     '<div><h1 class="pn">' + esc(TARGET.full_name) +
-      (TARGET.is_active ? '' : ' <span class="badge st-canceled">отключён</span>') + '</h1>' +
+      (TARGET.is_active ? '' : ' <span class="tag-off">отключён</span>') + '</h1>' +
       '<p class="pp">' + esc(bits.join(' · ')) + '</p></div>';
 }
 

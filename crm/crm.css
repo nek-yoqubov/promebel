@@ -1,363 +1,530 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
 /* ============================================================
-   PRO MEBEL · CRM — общие стили
-   Единый визуальный язык с «Очередью распила».
-   Тёмная тема по умолчанию, светлая через body.light.
+   PRO MEBEL · CRM
+   Телефон — шапка 56px + нижние вкладки. ПК — боковая панель.
    ============================================================ */
 
-/* ---------- Тёмная тема (по умолчанию) ---------- */
 :root{
-  --bg:#14161A; --panel:#1B1E24; --card:#20242B; --card-2:#262B33;
-  --line:#2E343D; --line-2:#3A424D;
-  --ink:#EDEFF2; --ink-2:#AEB6C1; --muted:#7A828E;
-  --brand:#F97316; --brand-ink:#0f1114;
-  --ok:#26B673; --ok-bg:#12281f; --warn:#F5B301; --warn-bg:#2a2410;
-  --late:#F0546A; --late-bg:#2a1418;
-  --info:#3B9EFF; --info-bg:#0f2233;
-  --plan:#A96BFF; --plan-bg:#20143010;
-  --shadow:0 6px 24px #0007; --radius:14px;
+  --bg:#11131a; --panel:#181b23; --card:#1e222b; --card-2:#252a34;
+  --line:#2a303a; --line-2:#39414e;
+  --ink:#eef0f4; --ink-2:#aab2be; --muted:#7b8493;
+  --brand:#f97316; --brand-ink:#12140f;
+  --ok:#26b673; --warn:#f5b301; --late:#f0546a; --info:#3b9eff; --plan:#a96bff;
+  --radius:14px; --tap:44px;
+  --shadow:0 10px 30px #0008;
+  --side:240px; --tbar:56px; --tabbar:62px;
 }
-/* ---------- Светлая тема ---------- */
 body.light{
-  --bg:#F4F5F7; --panel:#FFFFFF; --card:#FBFBFC; --card-2:#F1F2F5;
-  --line:#E4E7EC; --line-2:#D3D8DF;
-  --ink:#1A1D23; --ink-2:#4A515B; --muted:#828A95;
-  --brand:#EA6A12; --brand-ink:#FFFFFF;
-  --ok:#159A5E; --ok-bg:#E3F6EC; --warn:#B87D00; --warn-bg:#FBF1D8;
-  --late:#DC3A54; --late-bg:#FBE6EA;
-  --info:#1F76D2; --info-bg:#E6F1FC;
-  --plan:#7B3FD4; --plan-bg:#F1E9FD;
-  --shadow:0 6px 20px #0000000f;
+  --bg:#f5f6f8; --panel:#ffffff; --card:#ffffff; --card-2:#eef0f4;
+  --line:#e3e6ec; --line-2:#cfd5de;
+  --ink:#151820; --ink-2:#4b5361; --muted:#858d9b;
+  --brand:#ea6a12; --brand-ink:#ffffff;
+  --ok:#159a5e; --warn:#b87d00; --late:#dc3a54; --info:#1f76d2; --plan:#7b3fd4;
+  --shadow:0 10px 30px #0000001a;
 }
 
 *{box-sizing:border-box}
+/* hidden должен побеждать любые display из классов */
+[hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:'Manrope',system-ui,sans-serif;font-size:16px;line-height:1.45;
-  transition:background .2s,color .2s}
-.page{max-width:1100px;margin:0 auto;padding:16px 20px 72px}
-.page-narrow{max-width:660px;margin:0 auto;padding:16px 20px 72px}
-.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Manrope',system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.45;
+  overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+}
+body.shell{padding-top:var(--tbar);padding-bottom:calc(var(--tabbar) + env(safe-area-inset-bottom))}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}   /* только номера задач */
+a{color:inherit;text-decoration:none}
+h1,h2,h3{margin:0}
+button{font-family:inherit}
 
-/* ---------- Логотип ---------- */
-.logo{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink);flex:none}
-.logo svg{width:30px;height:30px;flex:none}
-.logo .lt{font:800 17px 'Manrope';letter-spacing:-.01em;white-space:nowrap}
-.logo .lt b{color:var(--brand);font-weight:800}
-
-/* ---------- Топбар ---------- */
-.topbar{display:flex;align-items:center;gap:10px;padding:12px 0 14px;flex-wrap:wrap}
-.topbar .sep{color:var(--muted);font-size:14px;font-weight:600}
-.spacer{flex:1}
-.navlink{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);text-decoration:none;
-  font-weight:700;font-size:15px;padding:9px 13px;border-radius:10px;transition:background .12s,color .12s}
-.navlink:hover{background:var(--card-2);color:var(--ink)}
-.navlink.primary{background:var(--brand);color:var(--brand-ink)}
-.navlink.primary:hover{filter:brightness(1.06)}
-.icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
-  width:42px;height:42px;border:1px solid var(--line);background:var(--card);border-radius:11px;
-  cursor:pointer;color:var(--ink-2);transition:border-color .12s,color .12s;flex:none}
-.icon-btn:hover{border-color:var(--line-2);color:var(--ink)}
-.icon-btn .dot{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;
-  border-radius:10px;background:var(--late);color:#fff;font:700 11px 'IBM Plex Mono',monospace;
-  display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
-svg.i{width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;
+/* ---------- Шапка (телефон) ---------- */
+.tbar{
+  position:fixed;top:0;left:0;right:0;height:var(--tbar);z-index:40;
+  display:flex;align-items:center;gap:6px;padding:0 6px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+}
+.tbar .tt{flex:1;min-width:0;font:800 18px 'Manrope';letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.tbar .ta{display:flex;align-items:center;gap:2px}
+.ib{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:var(--tap);height:var(--tap);border:none;background:none;color:var(--ink-2);
+  border-radius:12px;cursor:pointer;flex:none;transition:background .15s,transform .1s;
+}
+.ib:active{transform:scale(.94)}
+.ib:hover{background:var(--card-2);color:var(--ink)}
+.ib.logo:hover{background:none}
+.cnt{
+  position:absolute;top:4px;right:3px;min-width:18px;height:18px;padding:0 5px;
+  border-radius:9px;background:var(--late);color:#fff;
+  font:700 11px 'Manrope';font-variant-numeric:tabular-nums;
+  display:flex;align-items:center;justify-content:center;border:2px solid var(--panel);
+}
+svg.i{width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none;
   stroke-linecap:round;stroke-linejoin:round;flex:none}
-svg.i.sm{width:15px;height:15px}
-svg.i.lg{width:22px;height:22px}
-svg.i.fill{fill:currentColor;stroke:none}
+svg.i.sm{width:17px;height:17px}
+svg.mark{display:block;flex:none}
 
-h1{font:800 26px 'Manrope';letter-spacing:-.015em;margin:0 0 4px}
-h2{font:800 19px 'Manrope';margin:0 0 10px}
+/* ---------- Нижние вкладки (телефон) ---------- */
+.tabbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;
+  height:calc(var(--tabbar) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  display:grid;grid-template-columns:repeat(5,1fr);align-items:center;
+  background:var(--panel);border-top:1px solid var(--line);
+}
+.tb{
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;height:100%;color:var(--muted);transition:color .15s;min-width:0;
+}
+.tb .ic{position:relative;display:flex}
+.tb .lb{font:600 10.5px 'Manrope';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tb.on{color:var(--brand)}
+.tb:active{transform:scale(.95)}
+.tb .cnt{top:-4px;right:-8px;border-color:var(--panel)}
+.tb.fab{
+  width:52px;height:52px;margin:0 auto;border-radius:50%;
+  background:var(--brand);color:var(--brand-ink);box-shadow:0 4px 14px rgba(249,115,22,.4);
+}
+.tb.fab svg.i{width:26px;height:26px;stroke-width:2.4}
+
+/* ---------- Боковая панель (ПК) ---------- */
+.side{display:none}
+
+/* ---------- Контент ---------- */
+.main{max-width:980px;margin:0 auto;padding:0 0 24px}
+.pad{padding:16px}
+.sec{font:700 15px 'Manrope';margin:20px 16px 8px;color:var(--ink)}
+.sec:first-child{margin-top:14px}
 .sub{color:var(--muted);font-size:14px}
+.empty{color:var(--muted);text-align:center;padding:44px 16px;font-size:15px}
+.loading{color:var(--muted);text-align:center;padding:34px 0;font-size:15px}
+.hr{height:1px;background:var(--line);margin:0 16px}
 
-/* ---------- Панели ---------- */
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
-.panel+.panel{margin-top:14px}
-.sec-title{display:flex;align-items:center;gap:8px;font:700 11px 'Manrope';letter-spacing:.09em;
-  text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+/* ---------- Кнопки ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  height:48px;padding:0 18px;border:none;border-radius:12px;
+  background:var(--brand);color:var(--brand-ink);font:700 15px 'Manrope';
+  white-space:nowrap;cursor:pointer;transition:filter .15s,transform .1s;
+}
+.btn:hover{filter:brightness(1.07)}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.5;cursor:default;transform:none;filter:none}
+.btn.ghost{background:var(--card);color:var(--ink);border:1.5px solid var(--line)}
+.btn.ghost:hover{border-color:var(--line-2);filter:none}
+.btn.ok{background:rgba(38,182,115,.14);color:var(--ok)}
+.btn.warn{background:rgba(245,179,1,.14);color:var(--warn)}
+.btn.danger{background:rgba(240,84,106,.14);color:var(--late)}
+.btn.info{background:rgba(59,158,255,.14);color:var(--info)}
+.btn.sm{height:38px;padding:0 13px;font-size:14px;border-radius:10px}
+.btn.block{width:100%}
+.btn-row{display:flex;flex-wrap:wrap;gap:9px}
 
 /* ---------- Поля ---------- */
 .field{margin-bottom:14px}
-.field-label{display:block;font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:6px;letter-spacing:.02em}
+.field-label{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
 .field-label .req{color:var(--late)}
-input,select,textarea{width:100%;background:var(--card);border:1.5px solid var(--line);border-radius:10px;
-  padding:12px 13px;color:var(--ink);font:600 16px 'Manrope';transition:border-color .12s}
+input,select,textarea{
+  width:100%;background:var(--card);border:1.5px solid var(--line);border-radius:12px;
+  padding:12px 14px;color:var(--ink);font:600 16px 'Manrope';min-height:48px;
+  transition:border-color .15s;
+}
 textarea{resize:vertical;min-height:88px;line-height:1.5}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
-input.mono,select.mono{font-family:'IBM Plex Mono',monospace}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.hint{font-size:12px;color:var(--muted);margin-top:6px}
-.msg{margin-top:12px;font-size:15px;font-weight:700;min-height:20px}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
+.msg{margin-top:10px;font-size:14px;font-weight:700;min-height:18px}
 .msg.err{color:var(--late)} .msg.ok{color:var(--ok)}
+.chk{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:15px;
+  font-weight:600;user-select:none;min-height:var(--tap)}
+.chk input{width:auto;min-height:0;margin:0}
+.inline-add{display:flex;gap:8px;align-items:stretch}
+.inline-add input{flex:1;min-width:0}
+.inline-add .btn{flex:none;padding:0 14px;height:48px}
 
-/* ---------- Кнопки ---------- */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--brand);
-  color:var(--brand-ink);border:none;border-radius:10px;padding:12px 17px;font:700 15px 'Manrope';
-  cursor:pointer;transition:filter .12s}
-.btn:hover{filter:brightness(1.07)}
-.btn:disabled{opacity:.5;cursor:default;filter:none}
-.btn-block{width:100%}
-.btn.ghost{background:var(--card);color:var(--ink);border:1.5px solid var(--line)}
-.btn.ghost:hover{border-color:var(--line-2);filter:none}
-.btn.sm{padding:9px 13px;font-size:14px}
-.btn.ok{background:var(--ok-bg);color:var(--ok);border:1.5px solid transparent}
-.btn.warn{background:var(--warn-bg);color:var(--warn);border:1.5px solid transparent}
-.btn.danger{background:var(--late-bg);color:var(--late);border:1.5px solid transparent}
-.btn.info{background:var(--info-bg);color:var(--info);border:1.5px solid transparent}
-.btn-row{display:flex;flex-wrap:wrap;gap:9px}
+/* ---------- Сегментированный переключатель ---------- */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;
+  background:var(--card-2);border-radius:12px;padding:3px;margin:12px 16px}
+.seg button{
+  min-width:0;height:44px;border:none;background:none;border-radius:9px;cursor:pointer;
+  color:var(--ink-2);font:700 14px 'Manrope';white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;padding:0 6px;transition:background .15s,color .15s;
+}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px #0003}
 
-/* ---------- Бейджи: статус, приоритет, просрочка ---------- */
-.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;
-  font:700 12px 'Manrope';letter-spacing:.01em;white-space:nowrap}
-.badge.st-new{background:var(--card-2);color:var(--ink-2)}
-.badge.st-in_progress{background:var(--info-bg);color:var(--info)}
-.badge.st-review{background:var(--warn-bg);color:var(--warn)}
-.badge.st-done{background:var(--ok-bg);color:var(--ok)}
-.badge.st-canceled{background:var(--card-2);color:var(--muted)}
-.badge.p-low{background:var(--card-2);color:var(--muted)}
-.badge.p-normal{background:var(--card-2);color:var(--ink-2)}
-.badge.p-high{background:var(--warn-bg);color:var(--warn)}
-.badge.p-critical{background:var(--late-bg);color:var(--late)}
-.badge.late{background:var(--late-bg);color:var(--late)}
-.badge.info{background:var(--card-2);color:var(--ink-2)}
+/* ---------- Лента чипов ---------- */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 16px 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:none;height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink-2);font:600 14px 'Manrope';white-space:nowrap;
+  cursor:pointer;display:inline-flex;align-items:center;transition:all .15s;
+}
+.chip.on{background:var(--brand);color:var(--brand-ink);border-color:transparent}
 
-/* ---------- Вкладки ---------- */
-.tabs{display:flex;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:12px;
-  padding:5px;margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tab{flex:1;min-width:132px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  background:none;border:none;color:var(--ink-2);font:700 15px 'Manrope';padding:11px 12px;
-  border-radius:9px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
-.tab:hover{color:var(--ink)}
-.tab.active{background:var(--brand);color:var(--brand-ink)}
-.tab .cnt{font-family:'IBM Plex Mono',monospace;font-size:13px;opacity:.75}
+/* ---------- Строка списка (задачи, подзадачи, уведомления) ---------- */
+.rows{display:flex;flex-direction:column}
+.row{
+  display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;
+  padding:12px 16px;min-height:64px;background:none;border:none;
+  border-bottom:1px solid var(--line);cursor:pointer;color:inherit;font:inherit;
+  transition:background .12s;
+}
+.row:hover{background:var(--card)}
+.row:active{background:var(--card-2)}
+.row.on{background:var(--card-2)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
+.row>.dot{margin-top:7px}
+.dot.st-new{background:var(--muted)}
+.dot.st-in_progress{background:var(--info)}
+.dot.st-review{background:var(--warn)}
+.dot.st-done{background:var(--ok)}
+.dot.st-canceled{background:var(--line-2)}
+.dot.late{background:var(--late)}
+.rb{flex:1;min-width:0}
+.l1{display:flex;align-items:baseline;gap:10px}
+.l1 .t{flex:1;min-width:0;font:700 15.5px 'Manrope';white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l1 .when{flex:none;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.l1 .when.late{color:var(--late);font-weight:700}
+.l2{display:flex;align-items:center;gap:10px;margin-top:3px;font-size:13.5px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l2 .subs{font-variant-numeric:tabular-nums}
+.pri{color:var(--warn);flex:none;display:inline-flex}
+.pri svg{width:14px;height:14px}
+.pri.critical{color:var(--late)}
+.row.unread .l1 .t{font-weight:800}
+.row.unread .dot{background:var(--brand)}
+.row.muted .l1 .t{color:var(--muted);font-weight:600}
 
-/* ---------- Фильтры ---------- */
-.filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px}
-.filters .f-search{position:relative}
-.filters .f-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
-.filters .f-search input{padding-left:38px}
+/* ---------- Счётчики на «Сегодня» ---------- */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 16px 4px}
+.stat{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 10px;
+  text-align:left;cursor:pointer;transition:border-color .15s,transform .1s;color:inherit;
+}
+.stat:active{transform:scale(.97)}
+.stat:hover{border-color:var(--line-2)}
+.stat .n{font:800 26px 'Manrope';font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .c{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.25}
+.stat.late .n{color:var(--late)}
+.stat.today .n{color:var(--warn)}
+.stat.review .n{color:var(--info)}
 
-/* ---------- Карточка задачи ---------- */
-.tlist{display:flex;flex-direction:column;gap:10px}
-.tcard{position:relative;display:block;width:100%;text-align:left;background:var(--panel);
-  border:1px solid var(--line);border-left:4px solid var(--line-2);border-radius:12px;
-  padding:14px 16px;cursor:pointer;font-family:inherit;color:inherit;
-  transition:border-color .12s,transform .12s}
-.tcard:hover{border-color:var(--line-2);transform:translateY(-1px)}
-.tcard.pl-low{border-left-color:var(--muted)}
-.tcard.pl-normal{border-left-color:var(--line-2)}
-.tcard.pl-high{border-left-color:var(--warn)}
-.tcard.pl-critical{border-left-color:var(--late)}
-.tcard.is-overdue{background:linear-gradient(90deg,var(--late-bg),var(--panel) 55%)}
-.tcard.is-done{opacity:.72}
-.tcard .t-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
-.tcard .t-title{flex:1;font:700 17px 'Manrope';line-height:1.35;color:var(--ink);word-break:break-word}
-.tcard .t-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:14px;color:var(--ink-2)}
-.tcard .t-meta .it{display:inline-flex;align-items:center;gap:6px}
-.tcard .t-meta .due{font-family:'IBM Plex Mono',monospace;font-weight:600}
-.tcard .t-meta .due.late{color:var(--late)}
-.tcard .t-meta .due.warn{color:var(--warn)}
-.tcard .t-meta .due.ok{color:var(--ink-2)}
-.tcard .t-meta .due.muted{color:var(--muted)}
-.tcard .t-sub{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--ink-2)}
-.tcard .t-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)}
+/* ---------- Экран задачи ---------- */
+.layer{
+  position:fixed;inset:0;z-index:60;background:var(--bg);
+  display:flex;flex-direction:column;animation:slideIn .2s ease-out;
+}
+.layer[hidden]{display:none}
+@keyframes slideIn{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
+.lhead{
+  display:flex;align-items:center;gap:6px;padding:0 6px;height:var(--tbar);flex:none;
+  background:var(--panel);border-bottom:1px solid var(--line);
+}
+.lhead .tt{flex:1;min-width:0;font:800 17px 'Manrope';white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lbody{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+.lfoot{flex:none;border-top:1px solid var(--line);background:var(--panel);
+  padding-bottom:env(safe-area-inset-bottom)}
 
-/* ---------- Модалка ---------- */
-.modal{position:fixed;inset:0;background:#0009;backdrop-filter:blur(2px);z-index:60;
-  display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}
+.dhead{padding:16px}
+.dhead h2{font:800 20px 'Manrope';line-height:1.3;word-break:break-word}
+.dhead .stat-line{margin-top:6px;font-size:14px;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.dhead .stat-line .late{color:var(--late);font-weight:700}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;padding:0 16px 14px;font-size:14.5px}
+.kv dt{color:var(--muted);font-size:13.5px}
+.kv dd{margin:0;word-break:break-word}
+.kv dd .late{color:var(--late)}
+.meta-small{padding:0 16px 14px;font-size:12.5px;color:var(--muted)}
+.meta-small .mono{font-size:12.5px}
+
+/* лента комментариев и событий */
+.feed{display:flex;flex-direction:column;gap:9px;padding:12px 16px}
+.bub{max-width:80%;padding:9px 13px;border-radius:15px;background:var(--card);
+  border:1px solid var(--line);align-self:flex-start}
+.bub.me{align-self:flex-end;background:var(--brand);color:var(--brand-ink);border-color:transparent}
+.bub .a{font:700 12.5px 'Manrope';color:var(--brand);margin-bottom:2px}
+.bub.me .a{display:none}
+.bub .b{font-size:15px;white-space:pre-wrap;word-break:break-word}
+.bub .d{font-size:11.5px;opacity:.65;margin-top:3px;text-align:right;font-variant-numeric:tabular-nums}
+.sys{align-self:center;text-align:center;font-size:12.5px;color:var(--muted);padding:2px 10px}
+
+.composer{display:flex;align-items:flex-end;gap:8px;padding:8px 10px}
+.composer textarea{
+  flex:1;min-height:var(--tap);max-height:104px;resize:none;border-radius:22px;
+  padding:11px 16px;font-size:15px;line-height:1.35;overflow-y:auto;
+}
+.composer .send{
+  width:var(--tap);height:var(--tap);border-radius:50%;background:var(--brand);
+  color:var(--brand-ink);border:none;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;flex:none;transition:transform .1s}
+.composer .send:active{transform:scale(.93)}
+.composer .send:disabled{opacity:.45}
+.act-bar{display:flex;gap:8px;padding:10px 10px 0;align-items:center}
+.act-bar .btn{flex:1}
+
+/* ---------- Меню «⋯» ---------- */
+.menu{
+  position:fixed;z-index:80;background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;box-shadow:var(--shadow);overflow:hidden;min-width:200px;
+  animation:pop .14s ease-out;
+}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.menu button{
+  display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap);
+  padding:0 14px;background:none;border:none;color:var(--ink);font:600 15px 'Manrope';
+  cursor:pointer;text-align:left;
+}
+.menu button:hover{background:var(--card)}
+.menu button.danger{color:var(--late)}
+.backdrop{position:fixed;inset:0;z-index:70;background:#0006}
+.backdrop.clear{background:none}
+
+/* ---------- Нижний лист ---------- */
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;top:0;z-index:60;background:var(--bg);
+  display:flex;flex-direction:column;animation:sheetUp .22s ease-out;
+}
+.sheet[hidden]{display:none}
+@keyframes sheetUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+
+/* ---------- Список настроек (профиль) ---------- */
+.group{margin:0 0 18px}
+.group .gt{font:700 13px 'Manrope';color:var(--muted);margin:0 16px 7px}
+.glist{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.gi{
+  display:flex;align-items:center;gap:12px;width:100%;min-height:54px;padding:10px 16px;
+  background:none;border:none;border-bottom:1px solid var(--line);color:var(--ink);
+  font:600 15.5px 'Manrope';text-align:left;cursor:pointer;
+}
+.gi:last-child{border-bottom:none}
+.gi:hover{background:var(--card)}
+.gi .gic{color:var(--brand);flex:none;display:flex}
+.gi .gl{flex:1;min-width:0}
+.gi .gl i{display:block;font-style:normal;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px}
+.gi .gv{color:var(--muted);font-size:14px;font-weight:600;flex:none;display:flex;align-items:center;gap:6px}
+.gi.static{cursor:default}
+.gi.static:hover{background:none}
+
+/* ---------- Полоски-подсказки и тост ---------- */
+.strip{
+  position:fixed;left:10px;right:10px;z-index:45;
+  bottom:calc(var(--tabbar) + env(safe-area-inset-bottom) + 10px);
+  display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+  animation:pop .18s ease-out;
+}
+.strip .st{flex:1;min-width:0;font-size:14px;font-weight:600}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);z-index:100;
+  bottom:calc(var(--tabbar) + env(safe-area-inset-bottom) + 16px);
+  background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;
+  font:700 14px 'Manrope';box-shadow:var(--shadow);max-width:calc(100vw - 32px);text-align:center;
+  animation:pop .18s ease-out;
+}
+.doneov{position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;animation:pop .15s ease-out}
+.doneov img{width:140px;height:140px}
+
+/* ---------- Модалка (админка, личное дело, ссылки) ---------- */
+.modal{position:fixed;inset:0;z-index:70;background:#0009;display:flex;align-items:center;
+  justify-content:center;padding:0;overflow:auto;animation:pop .16s ease-out}
 .modal[hidden]{display:none}
-.modal-box{width:100%;max-width:760px;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--radius);box-shadow:var(--shadow);margin:auto}
-.modal-head{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line);
-  position:sticky;top:0;background:var(--panel);border-radius:var(--radius) var(--radius) 0 0;z-index:2}
-.modal-head h2{flex:1;margin:0;font:800 20px 'Manrope';line-height:1.3;word-break:break-word}
-.modal-body{padding:18px 20px 22px}
-.mblock{margin-bottom:20px}
-.mblock:last-child{margin-bottom:0}
-.dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:15px}
-.dl dt{color:var(--muted);font-size:13px;font-weight:700;padding-top:2px}
-.dl dd{margin:0;color:var(--ink)}
-.text-block{white-space:pre-wrap;word-break:break-word;font-size:15px;color:var(--ink);line-height:1.55}
-.crit{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ok);
-  border-radius:9px;padding:12px 14px}
-.sublist{display:flex;flex-direction:column;gap:8px}
-.subrow{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
-  border-radius:9px;padding:10px 12px;font-size:15px;cursor:pointer}
-.subrow:hover{border-color:var(--line-2)}
-.subrow .s-t{flex:1;font-weight:600;word-break:break-word}
-.comments{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
-.cm{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
-.cm .cm-h{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:13px}
-.cm .cm-a{font-weight:700;color:var(--ink)}
-.cm .cm-d{font-family:'IBM Plex Mono',monospace;color:var(--muted);font-size:12px}
-.cm .cm-b{white-space:pre-wrap;word-break:break-word;font-size:15px;color:var(--ink-2)}
-.tl{list-style:none;margin:0;padding:0}
-.tl li{position:relative;padding:0 0 14px 22px;border-left:1.5px solid var(--line);margin-left:5px}
-.tl li:last-child{border-left-color:transparent;padding-bottom:0}
-.tl li::before{content:'';position:absolute;left:-5.5px;top:5px;width:9px;height:9px;border-radius:50%;
-  background:var(--line-2)}
-.tl li.acc::before{background:var(--brand)}
-.tl .ev{font-size:15px;font-weight:600;color:var(--ink)}
-.tl .ev-d{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)}
+.modal-box{width:100%;max-width:560px;background:var(--panel);display:flex;flex-direction:column;
+  max-height:100dvh;min-height:100dvh}
+.modal-head{display:flex;align-items:center;gap:8px;padding:0 6px;height:var(--tbar);flex:none;
+  border-bottom:1px solid var(--line)}
+.modal-head h2{flex:1;min-width:0;font:800 17px 'Manrope';white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;padding-left:8px}
+.modal-body{padding:16px;overflow:auto;flex:1;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.text-block{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.55}
+.icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:var(--tap);height:var(--tap);border:none;background:none;color:var(--ink-2);
+  border-radius:12px;cursor:pointer;flex:none}
+.icon-btn:hover{background:var(--card-2);color:var(--ink)}
+.wrap{max-width:620px;margin:0 auto}
+.lgroup{margin-bottom:18px}
+.cred{background:rgba(38,182,115,.14);color:var(--ok);border-radius:12px;padding:12px 14px;
+  margin:0 16px 12px;font-size:14.5px;font-weight:600}
+.cred .num{color:var(--ink);background:var(--card);padding:2px 7px;border-radius:6px;
+  font-variant-numeric:tabular-nums}
+.tag-ok{color:var(--ok);font-weight:700;font-size:14px}
+.tag-off{color:var(--muted);font-weight:600;font-size:14px}
+.tag-late{color:var(--late);font-weight:700;font-size:14px}
 
-/* ---------- Уведомления (поповер) ---------- */
-.pop{position:absolute;right:0;top:50px;width:340px;max-width:calc(100vw - 32px);background:var(--panel);
-  border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);z-index:70;overflow:hidden}
-.pop[hidden]{display:none}
-.pop-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
-.pop-h .t{flex:1;font:700 14px 'Manrope'}
-.pop-h button{background:none;border:none;color:var(--brand);font:700 13px 'Manrope';cursor:pointer;padding:0}
-.pop-list{max-height:min(60vh,420px);overflow:auto}
-.nrow{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);
-  padding:11px 14px;cursor:pointer;font-family:inherit;color:inherit}
-.nrow:hover{background:var(--card)}
-.nrow.unread{background:var(--card-2)}
-.nrow .n-t{font:700 14px 'Manrope';color:var(--ink);margin-bottom:3px}
-.nrow .n-b{font-size:13px;color:var(--ink-2);word-break:break-word}
-.nrow .n-d{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-top:3px}
-.bell-wrap{position:relative}
-
-/* ---------- Меню-плитки ---------- */
-.menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
-.mcard{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-  padding:20px;text-decoration:none;transition:border-color .12s,transform .12s;position:relative}
-.mcard:hover{border-color:var(--brand);transform:translateY(-2px)}
-.mcard.soon{opacity:.6;cursor:default}
-.mcard.soon:hover{border-color:var(--line);transform:none}
-.mcard .ic{width:42px;height:42px;border-radius:11px;background:var(--card-2);display:flex;
-  align-items:center;justify-content:center;color:var(--brand);margin-bottom:13px}
-.mcard h3{margin:0 0 5px;font:700 17px 'Manrope';color:var(--ink)}
-.mcard p{margin:0;font-size:14px;color:var(--muted)}
-.mcard .soon-tag{position:absolute;top:16px;right:16px;font:700 10px 'Manrope';letter-spacing:.08em;
-  text-transform:uppercase;color:var(--muted);background:var(--card-2);padding:4px 8px;border-radius:6px}
-
-/* ---------- Админка: таблица и строки добавления ---------- */
-.adm-bar{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;margin-bottom:14px}
-.adm-bar .f-search{position:relative}
-.adm-bar .f-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
-.adm-bar .f-search input{padding-left:38px}
-
+/* ---------- Таблицы админки ---------- */
 .tbl{width:100%;border-collapse:collapse;font-size:15px}
-.tbl th{text-align:left;font:700 11px 'Manrope';letter-spacing:.08em;text-transform:uppercase;
-  color:var(--muted);padding:0 12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-.tbl td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl th{text-align:left;font:700 13px 'Manrope';color:var(--muted);padding:0 14px 10px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
 .tbl tbody tr:last-child td{border-bottom:none}
-.tbl .nm{font-weight:700;color:var(--ink)}
+.tbl .nm{font-weight:700}
 .tbl .dim{color:var(--muted)}
 .tbl tr.off .nm{color:var(--muted)}
 .tbl .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
-
+.tbl .tg-yes{color:var(--ok);font-weight:700}
+.tbl .tg-no{color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;margin:0 16px 14px}
+.adm-bar{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;padding:12px 16px}
+.f-search{position:relative}
+.f-search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.f-search input{padding-left:42px}
 .addrow{display:grid;grid-template-columns:1.2fr 1fr 1.4fr auto;gap:10px;align-items:start;
   margin-top:14px;padding-top:14px;border-top:1px dashed var(--line-2)}
 .addrow.two{grid-template-columns:1fr auto}
 .addrow .field{margin:0}
-
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:15px;
-  font-weight:600;user-select:none}
-.chk input{width:auto;margin:0}
-.cred{background:var(--ok-bg);color:var(--ok);border-radius:10px;padding:12px 14px;
-  font-size:15px;font-weight:600;margin-bottom:12px}
-.cred .mono{color:var(--ink);background:var(--card);padding:2px 7px;border-radius:6px}
+.chips-plain{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.tagbox{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:9px;
+  background:var(--card-2);color:var(--ink-2);font:600 13px 'Manrope'}
 
 /* ---------- Личное дело ---------- */
-.person{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
-.person .ava{width:52px;height:52px;border-radius:14px;background:var(--card-2);color:var(--brand);
-  display:flex;align-items:center;justify-content:center;font:800 20px 'Manrope';flex:none}
-.person .pn{font:800 22px 'Manrope';letter-spacing:-.01em;margin:0}
-.person .pp{color:var(--muted);font-size:14px;margin:2px 0 0}
-
-.docrow{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
-  border-radius:10px;padding:11px 13px;margin-bottom:9px}
+.person{display:flex;align-items:center;gap:14px;padding:16px;flex-wrap:wrap}
+.ava{width:48px;height:48px;border-radius:14px;background:var(--card-2);color:var(--brand);
+  display:flex;align-items:center;justify-content:center;font:800 18px 'Manrope';flex:none}
+.person .pn{font:800 20px 'Manrope'}
+.person .pp{color:var(--muted);font-size:14px;margin-top:2px}
+.docrow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.docrow:last-child{border-bottom:none}
 .docrow .di{color:var(--brand);flex:none}
 .docrow .dm{flex:1;min-width:0}
-.docrow .dt{font-weight:700;color:var(--ink);word-break:break-word}
-.docrow .ds{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px}
+.docrow .dt{font-weight:700;word-break:break-word}
+.docrow .ds{font-size:12.5px;color:var(--muted);margin-top:2px}
 .docrow .da{display:flex;gap:6px;flex:none}
-
 .dots{display:inline-flex;gap:5px;align-items:center}
 .dots i{width:11px;height:11px;border-radius:50%;background:var(--line-2);display:block}
 .dots i.on{background:var(--brand)}
-.dots.pick i{cursor:pointer;width:22px;height:22px}
-.dots.pick i.on{background:var(--brand)}
-
-.skillrow{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
-  border-radius:10px;padding:11px 13px;margin-bottom:9px;flex-wrap:wrap}
-.skillrow .sn{flex:1;min-width:140px;font-weight:700;color:var(--ink)}
+.dots.pick i{cursor:pointer;width:24px;height:24px}
+.skillrow{display:flex;align-items:center;gap:12px;padding:11px 0;flex-wrap:wrap;
+  border-bottom:1px solid var(--line)}
+.skillrow:last-child{border-bottom:none}
+.skillrow .sn{flex:1;min-width:140px;font-weight:700}
 .skillrow .sd{font-size:13px;color:var(--muted);width:100%}
 
-/* ---------- Ссылки и планы ---------- */
-.lgroup{margin-bottom:22px}
-.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
-.lcard{position:relative;display:flex;flex-direction:column;gap:6px;background:var(--panel);
-  border:1px solid var(--line);border-radius:12px;padding:16px;text-decoration:none;
-  transition:border-color .12s,transform .12s}
-.lcard:hover{border-color:var(--brand);transform:translateY(-2px)}
-.lcard .lt{font:700 16px 'Manrope';color:var(--ink);display:flex;align-items:center;gap:8px}
+/* ---------- Ссылки ---------- */
+.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:0 16px}
+.lcard{position:relative;display:flex;flex-direction:column;gap:5px;background:var(--panel);
+  border:1px solid var(--line);border-radius:14px;padding:15px;transition:border-color .15s,transform .1s}
+.lcard:hover{border-color:var(--brand)}
+.lcard .lt{font:700 16px 'Manrope';display:flex;align-items:center;gap:8px}
 .lcard .lt svg{color:var(--muted);flex:none}
+.lcard .lt::after{content:'';position:absolute;inset:0}
 .lcard .ld{font-size:14px;color:var(--muted)}
-.lcard .lh{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lcard .lh{font-size:12.5px;color:var(--brand);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lcard.off{opacity:.55}
-.lcard .lt::after{content:'';position:absolute;inset:0}   /* кликабельна вся карточка */
 .ladmin{display:flex;gap:6px;margin-top:8px;position:relative;z-index:1}
+.pickbox{max-height:200px;overflow:auto;border:1.5px solid var(--line);border-radius:12px;
+  padding:6px 12px;background:var(--card)}
+.pickbox .chk{display:flex;min-height:38px;font-size:14px}
+.rolegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0 12px}
 
-.pickbox{max-height:210px;overflow:auto;border:1.5px solid var(--line);border-radius:10px;
-  padding:10px 12px;background:var(--card)}
-.pickbox .chk{display:flex;padding:5px 0;font-size:14px}
-.rolegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:4px 12px}
-.inline-add{display:flex;gap:8px;align-items:stretch}
-.inline-add input{flex:1;min-width:0}
-.inline-add .btn{flex:none;padding:0 14px}
+.fatal{max-width:420px;margin:16vh auto;text-align:center;padding:0 20px;
+  display:flex;flex-direction:column;align-items:center;gap:8px}
+.fatal .t{font:800 18px 'Manrope';margin-top:10px}
+.fatal .d{color:var(--muted);font-size:15px;margin-bottom:14px}
 
-/* ---------- Прочее ---------- */
-.empty{color:var(--muted);text-align:center;padding:46px 16px;font-size:15px}
-.loading{color:var(--muted);text-align:center;padding:38px 0;font-size:15px}
-.fatal{max-width:430px;margin:18vh auto;text-align:center;padding:0 20px}
-.fatal .t{font:700 18px 'Manrope';margin:16px 0 8px}
-.fatal .d{color:var(--muted);font-size:15px;margin-bottom:18px}
+/* ============================================================
+   ПК — от 1024px
+   ============================================================ */
+@media (min-width:1024px){
+  body.shell{padding-top:0;padding-bottom:0;padding-left:var(--side)}
+  .tbar{display:none}
+  .tabbar{display:none}
+  .side{
+    display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;width:var(--side);
+    background:var(--panel);border-right:1px solid var(--line);padding:16px 10px;z-index:40;
+  }
+  .slogo{display:flex;align-items:center;gap:10px;padding:6px 8px 18px;font:800 17px 'Manrope'}
+  .slogo b{color:var(--brand)}
+  .snav{display:flex;flex-direction:column;gap:2px;flex:1;overflow:auto}
+  .sd{
+    position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;
+    border-radius:11px;color:var(--ink-2);font:600 15px 'Manrope';transition:background .15s,color .15s;
+  }
+  .sd:hover{background:var(--card);color:var(--ink)}
+  .sd.on{background:var(--brand);color:var(--brand-ink)}
+  .sd.on svg{color:var(--brand-ink)}
+  .sd .cnt{position:static;margin-left:auto;border:none}
+  .sd.soon{opacity:.5;cursor:default}
+  .sd.soon .tag{margin-left:auto;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--muted)}
+  .sme{display:flex;align-items:center;gap:10px;padding:10px 8px 2px;border-top:1px solid var(--line);
+    margin-top:8px}
+  .sme .ava{width:36px;height:36px;border-radius:11px;font-size:14px}
+  .sme .smi{min-width:0}
+  .sme .smi b{display:block;font:700 14px 'Manrope';white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sme .smi i{font-style:normal;font-size:12.5px;color:var(--muted)}
 
-/* ---------- Мобильная вёрстка ---------- */
+  .main{max-width:none;margin:0;padding:0}
+  .pagehead{display:flex;align-items:center;gap:12px;padding:20px 24px 8px}
+  .pagehead h1{font:800 24px 'Manrope';flex:1;min-width:0}
+  .pad,.sec,.seg,.chips,.stats,.adm-bar,.lgrid{padding-left:24px;padding-right:24px}
+  .seg,.panel{margin-left:24px;margin-right:24px}
+  .row{padding-left:24px;padding-right:24px}
+  .hr{margin-left:24px;margin-right:24px}
+
+  /* задачи в две колонки, как в мессенджере на ПК */
+  .split{display:grid;grid-template-columns:420px 1fr;height:100vh}
+  .split .col-list{border-right:1px solid var(--line);overflow:auto;display:flex;flex-direction:column}
+  .split .col-list .row{padding-left:16px;padding-right:16px}
+  .split .col-list .seg{margin-left:16px;margin-right:16px}
+  .split .col-list .chips,.split .col-list .pagehead{padding-left:16px;padding-right:16px}
+  .split .col-detail{overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .split .layer{position:static;animation:none;height:100%}
+  .split .lhead{border-bottom:1px solid var(--line)}
+  .split .lfoot{padding-bottom:0}
+  .btn{height:40px}
+  .chip{height:36px;padding:0 14px}
+  .seg button{height:36px}
+  .composer textarea{min-height:40px}
+  .strip{left:auto;right:20px;bottom:20px;max-width:420px}
+  .toast{bottom:24px}
+  .stats{grid-template-columns:repeat(3,minmax(0,220px))}
+  .modal{padding:24px}
+  .modal-box{border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+    min-height:0;max-height:88vh}
+  .modal-head{border-radius:var(--radius) var(--radius) 0 0;height:56px}
+}
+
+/* ============================================================
+   Телефон — до 760px
+   ============================================================ */
 @media (max-width:760px){
-  .page,.page-narrow{padding:12px 14px 64px}
-  h1{font-size:22px}
-  .filters{grid-template-columns:1fr 1fr}
-  .filters .f-search{grid-column:1 / -1}
-  .row2{grid-template-columns:1fr}
-  .tab{min-width:0;font-size:14px;padding:10px 8px}
-  .topbar .sep{display:none}
-  .modal{padding:0}
-  .modal-box{max-width:none;border:none;border-radius:0;min-height:100%}
-  .modal-head{border-radius:0;padding:14px 16px 12px}
-  .modal-body{padding:16px 16px 32px}
-  .dl{grid-template-columns:1fr;gap:2px 0}
-  .dl dd{margin-bottom:10px}
-  .pop{position:fixed;left:14px;right:14px;top:auto;bottom:14px;width:auto;max-width:none}
-  .btn-row .btn{flex:1;min-width:calc(50% - 5px)}
   .adm-bar{grid-template-columns:1fr 1fr}
   .adm-bar .f-search{grid-column:1 / -1}
   .adm-bar .btn{grid-column:1 / -1}
   .addrow,.addrow.two{grid-template-columns:1fr}
+  .row2{grid-template-columns:1fr}
+  .lgrid{grid-template-columns:1fr}
   .tbl thead{display:none}
   .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
   .tbl tr{background:var(--card);border:1px solid var(--line);border-radius:12px;
     padding:12px 14px;margin-bottom:10px}
   .tbl td{border:none;padding:4px 0;display:flex;gap:10px;align-items:baseline}
-  .tbl td::before{content:attr(data-label);flex:none;width:104px;font-size:12px;
+  .tbl td::before{content:attr(data-label);flex:none;width:104px;font-size:12.5px;
     font-weight:700;color:var(--muted)}
   .tbl td.acts-cell{padding-top:10px}
   .tbl td.acts-cell::before{display:none}
   .tbl .acts{justify-content:flex-start}
-  .lgrid{grid-template-columns:1fr}
-  .docrow{flex-wrap:wrap}
-  .docrow .da{width:100%;margin-top:4px}
-  .person .pn{font-size:19px}
+  .kv{grid-template-columns:auto 1fr}
+  .bub{max-width:88%}
+}
+@media (max-width:380px){
+  .tb .lb{font-size:9.5px}
+  .stat .n{font-size:22px}
+  .seg button{font-size:13px}
 }
 
-@media (max-width:430px){
-  .tab{font-size:13px;padding:10px 4px}
-  .tcard .t-title{font-size:16px}
-  .btn{padding:12px 13px}
+/* ============================================================
+   Меньше движения — выключаем анимации
+   ============================================================ */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;scroll-behavior:auto !important;
+  }
 }

@@ -2,52 +2,71 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PRO MEBEL CRM — Новая задача</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#11131a">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="crm.css">
+<style>
+.wrap{max-width:620px;margin:0 auto}
+.quick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.quick button{flex:1;min-width:92px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.three button{height:44px;border-radius:11px;border:1.5px solid var(--line);background:var(--card);
+  color:var(--ink-2);font:700 14px 'Manrope';cursor:pointer;transition:all .15s}
+.three button.on{border-color:transparent;background:var(--brand);color:var(--brand-ink)}
+.three button.on.high{background:var(--warn)}
+.three button.on.critical{background:var(--late);color:#fff}
+.sticky{position:sticky;bottom:0;background:var(--bg);padding:12px 0 6px;
+  border-top:1px solid var(--line);margin-top:8px}
+.plist{max-height:230px;overflow:auto;border:1.5px solid var(--line);border-radius:12px;background:var(--card)}
+.pitem{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 14px;
+  background:none;border:none;border-bottom:1px solid var(--line);color:var(--ink);
+  font:600 15px 'Manrope';text-align:left;cursor:pointer}
+.pitem:last-child{border-bottom:none}
+.pitem.on{background:var(--card-2)}
+.pitem i{font-style:normal;color:var(--muted);font-size:13px;font-weight:600}
+</style>
 </head>
 <body>
-<div class="page-narrow">
-  <div class="topbar" id="topbar"></div>
-
-  <h1>Новая задача</h1>
-  <p class="sub">Постановщик — вы. Задачу можно поставить себе или своему подчинённому.</p>
-
-  <div class="panel" style="margin-top:16px">
+<main class="main" id="main">
+  <div class="pad wrap">
     <div class="field">
       <label class="field-label" for="title">Название <span class="req">*</span></label>
       <input id="title" maxlength="200" placeholder="Что нужно сделать">
     </div>
 
     <div class="field">
-      <label class="field-label" for="description">Описание</label>
-      <textarea id="description" rows="4" placeholder="Подробности, вводные, ссылки"></textarea>
+      <label class="field-label" for="who">Исполнитель <span class="req">*</span></label>
+      <input id="who" type="search" placeholder="Поиск по имени" autocomplete="off">
+      <div class="plist" id="plist" style="margin-top:8px"></div>
+      <div class="hint" id="whoHint"></div>
     </div>
 
     <div class="field">
-      <label class="field-label" for="assignee">Исполнитель <span class="req">*</span></label>
-      <select id="assignee"></select>
-      <div class="hint" id="assigneeHint"></div>
+      <label class="field-label">Срок</label>
+      <div class="quick">
+        <button class="btn ghost sm" data-q="today">Сегодня</button>
+        <button class="btn ghost sm" data-q="tomorrow">Завтра</button>
+        <button class="btn ghost sm" data-q="week">Через неделю</button>
+      </div>
+      <input id="due" class="num" type="datetime-local">
     </div>
 
-    <div class="row2">
-      <div class="field">
-        <label class="field-label" for="due">Срок</label>
-        <input id="due" class="mono" type="datetime-local">
+    <div class="field">
+      <label class="field-label">Приоритет</label>
+      <div class="three" id="prio">
+        <button data-p="normal" class="on">Обычный</button>
+        <button data-p="high" class="high">Высокий</button>
+        <button data-p="critical" class="critical">Критический</button>
       </div>
-      <div class="field">
-        <label class="field-label" for="priority">Приоритет</label>
-        <select id="priority">
-          <option value="low">Низкий</option>
-          <option value="normal" selected>Обычный</option>
-          <option value="high">Высокий</option>
-          <option value="critical">Критический</option>
-        </select>
-      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="description">Описание</label>
+      <textarea id="description" rows="3" placeholder="Подробности, вводные, ссылки"></textarea>
     </div>
 
     <div class="field">
@@ -63,119 +82,120 @@
       <div class="field">
         <label class="field-label" for="parent">Родительская задача</label>
         <select id="parent"></select>
-        <div class="hint">Для декомпозиции цели на подзадачи</div>
       </div>
     </div>
 
-    <div class="btn-row" style="margin-top:6px">
-      <button class="btn" id="save" style="flex:1">Поставить задачу</button>
-      <a class="btn ghost" href="tasks.html">Отмена</a>
+    <div class="sticky">
+      <button class="btn block" id="save">Поставить задачу</button>
+      <div class="msg err" id="msg"></div>
     </div>
-    <div class="msg err" id="msg"></div>
   </div>
-</div>
+</main>
 
 <script src="supabase.min.js"></script>
 <script src="core.js"></script>
 <script>
 initTheme();
-
 const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
+let ASSIGNEE = null, PRIORITY = 'normal';
 
 (async () => {
   if(!await requireAuth()) return;
-  renderTopbar({ back:'tasks.html' });
+  renderShell({ title:'Новая задача', tab:'add', back:'tasks.html' });
 
   await Promise.all([loadEmployees(), loadBranches()]);
-  fillAssignees();
+  paintPeople('');
   fillBranches();
   await fillParents();
 
+  $('who').oninput = () => paintPeople($('who').value.trim().toLowerCase());
+  document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => quickDue(b.dataset.q));
+  document.querySelectorAll('#prio button').forEach(b => b.onclick = () => {
+    PRIORITY = b.dataset.p;
+    document.querySelectorAll('#prio button').forEach(x => x.classList.toggle('on', x === b));
+  });
   $('save').onclick = save;
   $('title').focus();
 })();
 
-/* Исполнители: сверху те, кому база точно разрешит (я и мои подчинённые) */
-function fillAssignees(){
-  const mine = EMPS.filter(e => canAssignTo(e.id));
+/* Сверху те, кому база точно разрешит: я и мои подчинённые */
+function paintPeople(q){
+  const ok = EMPS.filter(e => canAssignTo(e.id));
   const rest = EMPS.filter(e => !canAssignTo(e.id));
-  const opt = e => '<option value="' + esc(e.id) + '">' + esc(e.full_name) +
-    (e.position ? ' — ' + esc(e.position) : '') + '</option>';
-
-  let html = '<option value="">Выберите исполнителя</option>';
-  if(mine.length) html += '<optgroup label="Я и мои подчинённые">' + mine.map(opt).join('') + '</optgroup>';
-  if(rest.length) html += '<optgroup label="Остальные сотрудники">' + rest.map(opt).join('') + '</optgroup>';
-  $('assignee').innerHTML = html;
-
-  $('assignee').onchange = () => {
-    const v = $('assignee').value;
-    $('assigneeHint').textContent = (v && !canAssignTo(v))
-      ? 'Это не ваш подчинённый — база, скорее всего, откажет в постановке.'
-      : '';
-  };
+  const match = e => !q || (e.full_name || '').toLowerCase().includes(q) ||
+                          (e.position || '').toLowerCase().includes(q);
+  const rows = ok.filter(match).concat(rest.filter(match)).slice(0, 40);
+  $('plist').innerHTML = rows.length
+    ? rows.map(e =>
+        '<button class="pitem' + (ASSIGNEE === e.id ? ' on' : '') + '" data-id="' + esc(e.id) + '">' +
+        '<span class="ava" style="width:30px;height:30px;font-size:12px;border-radius:9px">' +
+          esc(initials(e.full_name)) + '</span>' +
+        '<span>' + esc(e.full_name) + (e.position ? ' <i>' + esc(e.position) + '</i>' : '') + '</span>' +
+        '</button>').join('')
+    : '<div class="empty" style="padding:18px">Никого не нашлось</div>';
+  $('plist').querySelectorAll('.pitem').forEach(b => b.onclick = () => {
+    ASSIGNEE = b.dataset.id;
+    paintPeople(q);
+    $('whoHint').textContent = canAssignTo(ASSIGNEE)
+      ? '' : 'Это не ваш подчинённый — база, скорее всего, откажет в постановке.';
+  });
 }
-
+function quickDue(kind){
+  const d = new Date();
+  if(kind === 'tomorrow') d.setDate(d.getDate() + 1);
+  if(kind === 'week') d.setDate(d.getDate() + 7);
+  d.setHours(18, 0, 0, 0);
+  $('due').value = isoToLocalInput(d);
+}
 function fillBranches(){
   $('branch').innerHTML = '<option value="">Не указан</option>' +
     BRANCHES.map(b => '<option value="' + b.id + '"' +
       (b.id === ME.branch_id ? ' selected' : '') + '>' + esc(b.name) + '</option>').join('');
 }
-
-/* Родительская задача: только живые, что мне видны */
 async function fillParents(){
-  const { data, error } = await sb.from('v_tasks')
-    .select('id,title,status')
-    .in('status', ['new','in_progress','review'])
-    .is('archived_at', null)
+  const { data } = await sb.from('v_tasks').select('id,title,status')
+    .in('status', ['new','in_progress','review']).is('archived_at', null)
     .order('created_at', { ascending:false }).limit(200);
-  if(error){ console.error('parents', error); }
-  const rows = data || [];
-  const pre = qs.get('parent');
-  $('parent').innerHTML = '<option value="">Нет, самостоятельная задача</option>' +
-    rows.map(t => '<option value="' + t.id + '"' + (String(t.id) === pre ? ' selected' : '') + '>#' +
+  const rows = data || [], pre = qs.get('parent');
+  $('parent').innerHTML = '<option value="">Нет, самостоятельная</option>' +
+    rows.map(t => '<option value="' + t.id + '"' + (String(t.id) === pre ? ' selected' : '') + '>№' +
       t.id + ' — ' + esc(t.title) + '</option>').join('');
-  // родитель передан ссылкой, но в список не попал (например, уже закрыт)
   if(pre && !rows.some(t => String(t.id) === pre)){
     $('parent').insertAdjacentHTML('beforeend',
-      '<option value="' + esc(pre) + '" selected>#' + esc(pre) + '</option>');
+      '<option value="' + esc(pre) + '" selected>№' + esc(pre) + '</option>');
   }
 }
 
 async function save(){
   const msg = $('msg'), btn = $('save');
   msg.className = 'msg err'; msg.textContent = '';
-
   const title = $('title').value.trim();
-  const assignee_id = $('assignee').value;
   if(!title){ msg.textContent = 'Впишите название задачи'; $('title').focus(); return; }
-  if(!assignee_id){ msg.textContent = 'Выберите исполнителя'; $('assignee').focus(); return; }
-
+  if(!ASSIGNEE){ msg.textContent = 'Выберите исполнителя'; $('who').focus(); return; }
   const due = localToISO($('due').value);
   if($('due').value && !due){ msg.textContent = 'Срок указан неверно'; return; }
 
-  const row = {
+  btn.disabled = true; btn.textContent = 'Сохраняем…';
+  const { error } = await sb.from('tasks').insert({
     title,
     description: $('description').value.trim() || null,
     author_id: ME.id,                       // постановщик всегда я
-    assignee_id,
+    assignee_id: ASSIGNEE,
     parent_id: $('parent').value ? Number($('parent').value) : null,
     branch_id: $('branch').value ? Number($('branch').value) : null,
-    priority: $('priority').value,
+    priority: PRIORITY,
     status: 'new',
     due_at: due,
     done_criteria: $('criteria').value.trim() || null
-  };
-
-  btn.disabled = true; btn.textContent = 'Сохраняем…';
-  const { error } = await sb.from('tasks').insert(row);
+  });
   if(error){
     msg.textContent = errText(error, 'task-add');
     btn.disabled = false; btn.textContent = 'Поставить задачу';
     return;
   }
-  msg.className = 'msg ok'; msg.textContent = 'Задача поставлена';
-  location.replace('tasks.html?tab=author');
+  playDone();
+  setTimeout(() => location.replace('tasks.html?tab=author'), 900);
 }
 </script>
 </body>

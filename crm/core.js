@@ -1,13 +1,15 @@
 /* ============================================================
    PRO MEBEL · CRM — общее ядро
-   Клиент Supabase, авторизация, профиль, esc(), даты, тема, иконки.
-   Подключается на каждой странице до остальных скриптов.
-   Схема в базе — crm. Права на данные держит RLS, фронт их не дублирует.
+   Клиент Supabase, авторизация, каркас навигации, пуши, Telegram,
+   esc(), даты, тема, иконки. Подключается на каждой странице.
+   Схема в базе — crm. Права держит RLS, фронт их не дублирует.
    ============================================================ */
 
 const SUPABASE_URL = 'https://mtvjnkklzyplbxaxwszm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_rM3r9_o443Ij_8ISr-nE7Q_BxKWNnnO';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: 'crm' } });
+
+const BOT_USERNAME = 'pro_organaizer_bot';
 
 /* ============================================================
    ЭКРАНИРОВАНИЕ — через это идёт весь текст из базы
@@ -40,12 +42,6 @@ const ROLE_RU = {
   cashier:'Касса',
   auditor:'Ревизор'
 };
-/* Роль — это только права. Как должность зовётся в компании, пишут текстом в position. */
-function roleOptions(sel){
-  return Object.keys(ROLE_RU).map(k =>
-    '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(ROLE_RU[k]) + '</option>'
-  ).join('');
-}
 const EVENT_RU = { created:'Задача создана', status_changed:'Смена статуса', escalated:'Эскалация руководителю' };
 const DOC_TYPE_RU = {
   passport:'Паспорт', contract:'Договор', nda:'Положение о конфиденциальности',
@@ -54,16 +50,20 @@ const DOC_TYPE_RU = {
 const LINK_CAT_RU = { kpi:'KPI', plan:'Планы', doc:'Документы', other:'Прочее' };
 const LINK_CAT_ORDER = ['kpi','plan','doc','other'];
 
-function statusBadge(s){
-  return '<span class="badge st-'+esc(s)+'">'+esc(STATUS_RU[s]||s)+'</span>';
+/* Роль — это только права. Как должность зовётся в компании, пишут текстом в position. */
+function roleOptions(sel){
+  return Object.keys(ROLE_RU).map(k =>
+    '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(ROLE_RU[k]) + '</option>'
+  ).join('');
 }
-function priorityBadge(p){
-  return '<span class="badge p-'+esc(p)+'">'+esc(PRIORITY_RU[p]||p)+'</span>';
+/* Цветная точка статуса — цветом обозначаем только статус и просрочку */
+function statusDot(t){
+  const late = t.is_overdue && t.status !== 'done' && t.status !== 'canceled';
+  return '<span class="dot ' + (late ? 'late' : 'st-' + esc(t.status)) + '"></span>';
 }
 
 /* ============================================================
    ДАТЫ
-   Всё считаем по локальному времени браузера, в базе — timestamptz.
    ============================================================ */
 function plural(n, one, few, many){
   const a = Math.abs(n) % 100, b = a % 10;
@@ -73,6 +73,7 @@ function plural(n, one, few, many){
   return many;
 }
 function p2(n){ return String(n).padStart(2,'0'); }
+const MONTHS = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
 
 function fmtDate(iso){
   if(!iso) return '—';
@@ -88,21 +89,30 @@ function fmtDateTime(iso){
   if(!iso) return '—';
   return fmtDate(iso)+' '+fmtTime(iso);
 }
-/* «сегодня 14:30» / «12.09.2026 14:30» — для журнала и комментариев */
+/* «сегодня 14:30» / «вчера 09:05» / «12 сен 14:30» */
 function fmtWhen(iso){
   if(!iso) return '—';
   const diff = dayDiff(new Date(iso), new Date());
   if(diff === 0) return 'сегодня '+fmtTime(iso);
   if(diff === -1) return 'вчера '+fmtTime(iso);
-  return fmtDateTime(iso);
+  const d = new Date(iso);
+  return d.getDate()+' '+MONTHS[d.getMonth()]+' '+fmtTime(iso);
 }
-/* разница в календарных днях: b -> a (сегодня = 0, завтра = 1) */
+/* Короткий срок для строки списка: «сегодня 18:00», «вчера», «14 сен» */
+function shortDue(iso){
+  if(!iso) return '';
+  const d = new Date(iso), dd = dayDiff(d, new Date());
+  if(dd === 0) return 'сегодня '+fmtTime(iso);
+  if(dd === 1) return 'завтра '+fmtTime(iso);
+  if(dd === -1) return 'вчера';
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.getDate()+' '+MONTHS[d.getMonth()]+(sameYear ? '' : ' '+d.getFullYear());
+}
 function dayDiff(a, b){
   const x = new Date(a.getFullYear(), a.getMonth(), a.getDate());
   const y = new Date(b.getFullYear(), b.getMonth(), b.getDate());
   return Math.round((x - y) / 86400000);
 }
-/* «2 дня», «5 ч», «40 мин» из миллисекунд */
 function span(ms){
   const min = Math.round(ms / 60000);
   if(min < 60) return Math.max(min,1)+' '+plural(min,'минуту','минуты','минут');
@@ -122,16 +132,28 @@ function dueInfo(t){
   if(dd === 1) return { text:'завтра в '+fmtTime(t.due_at), cls:'warn' };
   return { text:'через '+span(ms), cls:'ok' };
 }
-/* Оклад: разряды пробелами, валюта из поля currency */
+function localToISO(v){
+  if(!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d.toISOString();
+}
+/* Значение для <input type="datetime-local"> из Date */
+function isoToLocalInput(d){
+  return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+'T'+p2(d.getHours())+':'+p2(d.getMinutes());
+}
+function startOfToday(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+function endOfToday(){ const d = new Date(); d.setHours(23,59,59,999); return d; }
+function endOfWeek(){ const d = endOfToday(); d.setDate(d.getDate()+6); return d; }
+
+/* ============================================================
+   ФОРМАТЫ
+   ============================================================ */
 function fmtMoney(v, currency){
   if(v === null || v === undefined || v === '') return '—';
   const n = Number(v);
   if(isNaN(n)) return '—';
-  const s = n.toLocaleString('ru-RU', { maximumFractionDigits:2 });
-  return s + ' ' + (currency || 'TJS');
+  return n.toLocaleString('ru-RU', { maximumFractionDigits:2 }) + ' ' + (currency || 'TJS');
 }
-/* Имя файла для пути в хранилище: кириллицу переводим в латиницу,
-   остальное чистим. Настоящее имя хранится в базе отдельным полем. */
 const TRANSLIT = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',
   к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',
   ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
@@ -146,35 +168,24 @@ function safeFileName(name){
   const t = translit(name).replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
   return (t || 'file').slice(-80);
 }
-
 function fmtSize(bytes){
   const b = Number(bytes) || 0;
   if(b < 1024) return b + ' Б';
   if(b < 1048576) return Math.round(b / 1024) + ' КБ';
   return (b / 1048576).toFixed(1).replace('.', ',') + ' МБ';
 }
-/* Дата для <input type="date"> и обратно */
 function fmtDateOnly(d){
   if(!d) return '—';
   const p = String(d).split('-');
   return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : String(d);
 }
-
-/* ISO-строка из значения <input type="datetime-local"> (локальное время) */
-function localToISO(v){
-  if(!v) return null;
-  const d = new Date(v);
-  return isNaN(d) ? null : d.toISOString();
+function initials(name){
+  return String(name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 }
-/* границы суток/недели для фильтра «срок» */
-function startOfToday(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
-function endOfToday(){ const d = new Date(); d.setHours(23,59,59,999); return d; }
-function endOfWeek(){ const d = endOfToday(); d.setDate(d.getDate()+6); return d; }
 
 /* ============================================================
    ОШИБКИ
    Сообщения триггеров базы написаны по-русски — показываем как есть.
-   Технические сообщения RLS переводим в понятный текст.
    ============================================================ */
 function errText(e, ctx){
   if(!e) return 'Неизвестная ошибка';
@@ -203,7 +214,6 @@ function errText(e, ctx){
 
 /* ============================================================
    АВТОРИЗАЦИЯ И ПРОФИЛЬ
-   Сессию хранит SDK Supabase. Роль из профиля управляет только видом.
    ============================================================ */
 let ME = null;
 
@@ -211,11 +221,10 @@ async function requireAuth(){
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ location.replace('login.html'); return null; }
   const { data, error } = await sb.from('employees')
-    .select('id, full_name, role, position, branch_id, manager_id')
+    .select('id, full_name, role, position, branch_id, manager_id, telegram_chat_id')
     .eq('id', session.user.id).maybeSingle();
   if(error){ fatal('Не удалось загрузить профиль', errText(error)); return null; }
   if(!data){
-    // профиля нет — по ТЗ разлогиниваем и объясняем на входе
     await sb.auth.signOut();
     location.replace('login.html?nouser=1');
     return null;
@@ -225,20 +234,25 @@ async function requireAuth(){
   return ME;
 }
 async function logout(){
+  try{
+    if('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg && await reg.pushManager.getSubscription();
+      if(sub){
+        await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+        await sub.unsubscribe();
+      }
+    }
+  }catch(e){}
   await sb.auth.signOut();
   location.replace('login.html');
 }
 function isBossRole(){ return ME && (ME.role === 'admin' || ME.role === 'director'); }
-/* Повторяет crm.is_hr(): кадровые данные и документы */
 function isHrRole(){ return ME && (ME.role === 'admin' || ME.role === 'director' || ME.role === 'hr'); }
-/* Инициалы для аватарки */
-function initials(name){
-  return String(name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
-}
 
 function fatal(title, detail){
   document.body.innerHTML =
-    '<div class="fatal">'+logoHTML()+
+    '<div class="fatal">'+logoMark(44)+
     '<div class="t">'+esc(title)+'</div>'+
     '<div class="d">'+esc(detail||'')+'</div>'+
     '<button class="btn ghost" onclick="logout()">Выйти</button></div>';
@@ -246,9 +260,6 @@ function fatal(title, detail){
 
 /* ============================================================
    EDGE FUNCTION crm-users
-   Создание сотрудника, сброс пароля и отключение доступа.
-   Права проверяет сама функция (admin/director), ответ — {ok:true,...}
-   либо {error:'текст'}.
    ============================================================ */
 async function callUsersFn(payload){
   const { data:{ session } } = await sb.auth.getSession();
@@ -304,9 +315,7 @@ function empName(id){
   const e = EMP_BY_ID[id];
   return e ? e.full_name : 'сотрудник удалён';
 }
-
-/* Повторяет crm.is_manager_of(): идём вверх по manager_id от исполнителя.
-   Нужно только чтобы показать нужные кнопки — решает всё равно база. */
+/* Повторяет crm.is_manager_of(): идём вверх по manager_id от исполнителя. */
 function isManagerOf(targetId){
   if(!ME || !targetId) return false;
   let cur = targetId;
@@ -318,19 +327,15 @@ function isManagerOf(targetId){
   }
   return false;
 }
-/* Кто «начальник» по задаче — те же условия, что в crm.tasks_guard() */
 function canBoss(t){
   if(!ME || !t) return false;
   return isBossRole() || t.author_id === ME.id || isManagerOf(t.assignee_id);
 }
 function isAssignee(t){ return !!(ME && t && t.assignee_id === ME.id); }
-/* Кому можно ставить задачи — как в RLS-политике crm.tasks «add» */
-function canAssignTo(id){
-  return isBossRole() || id === ME.id || isManagerOf(id);
-}
+function canAssignTo(id){ return isBossRole() || id === ME.id || isManagerOf(id); }
 
 /* ============================================================
-   ИКОНКИ (inline SVG, feather-стиль) — эмодзи не используем
+   ИКОНКИ (inline SVG, feather-стиль)
    ============================================================ */
 const ICONS = {
   check:'<svg class="i" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -343,7 +348,8 @@ const ICONS = {
   ban:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
   plus:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   x:'<svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
-  search:'<svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg>',
+  search:'<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg>',
+  dots:'<svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>',
   user:'<svg class="i" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   users:'<svg class="i" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/></svg>',
   list:'<svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
@@ -363,98 +369,176 @@ const ICONS = {
   share:'<svg class="i" viewBox="0 0 24 24"><path d="M12 16V3"/><polyline points="8 7 12 3 16 7"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
   link:'<svg class="i" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
   external:'<svg class="i sm" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><path d="M10 14 21 3"/></svg>',
-  folder:'<svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   file:'<svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>',
-  star:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6 .8-4.4 4.2 1.1 6L12 16.8 6.7 19.6l1.1-6L3.4 9.4l6-.8z"/></svg>',
   idcard:'<svg class="i" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8.5" cy="11" r="2.2"/><path d="M5 16c.6-1.6 2-2.4 3.5-2.4S11.4 14.4 12 16M15 10h4M15 14h4"/></svg>',
   edit:'<svg class="i sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   trash:'<svg class="i sm" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
-  upload:'<svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 8 12 3 17 8"/><path d="M12 3v12"/></svg>'
+  upload:'<svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 8 12 3 17 8"/><path d="M12 3v12"/></svg>',
+  telegram:'<svg class="i" viewBox="0 0 24 24"><path d="M21.5 4.3 2.9 11.2c-.9.3-.9 1.6 0 1.9l4.7 1.5 1.8 5.4c.3.8 1.3 1 1.9.4l2.6-2.5 4.6 3.4c.7.5 1.7.1 1.9-.7l3-14.3c.2-.9-.7-1.6-1.9-1z"/><path d="m7.6 14.6 9.9-6.7-7.6 8"/></svg>',
+  chevron:'<svg class="i sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
+  settings:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>'
 };
 function icon(name){ return ICONS[name] || ''; }
 
 /* ============================================================
-   ЛОГОТИП — PRO MEBEL, латинская P
+   ЛОГОТИП — оранжевый шестиугольник-контур с буквой P
    ============================================================ */
-function logoMark(){
-  return '<svg viewBox="0 0 32 32" aria-hidden="true">'+
-    '<rect x="0" y="0" width="32" height="32" rx="8" fill="var(--brand)"/>'+
-    '<path d="M12 8v16M12 8h5.4a4.6 4.6 0 0 1 0 9.2H12" fill="none" stroke="var(--brand-ink)" '+
-    'stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-}
-function logoHTML(href){
-  const a = href === null ? 'span' : 'a';
-  const attr = href === null ? '' : ' href="'+(href || 'index.html')+'"';
-  return '<'+a+' class="logo"'+attr+'>'+logoMark()+
-    '<span class="lt">PRO <b>MEBEL</b></span></'+a+'>';
+function logoMark(size){
+  const s = size || 30;
+  return '<svg class="mark" width="' + s + '" height="' + s + '" viewBox="0 0 64 64" aria-hidden="true">' +
+    '<path d="M32 4.6 55.7 18.3a3.4 3.4 0 0 1 1.7 3v25.4a3.4 3.4 0 0 1-1.7 3L32 63.4 8.3 49.7a3.4 3.4 0 0 1-1.7-3V21.3a3.4 3.4 0 0 1 1.7-3z" ' +
+      'fill="none" stroke="var(--brand)" stroke-width="5.4" stroke-linejoin="round"/>' +
+    '<path d="M24.5 46V18h11.2a8.6 8.6 0 0 1 0 17.2h-7.1" fill="none" stroke="var(--brand)" ' +
+      'stroke-width="6.4" stroke-linecap="square"/></svg>';
 }
 
 /* ============================================================
-   ТЕМА — выбор запоминаем
+   ТЕМА
    ============================================================ */
 function applyTheme(t){
   document.body.classList.toggle('light', t === 'light');
   localStorage.setItem('crm_theme', t);
-  // картинки с двумя версиями (вертикальный логотип на входе)
   document.querySelectorAll('img[data-dark]').forEach(img => {
     img.src = t === 'light' ? img.dataset.light : img.dataset.dark;
   });
-  const btn = document.getElementById('themeBtn');
-  if(btn){
-    btn.innerHTML = t === 'light' ? icon('moon') : icon('sun');
-    btn.title = t === 'light' ? 'Тёмная тема' : 'Светлая тема';
-  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = t === 'light' ? '#ffffff' : '#11131a';
+  document.querySelectorAll('[data-theme-label]').forEach(el => {
+    el.textContent = t === 'light' ? 'Светлая' : 'Тёмная';
+  });
 }
 function toggleTheme(){ applyTheme(document.body.classList.contains('light') ? 'dark' : 'light'); }
 function initTheme(){ applyTheme(localStorage.getItem('crm_theme') || 'dark'); }
 
 /* ============================================================
-   ТОПБАР — общий для всех страниц
-   Ждёт <div class="topbar" id="topbar"></div> в разметке.
+   КАРКАС НАВИГАЦИИ
+   Телефон: тонкая шапка сверху + панель вкладок снизу.
+   ПК: постоянная боковая панель слева.
+   Каждая страница вызывает renderShell({title, tab}).
    ============================================================ */
-function renderTopbar(opts){
+const NAV_MAIN = [
+  { key:'home',   label:'Сегодня',      href:'index.html',            icon:'calendar' },
+  { key:'tasks',  label:'Задачи',       href:'tasks.html?tab=mine',   icon:'list' },
+  { key:'add',    label:'Новая задача', href:'new-task.html',         icon:'plus', fab:true },
+  { key:'notif',  label:'Уведомления',  href:'notifications.html',    icon:'bell', bell:true },
+  { key:'profile',label:'Профиль',      href:'profile.html',          icon:'user' }
+];
+const NAV_EXTRA = [
+  { key:'author', label:'Поставленные', href:'tasks.html?tab=author', icon:'target' },
+  { key:'admin', label:'Сотрудники',     href:'admin.html', icon:'users', roles:['admin','director','hr'] },
+  { key:'links', label:'Ссылки и планы', href:'links.html', icon:'link' },
+  { key:'cal',   label:'Календарь',      icon:'calendar', soon:true }
+];
+
+function renderShell(opts){
   const o = opts || {};
-  const bar = document.getElementById('topbar');
-  if(!bar) return;
-  const who = ME ? esc(ME.full_name)+' · '+esc(ROLE_RU[ME.role] || ME.role) : '';
-  bar.innerHTML =
-    (o.back ? '<a class="icon-btn" href="'+esc(o.back)+'" title="Назад">'+icon('arrowLeft')+'</a>' : '')+
-    logoHTML('index.html')+
-    '<div class="spacer"></div>'+
-    (o.actionsHTML || '')+
-    '<span class="sep">'+who+'</span>'+
-    (o.bell === false ? '' :
-      '<span class="bell-wrap">'+
-        '<button class="icon-btn" id="bellBtn" title="Уведомления">'+icon('bell')+'</button>'+
-        '<div class="pop" id="bellPop" hidden>'+
-          '<div class="pop-h"><span class="t">Уведомления</span>'+
-          '<button id="bellReadAll">Прочитать все</button></div>'+
-          '<div class="pop-list" id="bellList"><div class="loading">Загрузка…</div></div>'+
-        '</div>'+
-      '</span>')+
-    '<button class="icon-btn" id="themeBtn" title="Тема"></button>'+
-    '<button class="icon-btn" id="logoutBtn" title="Выйти">'+icon('logout')+'</button>';
-  document.getElementById('themeBtn').onclick = toggleTheme;
-  document.getElementById('logoutBtn').onclick = logout;
+  const tab = o.tab || '';
+
+  const tabbar = NAV_MAIN.map(n => {
+    const on = n.key === tab || (n.key === 'tasks' && tab === 'author');
+    if(n.fab){
+      return '<a class="tb fab" href="' + n.href + '" aria-label="' + esc(n.label) + '">' + icon(n.icon) + '</a>';
+    }
+    return '<a class="tb' + (on ? ' on' : '') + '" href="' + n.href + '">' +
+      '<span class="ic">' + icon(n.icon) + (n.bell ? '<span class="cnt" data-unread hidden></span>' : '') + '</span>' +
+      '<span class="lb">' + esc(n.label) + '</span></a>';
+  }).join('');
+
+  const sideItems = NAV_MAIN.filter(n => !n.fab)
+    .concat(NAV_EXTRA.filter(n => !n.roles || (ME && n.roles.includes(ME.role))))
+    .map(n => {
+      const on = n.key === tab;
+      if(n.soon){
+        return '<span class="sd soon">' + icon(n.icon) + '<span>' + esc(n.label) + '</span>' +
+          '<span class="tag">скоро</span></span>';
+      }
+      return '<a class="sd' + (on ? ' on' : '') + '" href="' + n.href + '">' + icon(n.icon) +
+        '<span>' + esc(n.label) + '</span>' +
+        (n.bell ? '<span class="cnt" data-unread hidden></span>' : '') + '</a>';
+    }).join('');
+
+  const shell =
+    '<header class="tbar">' +
+      (o.back
+        ? '<button class="ib" id="shellBack" aria-label="Назад">' + icon('arrowLeft') + '</button>'
+        : '<a class="ib logo" href="index.html" aria-label="На главную">' + logoMark(26) + '</a>') +
+      '<h1 class="tt">' + esc(o.title || '') + '</h1>' +
+      '<div class="ta">' + (o.actions || '') +
+        '<a class="ib" href="notifications.html" aria-label="Уведомления">' + icon('bell') +
+          '<span class="cnt" data-unread hidden></span></a>' +
+      '</div>' +
+    '</header>' +
+    '<aside class="side">' +
+      '<a class="slogo" href="index.html">' + logoMark(30) + '<span>PRO <b>MEBEL</b></span></a>' +
+      '<nav class="snav">' + sideItems + '</nav>' +
+      '<a class="sme" href="profile.html">' +
+        '<span class="ava">' + esc(ME ? initials(ME.full_name) : '') + '</span>' +
+        '<span class="smi"><b>' + esc(ME ? ME.full_name : '') + '</b>' +
+        '<i>' + esc(ME ? (ROLE_RU[ME.role] || ME.role) : '') + '</i></span></a>' +
+    '</aside>' +
+    '<nav class="tabbar">' + tabbar + '</nav>';
+
+  document.body.insertAdjacentHTML('afterbegin', shell);
+  document.body.classList.add('shell');
+  if(o.back){
+    document.getElementById('shellBack').onclick = () => {
+      if(typeof o.back === 'function') o.back();
+      else if(history.length > 1) history.back();
+      else location.href = String(o.back);
+    };
+  }
   applyTheme(localStorage.getItem('crm_theme') || 'dark');
-  if(o.bell !== false) initBell();
+  refreshUnread();
 }
 
 /* ============================================================
-   УВЕДОМЛЕНИЯ — свои, из crm.notifications
+   УВЕДОМЛЕНИЯ И ЦИФРА НА ИКОНКЕ
    ============================================================ */
 let NOTIFS = [];
 
-async function loadNotifications(){
+async function loadNotifications(limit){
   const { data, error } = await sb.from('notifications')
     .select('id, kind, title, body, read_at, task_id, created_at')
-    .order('created_at', { ascending:false }).limit(10);
+    .order('created_at', { ascending:false }).limit(limit || 50);
   if(error){ console.error('notifications', error); return []; }
   NOTIFS = data || [];
+  paintUnread(NOTIFS.filter(n => !n.read_at).length);
   return NOTIFS;
 }
-function unreadCount(){ return NOTIFS.filter(n => !n.read_at).length; }
-
+/* Счётчик без загрузки списка — для шапки на любой странице */
+async function refreshUnread(){
+  const { data, error } = await sb.schema('crm').rpc('my_unread_count');
+  if(error){ console.warn('unread', error); return; }
+  paintUnread(Number(data) || 0);
+}
+function paintUnread(n){
+  document.querySelectorAll('[data-unread]').forEach(el => {
+    el.textContent = n > 99 ? '99+' : n;
+    el.hidden = !n;
+  });
+  setAppBadge(n);
+}
+function setAppBadge(n){
+  try{
+    if(n > 0 && navigator.setAppBadge) navigator.setAppBadge(n);
+    else if(navigator.clearAppBadge) navigator.clearAppBadge();
+  }catch(e){}
+}
+async function markRead(ids){
+  if(!ids || !ids.length) return;
+  const now = new Date().toISOString();
+  const { error } = await sb.from('notifications').update({ read_at: now }).in('id', ids);
+  if(error){ console.error('markRead', error); return; }
+  NOTIFS.forEach(n => { if(ids.includes(n.id) && !n.read_at) n.read_at = now; });
+  paintUnread(NOTIFS.filter(n => !n.read_at).length);
+}
+async function markAllRead(){
+  const { error } = await sb.from('notifications')
+    .update({ read_at: new Date().toISOString() }).is('read_at', null);
+  if(error){ console.error('markAllRead', error); return; }
+  NOTIFS.forEach(n => { if(!n.read_at) n.read_at = new Date().toISOString(); });
+  paintUnread(0);
+}
 /* База пишет заголовок как «Задача: review» — показываем статус по-русски */
 function notifTitle(n){
   const m = /^Задача:\s*(\w+)$/.exec(n.title || '');
@@ -462,96 +546,161 @@ function notifTitle(n){
   return n.title;
 }
 
-function paintBellCount(){
-  const btn = document.getElementById('bellBtn');
-  if(!btn) return;
-  const n = unreadCount();
-  btn.innerHTML = icon('bell') + (n ? '<span class="dot">'+(n > 99 ? '99+' : n)+'</span>' : '');
+/* ============================================================
+   ВЕБ-ПУШ
+   ============================================================ */
+function pushSupported(){
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
-function paintBellList(){
-  const box = document.getElementById('bellList');
-  if(!box) return;
-  if(!NOTIFS.length){ box.innerHTML = '<div class="empty">Уведомлений нет</div>'; return; }
-  box.innerHTML = NOTIFS.map(n =>
-    '<button class="nrow'+(n.read_at ? '' : ' unread')+'" data-id="'+n.id+'"'+
-    (n.task_id ? ' data-task="'+n.task_id+'"' : '')+'>'+
-      '<div class="n-t">'+esc(notifTitle(n))+'</div>'+
-      (n.body ? '<div class="n-b">'+esc(n.body)+'</div>' : '')+
-      '<div class="n-d">'+esc(fmtWhen(n.created_at))+'</div>'+
-    '</button>').join('');
-  box.querySelectorAll('.nrow').forEach(el => {
-    el.onclick = async () => {
-      const id = Number(el.dataset.id), task = el.dataset.task;
-      await markRead([id]);
-      if(task){
-        if(typeof openTask === 'function'){ closeBell(); openTask(Number(task)); }
-        else location.href = 'tasks.html?task='+encodeURIComponent(task);
-      }
-    };
+function pushPermission(){
+  return ('Notification' in window) ? Notification.permission : 'unsupported';
+}
+function urlB64ToUint8(base64){
+  const pad = '='.repeat((4 - base64.length % 4) % 4);
+  const b64 = (base64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  const out = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+/* Вызывать только по нажатию кнопки — иначе iPhone не спросит разрешение */
+async function enablePush(){
+  if(!pushSupported()) return { error:'Этот браузер не умеет уведомления' };
+  if(isIOS() && !isStandalone())
+    return { error:'Сначала установите приложение на экран «Домой» — на iPhone уведомления работают только так' };
+
+  const perm = await Notification.requestPermission();
+  if(perm !== 'granted'){
+    return { error: perm === 'denied'
+      ? 'Уведомления заблокированы в настройках браузера'
+      : 'Разрешение не выдано' };
+  }
+  const { data: key, error } = await sb.schema('crm').rpc('vapid_public_key');
+  if(error || !key) return { error: errText(error || { message:'Сервер не отдал ключ уведомлений' }) };
+
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8(key)
+      });
+    }
+    const saved = await savePushSubscription(sub);
+    if(saved.error) return saved;
+    return { ok:true };
+  }catch(e){
+    return { error:'Не удалось подписаться: ' + (e && e.message ? e.message : e) };
+  }
+}
+async function savePushSubscription(sub){
+  const j = sub.toJSON();
+  if(!j.keys || !j.keys.p256dh || !j.keys.auth) return { error:'Браузер не отдал ключи подписки' };
+  const { error } = await sb.schema('crm').rpc('push_subscribe', {
+    p_endpoint: sub.endpoint,
+    p_p256dh: j.keys.p256dh,
+    p_auth: j.keys.auth,
+    p_ua: navigator.userAgent
   });
+  return error ? { error: errText(error) } : { ok:true };
 }
-async function markRead(ids){
-  const now = new Date().toISOString();
-  const { error } = await sb.from('notifications').update({ read_at: now }).in('id', ids);
-  if(error){ console.error('markRead', error); return; }
-  NOTIFS.forEach(n => { if(ids.includes(n.id) && !n.read_at) n.read_at = now; });
-  paintBellCount(); paintBellList();
+/* Тихо обновляем подписку при запуске: endpoint мог смениться */
+async function refreshPushSubscription(){
+  if(!pushSupported() || pushPermission() !== 'granted') return;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if(sub) await savePushSubscription(sub);
+  }catch(e){ console.warn('push refresh', e); }
 }
-function closeBell(){
-  const pop = document.getElementById('bellPop');
-  if(pop) pop.hidden = true;
+async function disablePush(){
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if(sub){
+      await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      await sub.unsubscribe();
+    }
+    return { ok:true };
+  }catch(e){
+    return { error:'Не удалось отключить: ' + (e && e.message ? e.message : e) };
+  }
 }
-async function initBell(){
-  const btn = document.getElementById('bellBtn'), pop = document.getElementById('bellPop');
-  if(!btn) return;
-  btn.onclick = e => {
-    e.stopPropagation();
-    pop.hidden = !pop.hidden;
-    if(!pop.hidden) paintBellList();
-  };
-  pop.onclick = e => e.stopPropagation();
-  document.addEventListener('click', closeBell);
-  document.getElementById('bellReadAll').onclick = async () => {
-    const ids = NOTIFS.filter(n => !n.read_at).map(n => n.id);
-    if(ids.length) await markRead(ids);
-  };
-  await loadNotifications();
-  paintBellCount();
-  // обновляем счётчик, пока страница открыта
-  setInterval(async () => { await loadNotifications(); paintBellCount(); }, 60000);
+async function pushTest(){
+  const { error } = await sb.schema('crm').rpc('push_test');
+  return error ? { error: errText(error) } : { ok:true };
 }
 
 /* ============================================================
-   УСТАНОВКА НА ТЕЛЕФОН (PWA)
-   Сервис-воркер работает по https и на localhost.
-   В Safari на iPhone beforeinstallprompt не приходит — там подсказка текстом.
+   TELEGRAM
    ============================================================ */
-if('serviceWorker' in navigator){
-  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e)));
+async function tgLinkStart(){
+  const { data, error } = await sb.schema('crm').rpc('tg_link_start');
+  if(error) return { error: errText(error) };
+  return { code: data, url: 'https://t.me/' + BOT_USERNAME + '?start=' + encodeURIComponent(data) };
+}
+async function tgUnlink(){
+  const { error } = await sb.schema('crm').rpc('tg_unlink');
+  if(error) return { error: errText(error) };
+  ME.telegram_chat_id = null;
+  return { ok:true };
+}
+/* Ждём, пока бот пришлёт нам chat_id: опрашиваем свою строку 2 минуты */
+function waitForTelegram(onDone){
+  let left = 40;
+  const timer = setInterval(async () => {
+    left--;
+    const { data } = await sb.from('employees').select('telegram_chat_id').eq('id', ME.id).maybeSingle();
+    if(data && data.telegram_chat_id){
+      clearInterval(timer);
+      ME.telegram_chat_id = data.telegram_chat_id;
+      onDone(true);
+    }else if(left <= 0){
+      clearInterval(timer);
+      onDone(false);
+    }
+  }, 3000);
+  return () => clearInterval(timer);
 }
 
+/* ============================================================
+   УСТАНОВКА НА ТЕЛЕФОН И ОБНОВЛЕНИЕ
+   ============================================================ */
 let installPrompt = null;
+
+if('serviceWorker' in navigator){
+  addEventListener('load', async () => {
+    try{
+      const reg = await navigator.serviceWorker.register('sw.js');
+      reg.update();
+      refreshPushSubscription();
+    }catch(e){ console.warn('sw', e); }
+  });
+  // новый воркер встал у руля — обновляемся один раз
+  let reloading = false;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(reloading || !hadController) return;
+    reloading = true;
+    toast('Приложение обновлено');
+    setTimeout(() => location.reload(), 900);
+  });
+}
 addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   installPrompt = e;
-  showInstallBtn();
+  maybeShowInstallStrip();
 });
-addEventListener('appinstalled', () => { installPrompt = null; hideInstallBtn(); });
+addEventListener('appinstalled', () => { installPrompt = null; hideInstallStrip(); });
 
-function showInstallBtn(){
-  const b = document.getElementById('installBtn');
-  if(b && installPrompt) b.hidden = false;
-}
-function hideInstallBtn(){
-  const b = document.getElementById('installBtn');
-  if(b) b.hidden = true;
-}
 async function doInstall(){
-  if(!installPrompt) return;
+  if(!installPrompt) return false;
   installPrompt.prompt();
   try{ await installPrompt.userChoice; }catch(e){}
   installPrompt = null;
-  hideInstallBtn();
+  hideInstallStrip();
+  return true;
 }
 function isIOS(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -560,3 +709,115 @@ function isIOS(){
 function isStandalone(){
   return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 }
+/* отложенные подсказки: ключ -> до какого времени не показывать */
+function snoozed(key){
+  const v = Number(localStorage.getItem('crm_snooze_' + key) || 0);
+  return v > Date.now();
+}
+function snooze(key, days){
+  localStorage.setItem('crm_snooze_' + key, String(Date.now() + days * 86400000));
+}
+function maybeShowInstallStrip(){
+  if(!installPrompt || isStandalone() || snoozed('install')) return;
+  if(document.getElementById('installStrip')) return;
+  const el = document.createElement('div');
+  el.className = 'strip';
+  el.id = 'installStrip';
+  el.innerHTML =
+    '<span class="st">Установите PRO MEBEL на экран телефона</span>' +
+    '<button class="btn sm" id="stripGo">Установить</button>' +
+    '<button class="ib" id="stripNo" aria-label="Закрыть">' + icon('x') + '</button>';
+  document.body.appendChild(el);
+  document.getElementById('stripGo').onclick = doInstall;
+  document.getElementById('stripNo').onclick = () => { snooze('install', 7); hideInstallStrip(); };
+}
+function hideInstallStrip(){
+  const el = document.getElementById('installStrip');
+  if(el) el.remove();
+}
+/* Мягкое приглашение включить уведомления */
+function maybeInviteNotifications(){
+  if(!pushSupported() || pushPermission() !== 'default' || snoozed('notif')) return;
+  if(isIOS() && !isStandalone()) return;
+  if(document.getElementById('notifInvite')) return;
+  const el = document.createElement('div');
+  el.className = 'strip invite';
+  el.id = 'notifInvite';
+  el.innerHTML =
+    '<span class="st">Включите уведомления, чтобы не пропускать задачи</span>' +
+    '<button class="btn sm" id="invYes">Включить</button>' +
+    '<button class="btn ghost sm" id="invNo">Позже</button>';
+  document.body.appendChild(el);
+  document.getElementById('invYes').onclick = async () => {
+    const r = await enablePush();
+    el.remove();
+    toast(r.error ? r.error : 'Уведомления включены');
+  };
+  document.getElementById('invNo').onclick = () => { snooze('notif', 3); el.remove(); };
+}
+
+/* ============================================================
+   ТОСТ И АНИМАЦИЯ «ГОТОВО»
+   ============================================================ */
+function toast(text){
+  const old = document.querySelector('.toast');
+  if(old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+/* Зелёная галочка по центру на 1,2 секунды */
+function playDone(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const old = document.querySelector('.doneov');
+  if(old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'doneov';
+  el.innerHTML = '<img src="anim-done.svg" alt="" width="140" height="140">';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1200);
+}
+
+/* ============================================================
+   СТРОКА ЗАДАЧИ — одинаковая в «Сегодня», списке и подзадачах
+   Как строка чата: точка статуса, название, срок, вторая строка серым.
+   ============================================================ */
+function taskRowHTML(t, opts){
+  const o = opts || {};
+  const done = t.status === 'done' || t.status === 'canceled';
+  const late = t.is_overdue && !done;
+  const who = o.showAuthor ? (t.author_name || empName(t.author_id))
+                           : (t.assignee_name || empName(t.assignee_id));
+  const when = shortDue(t.due_at);
+  const pri = (t.priority === 'high' || t.priority === 'critical')
+    ? '<span class="pri ' + esc(t.priority) + '" title="' + esc(PRIORITY_RU[t.priority]) + '">' + icon('flag') + '</span>'
+    : '';
+  const subs = Number(t.subtasks_total) > 0
+    ? '<span class="subs">' + t.subtasks_done + '/' + t.subtasks_total + '</span>' : '';
+  const l2 = [esc(who), subs].filter(Boolean).join(' · ');
+
+  return '<button class="row' + (done ? ' muted' : '') + (o.active ? ' on' : '') + '" data-task="' + t.id + '">' +
+    statusDot(t) +
+    '<span class="rb">' +
+      '<span class="l1"><span class="t">' + esc(t.title) + '</span>' + pri +
+        (when ? '<span class="when' + (late ? ' late' : '') + '">' + esc(when) + '</span>' : '') +
+      '</span>' +
+      '<span class="l2">' + l2 + '</span>' +
+    '</span></button>';
+}
+/* просроченные сверху, дальше по дедлайну, потом по приоритету */
+const PRIO_RANK = { critical:4, high:3, normal:2, low:1 };
+function cmpTasks(a, b){
+  if(!!b.is_overdue !== !!a.is_overdue) return (b.is_overdue ? 1 : 0) - (a.is_overdue ? 1 : 0);
+  const da = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+  const db = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+  if(da !== db) return da - db;
+  const pa = PRIO_RANK[a.priority] || 0, pb = PRIO_RANK[b.priority] || 0;
+  if(pa !== pb) return pb - pa;
+  return new Date(b.created_at) - new Date(a.created_at);
+}
+const TASK_COLS = 'id,title,description,author_id,assignee_id,parent_id,branch_id,priority,status,' +
+  'due_at,done_criteria,created_at,is_overdue,assignee_name,assignee_role,author_name,branch_name,' +
+  'subtasks_total,subtasks_done';

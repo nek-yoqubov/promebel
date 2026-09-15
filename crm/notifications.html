@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Уведомления</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Уведомления</h1>
+    <button class="btn ghost sm" id="readAllPc">Прочитать все</button></div>
+  <div class="rows" id="list"><div class="loading">Загрузка…</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+(async () => {
+  if(!await requireAuth()) return;
+  renderShell({
+    title:'Уведомления',
+    tab:'notif',
+    actions:'<button class="ib" id="readAll" title="Прочитать все">' + icon('check') + '</button>'
+  });
+  $('readAll').onclick = readAll;
+  $('readAllPc').onclick = readAll;
+  await load();
+})();
+
+async function load(){
+  await loadNotifications(50);
+  if(!NOTIFS.length){
+    $('list').innerHTML = '<div class="empty">Уведомлений нет</div>';
+    return;
+  }
+  $('list').innerHTML = NOTIFS.map(n =>
+    '<button class="row' + (n.read_at ? '' : ' unread') + '" data-id="' + n.id + '"' +
+      (n.task_id ? ' data-task="' + n.task_id + '"' : '') + '>' +
+      '<span class="dot' + (n.read_at ? ' st-canceled' : '') + '"></span>' +
+      '<span class="rb">' +
+        '<span class="l1"><span class="t">' + esc(notifTitle(n)) + '</span>' +
+          '<span class="when">' + esc(fmtWhen(n.created_at)) + '</span></span>' +
+        '<span class="l2">' + esc(n.body || '') + '</span>' +
+      '</span></button>').join('');
+
+  $('list').querySelectorAll('[data-id]').forEach(b => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.id);
+      const n = NOTIFS.find(x => x.id === id);
+      if(n && !n.read_at) await markRead([id]);
+      if(b.dataset.task) location.href = 'tasks.html?task=' + b.dataset.task;
+      else b.classList.remove('unread');
+    };
+  });
+}
+
+async function readAll(){
+  await markAllRead();
+  toast('Все уведомления прочитаны');
+  await load();
+}
+</script>
+</body>
+</html>

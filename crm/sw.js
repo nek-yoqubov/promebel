@@ -1,4 +1,4 @@
-const CACHE = 'promebel-crm-v3';
+const CACHE = 'promebel-crm-v4';
 const ASSETS = [
   'index.html', 'login.html', 'tasks.html', 'new-task.html', 'admin.html',
   'employee.html', 'links.html', 'notifications.html', 'profile.html',
@@ -26,7 +26,7 @@ self.addEventListener('fetch', e => {
   if (url.origin !== location.origin) return;
 
   e.respondWith(
-    fetch(req)
+    fetch(req.mode === 'navigate' ? req.url : req, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(req, copy));

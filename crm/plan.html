@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Мой план</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1 id="pageTitle">Мой план</h1></div>
+
+  <div class="toolbar" id="whoBar" hidden></div>
+
+  <div class="planday">
+    <button class="ib" id="prev" aria-label="Предыдущий день"></button>
+    <span class="pd" id="dayTtl"></span>
+    <button class="ib" id="next" aria-label="Следующий день"></button>
+    <button class="btn ghost sm" id="today">Сегодня</button>
+  </div>
+
+  <div class="quick" id="quick" hidden></div>
+
+  <details class="kpi" id="kpi">
+    <summary>Мои показатели<span class="kchev" id="kchev"></span></summary>
+    <div class="kbody" id="kbody"><div class="loading">Считаем…</div></div>
+  </details>
+
+  <div id="body"><div class="loading">Загрузка…</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+
+let WHO = ME ? ME.id : '';       // чей план смотрим
+let DAY = startOfToday();
+let ITEMS = [], OVERDUE = [];
+let KPI_LOADED = '';             // для кого уже посчитали, чтобы не дёргать базу зря
+
+const ACT_COLS = 'id,owner_id,client_id,deal_id,kind,direction,title,note,result,due_at,done_at,' +
+  'client:clients(id,full_name,phone),deal:deals(id,title)';
+
+const QUICK = [
+  { kind:'call',    label:'Звонок' },
+  { kind:'meeting', label:'Встреча' },
+  { kind:'visit',   label:'Визит' },
+  { kind:'other',   label:'Другое' }
+];
+const MONTHS_FULL = ['января','февраля','марта','апреля','мая','июня','июля',
+  'августа','сентября','октября','ноября','декабря'];
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'Мой план', tab:'plan' });
+  WHO = ME.id;
+
+  $('prev').innerHTML = icon('arrowLeft');
+  $('next').innerHTML = icon('arrowLeft');
+  $('next').style.transform = 'rotate(180deg)';
+  $('kchev').innerHTML = icon('down');
+  $('prev').onclick = () => { DAY = addDays(DAY, -1); load(); };
+  $('next').onclick = () => { DAY = addDays(DAY, 1); load(); };
+  $('today').onclick = () => { DAY = startOfToday(); load(); };
+  $('kpi').addEventListener('toggle', () => { if($('kpi').open) loadKpi(); });
+
+  paintWho();
+  paintQuick();
+  await load();
+
+  if(qs.get('new') === '1' && canEdit()) openActForm('call', null, null, qs.get('client'));
+  else if(qs.get('id')) openActivity(Number(qs.get('id')));
+})();
+
+/* ============================================================
+   ЧЕЙ ПЛАН
+   Руководитель выбирает подчинённого и видит его план и показатели.
+   ============================================================ */
+function myTeam(){
+  return EMPS.filter(e => e.manager_id === ME.id);
+}
+function mayPickWho(){
+  return isBossRole() || ['head','regional','auditor'].includes(ME.role) || hasTeam();
+}
+function whoList(){
+  if(isBossRole() || ['head','regional','auditor'].includes(ME.role)) return EMPS;
+  return [EMP_BY_ID[ME.id]].filter(Boolean).concat(myTeam());
+}
+function paintWho(){
+  if(!mayPickWho()){ $('whoBar').hidden = true; return; }
+  $('whoBar').hidden = false;
+  $('whoBar').innerHTML =
+    '<select id="whoSel" class="grow">' + whoList().map(e =>
+      '<option value="' + esc(e.id) + '"' + (WHO === e.id ? ' selected' : '') + '>' +
+      esc(e.id === ME.id ? 'Мой план' : e.full_name) + '</option>').join('') + '</select>';
+  $('whoSel').onchange = () => {
+    WHO = $('whoSel').value;
+    KPI_LOADED = '';
+    $('pageTitle').textContent = WHO === ME.id ? 'Мой план' : 'План — ' + empName(WHO);
+    document.querySelector('#kpi summary').firstChild.textContent =
+      WHO === ME.id ? 'Мои показатели' : 'Показатели — ' + empName(WHO);
+    paintQuick();
+    if($('kpi').open) loadKpi();
+    load();
+  };
+}
+/* добавлять дела можно себе и своим подчинённым */
+function mayAddFor(id){
+  if(!canEdit()) return false;
+  return id === ME.id || isBossRole() || isManagerOf(id);
+}
+function paintQuick(){
+  $('quick').hidden = !mayAddFor(WHO);
+  if(!mayAddFor(WHO)) return;
+  $('quick').innerHTML = QUICK.map(q =>
+    '<button data-q="' + q.kind + '"><span class="qi">' + icon(ACTIVITY_ICON[q.kind]) + '</span>' +
+    esc(q.label) + '</button>').join('');
+  $('quick').querySelectorAll('[data-q]').forEach(b =>
+    b.onclick = () => openActForm(b.dataset.q));
+}
+
+/* ============================================================
+   ДЕНЬ
+   ============================================================ */
+function dayLabel(d){
+  const dd = dayDiff(d, new Date());
+  const base = d.getDate() + ' ' + MONTHS_FULL[d.getMonth()];
+  if(dd === 0) return 'Сегодня, ' + base;
+  if(dd === 1) return 'Завтра, ' + base;
+  if(dd === -1) return 'Вчера, ' + base;
+  return base;
+}
+const isToday = () => ymd(DAY) === ymd(new Date());
+
+async function load(){
+  $('dayTtl').textContent = dayLabel(DAY);
+  $('body').innerHTML = '<div class="loading">Загрузка…</div>';
+
+  const from = new Date(DAY); from.setHours(0, 0, 0, 0);
+  const to = endOfDay(DAY);
+
+  const jobs = [
+    sb.from('activities').select(ACT_COLS).eq('owner_id', WHO)
+      .gte('due_at', from.toISOString()).lte('due_at', to.toISOString())
+      .order('due_at').limit(200)
+  ];
+  // просроченное показываем только на сегодняшнем экране, иначе оно везде мозолит глаза
+  jobs.push(isToday()
+    ? sb.from('activities').select(ACT_COLS).eq('owner_id', WHO)
+        .is('done_at', null).lt('due_at', from.toISOString())
+        .order('due_at').limit(100)
+    : Promise.resolve({ data: [] }));
+
+  const [day, late] = await Promise.all(jobs);
+  if(day.error){ $('body').innerHTML = '<div class="empty">' + esc(errText(day.error)) + '</div>'; return; }
+  ITEMS = day.data || [];
+  OVERDUE = (late && late.data) || [];
+  paint();
+}
+
+function paint(){
+  let html = '';
+  if(OVERDUE.length){
+    html += '<div class="sec" style="color:var(--late)">Просрочено · ' + OVERDUE.length + '</div>' +
+      OVERDUE.map(a => actRowHTML(a, true)).join('');
+  }
+  html += '<div class="sec">' + esc(dayLabel(DAY)) + '</div>';
+  html += ITEMS.length
+    ? ITEMS.map(a => actRowHTML(a, false)).join('')
+    : '<div class="empty">На этот день дел нет</div>';
+
+  $('body').innerHTML = html;
+  $('body').querySelectorAll('[data-act]').forEach(b =>
+    b.onclick = () => openActivity(Number(b.dataset.act)));
+  $('body').querySelectorAll('[data-done]').forEach(b =>
+    b.onclick = e => { e.stopPropagation(); askDone(Number(b.dataset.done)); });
+  $('body').querySelectorAll('[data-move]').forEach(b =>
+    b.onclick = e => { e.stopPropagation(); askMove(Number(b.dataset.move)); });
+}
+
+function actRowHTML(a, late){
+  const done = !!a.done_at;
+  const sub = [
+    ACTIVITY_KIND_RU[a.kind] || a.kind,
+    a.client ? a.client.full_name : '',
+    a.deal ? a.deal.title : '',
+    a.result || ''
+  ].filter(Boolean).join(' · ');
+  const when = a.due_at ? (late ? fmtDate(a.due_at) + ' ' + fmtTime(a.due_at) : fmtTime(a.due_at)) : '';
+  const acts = (!done && mayAddFor(a.owner_id))
+    ? '<span class="aa">' +
+        '<button class="btn ok sm" data-done="' + a.id + '">Готово</button>' +
+        '<button class="btn ghost sm" data-move="' + a.id + '">' + icon('clock') + '</button>' +
+      '</span>'
+    : (done ? '<span class="aa">' + icon('checkCircle') + '</span>' : '');
+
+  return '<div class="actrow' + (done ? ' done' : '') + '">' +
+    '<span class="ai">' + icon(ACTIVITY_ICON[a.kind] || 'list') + '</span>' +
+    '<span class="ab" data-act="' + a.id + '" style="cursor:pointer">' +
+      '<span class="a1"><span class="at">' + esc(a.title) + '</span>' +
+        (when ? '<span class="aw' + (late ? ' late' : '') + '">' + esc(when) + '</span>' : '') + '</span>' +
+      '<span class="a2">' + esc(sub) + '</span>' +
+    '</span>' + acts + '</div>';
+}
+
+/* ============================================================
+   ГОТОВО И ПЕРЕНОС
+   ============================================================ */
+function findAct(id){ return ITEMS.concat(OVERDUE).find(a => a.id === id); }
+
+function askDone(id){
+  const a = findAct(id);
+  modalOpen({
+    title:'Дело сделано',
+    bodyHTML:
+      '<div class="text-block" style="margin-bottom:12px">' + esc(a ? a.title : '') + '</div>' +
+      '<div class="field"><label class="field-label" for="dnRes">Результат</label>' +
+        '<textarea id="dnRes" rows="3" placeholder="О чём договорились"></textarea></div>',
+    saveLabel:'Отметить',
+    onSave: async () => {
+      modalBusy(true, 'Сохраняем…');
+      const { error } = await sb.from('activities').update({
+        done_at: new Date().toISOString(),
+        result: document.getElementById('dnRes').value.trim() || null
+      }).eq('id', id);
+      if(error){ modalBusy(false, 'Отметить'); return modalMsg(errText(error, 'update')); }
+      modalClose(); playDone(); toast('Отмечено'); KPI_LOADED = ''; await load();
+      if($('kpi').open) loadKpi();
+    }
+  });
+}
+
+function askMove(id){
+  const a = findAct(id);
+  const cur = a && a.due_at ? isoToLocalInput(new Date(a.due_at)) : '';
+  modalOpen({
+    title:'Перенести',
+    bodyHTML:
+      '<div class="text-block" style="margin-bottom:12px">' + esc(a ? a.title : '') + '</div>' +
+      '<div class="field"><label class="field-label" for="mvAt">Новая дата и время</label>' +
+        '<input id="mvAt" type="datetime-local" value="' + esc(cur) + '"></div>',
+    saveLabel:'Перенести',
+    onSave: async () => {
+      const v = document.getElementById('mvAt').value;
+      if(!v) return modalMsg('Укажите дату и время');
+      modalBusy(true, 'Переносим…');
+      const { error } = await sb.from('activities').update({ due_at: localToISO(v) }).eq('id', id);
+      if(error){ modalBusy(false, 'Перенести'); return modalMsg(errText(error, 'update')); }
+      modalClose(); toast('Перенесено'); await load();
+    }
+  });
+}
+
+/* ============================================================
+   КАРТОЧКА ДЕЛА
+   ============================================================ */
+async function openActivity(id){
+  modalOpen({ title:'Дело', bodyHTML:'<div class="loading">Загрузка…</div>' });
+  const { data:a, error } = await sb.from('activities').select(ACT_COLS).eq('id', id).maybeSingle();
+  if(error){ modalBody().innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!a){ modalBody().innerHTML = '<div class="empty">Дело не найдено или закрыто для вас</div>'; return; }
+
+  const kv = [
+    ['Вид', esc(ACTIVITY_KIND_RU[a.kind] || a.kind)],
+    ['Когда', a.due_at ? '<span class="num">' + esc(fmtDateTime(a.due_at)) + '</span>' : '<span class="sub">без времени</span>'],
+    ['Клиент', a.client
+      ? '<a href="clients.html?id=' + a.client.id + '" style="color:var(--brand);font-weight:700">' +
+        esc(a.client.full_name) + '</a>' + (a.client.phone ? ' · ' + phoneHTML(a.client.phone) : '')
+      : '<span class="sub">не указан</span>'],
+    ['Сделка', a.deal
+      ? '<a href="deals.html?id=' + a.deal.id + '" style="color:var(--brand);font-weight:700">' +
+        esc(a.deal.title) + '</a>'
+      : '<span class="sub">не привязано</span>'],
+    ['Исполнитель', esc(empName(a.owner_id))],
+    ['Статус', a.done_at
+      ? '<span class="tag-ok">сделано ' + esc(fmtDateTime(a.done_at)) + '</span>'
+      : '<span class="tag-off">запланировано</span>']
+  ];
+
+  const may = mayAddFor(a.owner_id);
+  modalBody().innerHTML =
+    '<div class="chead" style="padding:0 0 12px"><h2>' + esc(a.title) + '</h2></div>' +
+    '<dl class="kv" style="padding:0">' +
+      kv.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
+    (a.note ? '<div class="field-label" style="margin-top:12px">Заметка</div>' +
+      '<div class="text-block">' + esc(a.note) + '</div>' : '') +
+    (a.result ? '<div class="field-label" style="margin-top:12px">Результат</div>' +
+      '<div class="text-block">' + esc(a.result) + '</div>' : '') +
+    (may ? '<div class="btn-row" style="margin-top:16px">' +
+      (a.done_at ? '' : '<button class="btn ok" id="aDone" style="flex:1">Готово</button>' +
+        '<button class="btn ghost" id="aMove">Перенести</button>') +
+      '<button class="btn ghost" id="aEdit">Изменить</button></div>' : '');
+
+  if(may){
+    if($('aDone')) $('aDone').onclick = () => askDone(a.id);
+    if($('aMove')) $('aMove').onclick = () => askMove(a.id);
+    $('aEdit').onclick = () => openActForm(a.kind, a);
+  }
+}
+
+/* ============================================================
+   БЫСТРОЕ ДОБАВЛЕНИЕ
+   ============================================================ */
+let A_CLIENT = null, A_DEALS = [];
+
+function actDraft(){
+  if(!document.getElementById('aTitle')) return null;
+  const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  return {
+    draft:true, title:g('aTitle'), kind:g('aKind'), due_local:g('aAt'),
+    deal_id:g('aDeal'), note:g('aNote'), result:g('aResult'),
+    done: document.getElementById('aDone2') ? document.getElementById('aDone2').checked : false
+  };
+}
+
+async function openActForm(kind, act, draft, clientId){
+  if(!draft){
+    A_CLIENT = act && act.client ? act.client : null;
+    if(!act && clientId){
+      const { data } = await sb.from('clients').select('id,full_name,phone')
+        .eq('id', Number(clientId)).maybeSingle();
+      if(data) A_CLIENT = data;
+    }
+  }
+  A_DEALS = A_CLIENT ? await clientDeals(A_CLIENT.id) : [];
+
+  const v = draft || act || {};
+  const defAt = new Date(DAY);
+  defAt.setHours(new Date().getHours() + 1, 0, 0, 0);
+  const atLocal = draft ? draft.due_local
+    : (act && act.due_at ? isoToLocalInput(new Date(act.due_at)) : isoToLocalInput(defAt));
+  const curKind = v.kind || kind;
+  const curDeal = draft ? draft.deal_id : (act ? String(act.deal_id || '') : '');
+
+  modalOpen({
+    title: act ? 'Изменить дело' : 'Новое дело' + (WHO === ME.id ? '' : ' — ' + empName(WHO)),
+    bodyHTML:
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="aKind">Вид</label>' +
+          '<select id="aKind">' + optionsFrom(ACTIVITY_KIND_RU, curKind) + '</select></div>' +
+        '<div class="field"><label class="field-label" for="aAt">Когда</label>' +
+          '<input id="aAt" type="datetime-local" value="' + esc(atLocal) + '"></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label" for="aTitle">Что сделать <span class="req">*</span></label>' +
+        '<input id="aTitle" maxlength="200" value="' + esc(v.title || '') + '" ' +
+        'placeholder="Позвонить по расчёту"></div>' +
+      '<div class="field"><label class="field-label">Клиент</label>' +
+        '<div class="inline-add"><input id="aClient" readonly value="' +
+          esc(A_CLIENT ? A_CLIENT.full_name : '') + '" placeholder="не выбран">' +
+          '<button class="btn ghost" id="aPick" type="button">Выбрать</button>' +
+          (A_CLIENT ? '<button class="btn ghost" id="aClear" type="button">' + icon('x') + '</button>' : '') +
+        '</div></div>' +
+      (A_DEALS.length
+        ? '<div class="field"><label class="field-label" for="aDeal">Сделка</label>' +
+          '<select id="aDeal"><option value="">Без сделки</option>' +
+          A_DEALS.map(d => '<option value="' + d.id + '"' + (curDeal === String(d.id) ? ' selected' : '') + '>' +
+            esc(d.title) + ' · ' + esc(DEAL_STAGE_RU[d.stage] || d.stage) + '</option>').join('') +
+          '</select></div>'
+        : '') +
+      '<div class="field"><label class="field-label" for="aNote">Заметка</label>' +
+        '<textarea id="aNote" rows="2">' + esc(v.note || '') + '</textarea></div>' +
+      '<label class="chk" style="margin-bottom:10px"><input type="checkbox" id="aDone2"' +
+        ((v.done || (act && act.done_at)) ? ' checked' : '') + '>Уже сделано</label>' +
+      '<div class="field"><label class="field-label" for="aResult">Результат</label>' +
+        '<textarea id="aResult" rows="2" placeholder="заполняется, когда дело сделано">' +
+        esc(v.result || '') + '</textarea></div>',
+    saveLabel: act ? 'Сохранить' : 'Добавить',
+    onSave: () => saveAct(act)
+  });
+
+  document.getElementById('aPick').onclick = () => {
+    const keep = actDraft();
+    pickClient(c => { A_CLIENT = c; openActForm(kind, act, keep); });
+  };
+  if(document.getElementById('aClear')){
+    document.getElementById('aClear').onclick = () => {
+      const keep = actDraft();
+      A_CLIENT = null;
+      openActForm(kind, act, keep);
+    };
+  }
+  document.getElementById('aTitle').focus();
+}
+
+async function clientDeals(id){
+  const { data } = await sb.from('deals').select('id,title,stage')
+    .eq('client_id', id).in('stage', DEAL_OPEN_STAGES).order('updated_at', { ascending:false }).limit(20);
+  return data || [];
+}
+
+async function saveAct(act){
+  const title = document.getElementById('aTitle').value.trim();
+  if(!title) return modalMsg('Впишите, что нужно сделать');
+  const at = document.getElementById('aAt').value;
+  const dealSel = document.getElementById('aDeal');
+  const done = document.getElementById('aDone2').checked;
+  const result = document.getElementById('aResult').value.trim();
+
+  const rec = {
+    kind: document.getElementById('aKind').value,
+    title,
+    due_at: at ? localToISO(at) : null,
+    client_id: A_CLIENT ? A_CLIENT.id : null,
+    deal_id: dealSel && dealSel.value ? Number(dealSel.value) : null,
+    note: document.getElementById('aNote').value.trim() || null,
+    result: result || null
+  };
+  if(done) rec.done_at = (act && act.done_at) || new Date().toISOString();
+  else rec.done_at = null;
+  if(!act) rec.owner_id = WHO;
+
+  modalBusy(true, 'Сохраняем…');
+  const res = act
+    ? await sb.from('activities').update(rec).eq('id', act.id)
+    : await sb.from('activities').insert(rec);
+  if(res.error){
+    modalBusy(false, act ? 'Сохранить' : 'Добавить');
+    return modalMsg(errText(res.error, act ? 'update' : 'insert'));
+  }
+  modalClose();
+  if(done) playDone();
+  toast(act ? 'Сохранено' : 'Дело добавлено');
+  KPI_LOADED = '';
+  await load();
+  if($('kpi').open) loadKpi();
+}
+
+/* ============================================================
+   ПОКАЗАТЕЛИ И РЕЙТИНГ
+   crm.sales_stats(emp, from, to) за неделю и месяц.
+   Менеджер видит свои; руководитель — свои и команды.
+   ============================================================ */
+const KPI_ROWS = [
+  ['deals_open',    'Открытых сделок'],
+  ['deals_new',     'Новых сделок'],
+  ['won',           'Продано, штук'],
+  ['won_amount',    'Продано, сумма', 'money'],
+  ['complect',      'Из них комплектом'],
+  ['coupons',       'С купоном'],
+  ['lost',          'Отказов'],
+  ['calls_done',    'Звонков'],
+  ['meetings_done', 'Встреч и визитов'],
+  ['plan_missed',   'Пропущено дел по плану'],
+  ['new_clients',   'Новых клиентов']
+];
+
+async function loadKpi(){
+  if(KPI_LOADED === WHO) return;
+  KPI_LOADED = WHO;
+  $('kbody').innerHTML = '<div class="loading">Считаем…</div>';
+
+  const now = new Date(), to = endOfToday();
+  const [week, month] = await Promise.all([
+    stats(WHO, weekStart(now), to),
+    stats(WHO, monthStart(now), to)
+  ]);
+
+  if(!week && !month){
+    $('kbody').innerHTML = '<div class="empty">Показатели этого сотрудника вам не открыты</div>';
+    return;
+  }
+  const cell = (d, key, fmt) => {
+    if(!d || d[key] === undefined || d[key] === null) return '—';
+    return fmt === 'money' ? fmtMoney(d[key], 'TJS') : String(d[key]);
+  };
+
+  let html =
+    '<div class="kgrid">' +
+      '<div></div><div class="kh2">Неделя</div><div class="kh2">Месяц</div>' +
+      KPI_ROWS.map(r =>
+        '<div class="kk">' + esc(r[1]) + '</div>' +
+        '<div class="kv2">' + esc(cell(week, r[0], r[2])) + '</div>' +
+        '<div class="kv2">' + esc(cell(month, r[0], r[2])) + '</div>').join('') +
+    '</div>' +
+    '<div class="hint">План/факт по деньгам появится после подключения 1С</div>';
+
+  $('kbody').innerHTML = html + '<div id="rankBox"></div>';
+  loadRank();
+}
+
+async function stats(emp, from, to){
+  const { data, error } = await sb.schema('crm').rpc('sales_stats', {
+    p_emp: emp, p_from: from.toISOString(), p_to: to.toISOString()
+  });
+  return error ? null : data;
+}
+
+/* Рейтинг команды за месяц — руководителю видно, кто как продаёт */
+async function loadRank(){
+  const box = $('rankBox');
+  const boss = hasTeam() || isBossRole() || ['head','regional'].includes(ME.role);
+  if(!box || !boss) return;
+  const wide = isBossRole() || ['head','regional'].includes(ME.role);
+  const people = (wide ? EMPS : [EMP_BY_ID[ME.id]].concat(myTeam()))
+    .filter(Boolean)
+    .filter(e => ['sales','head','regional'].includes(e.role))
+    .slice(0, 20);
+  if(people.length < 2) return;
+
+  box.innerHTML = '<div class="sec" style="margin-left:0">Рейтинг за месяц</div>' +
+    '<div class="loading">Считаем…</div>';
+  const now = new Date(), from = monthStart(now), to = endOfToday();
+  const res = await Promise.all(people.map(e => stats(e.id, from, to)));
+
+  const rows = people.map((e, i) => ({ e, d: res[i] }))
+    .filter(r => r.d)
+    .sort((a, b) => (Number(b.d.won_amount) || 0) - (Number(a.d.won_amount) || 0));
+  if(!rows.length){ box.innerHTML = ''; return; }
+
+  box.innerHTML = '<div class="sec" style="margin-left:0">Рейтинг за месяц</div>' +
+    rows.map((r, i) =>
+      '<div class="rank' + (r.e.id === WHO ? ' me' : '') + '">' +
+        '<span class="rn">' + (i + 1) + '</span>' +
+        '<span class="rb2"><span class="rnm">' + esc(r.e.full_name) + '</span>' +
+          '<span class="rs">продано ' + (r.d.won || 0) +
+            ' · звонков ' + (r.d.calls_done || 0) +
+            ' · встреч ' + (r.d.meetings_done || 0) + '</span></span>' +
+        '<span class="rv">' + esc(fmtMoney(r.d.won_amount || 0, 'TJS')) + '</span>' +
+      '</div>').join('') +
+    '<div class="hint">Место — по сумме продаж за текущий месяц.</div>';
+}
+</script>
+</body>
+</html>

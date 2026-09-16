@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Сделки</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Сделки</h1>
+    <button class="btn sm" id="addBtnPc" hidden>Новая сделка</button></div>
+
+  <div class="seg" id="seg">
+    <button data-t="open">Открытые</button>
+    <button data-t="closed">Закрытые</button>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="filterbar" id="filterbar" hidden>
+    <button class="btn ghost sm" id="fOpen">Менеджер<span class="fc" id="fCnt" hidden></span></button>
+  </div>
+  <div class="fsheet" id="fsheet">
+    <div class="fsh"><span class="t">Фильтр</span>
+      <button class="ib" id="fClose" aria-label="Закрыть"></button></div>
+    <div class="fsb"><div class="toolbar" id="filters"></div></div>
+    <div class="fsf">
+      <button class="btn ghost" id="fReset">Сбросить</button>
+      <button class="btn" id="fDone">Готово</button></div>
+  </div>
+
+  <div class="tiles" id="tiles" hidden></div>
+  <div class="kanban" id="kanban" hidden></div>
+  <div class="rows" id="list"><div class="loading">Загрузка…</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+
+let TAB = 'open';
+let STAGE = 'all';                 // чип этапа на телефоне
+let PERIOD = 'month';              // период закрытых
+let F_OWNER = '';
+let ROWS = [], CUR = null;
+
+const DEAL_COLS =
+  'id,client_id,owner_id,title,stage,amount,currency,is_complect,coupon_code,coupon_amount,' +
+  'expected_close,next_step,next_step_at,lost_reason,erp_doc_no,notes,closed_at,created_at,updated_at,' +
+  'client:clients(id,full_name,phone)';
+
+const PERIODS = [
+  { key:'week',   label:'Эта неделя' },
+  { key:'month',  label:'Этот месяц' },
+  { key:'lmonth', label:'Прошлый месяц' },
+  { key:'all',    label:'Всё время' }
+];
+const isDesktop = () => matchMedia('(min-width:1024px)').matches;
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({
+    title:'Сделки',
+    tab:'deals',
+    actions: canEdit()
+      ? '<button class="ib" id="addBtn" aria-label="Новая сделка">' + icon('plus') + '</button>' : ''
+  });
+
+  if(canEdit()){
+    $('addBtn').onclick = () => openForm(null);
+    $('addBtnPc').hidden = false;
+    $('addBtnPc').onclick = () => openForm(null);
+  }
+  $('fClose').innerHTML = icon('x');
+  $('fOpen').onclick = () => { $('fsheet').classList.add('open'); addBack(); };
+  $('fClose').onclick = closeFilters;
+  $('fDone').onclick = closeFilters;
+  $('fReset').onclick = () => { F_OWNER = ''; paintFilters(); closeFilters(); load(); };
+
+  document.querySelectorAll('#seg button').forEach(b => b.onclick = () => {
+    TAB = b.dataset.t; paintSeg(); paintChips(); load();
+  });
+
+  paintSeg(); paintChips(); paintFilters();
+  matchMedia('(min-width:1024px)').addEventListener('change', () => { paintChips(); load(); });
+  await load();
+
+  if(qs.get('new') === '1' && canEdit()) openForm(null, qs.get('client'));
+  else if(qs.get('id')) openDeal(Number(qs.get('id')));
+})();
+
+function addBack(){
+  if($('fBack')) return;
+  const b = document.createElement('div');
+  b.className = 'backdrop'; b.id = 'fBack';
+  b.onclick = closeFilters;
+  document.body.append(b);
+}
+function closeFilters(){
+  $('fsheet').classList.remove('open');
+  const b = $('fBack'); if(b) b.remove();
+}
+function paintSeg(){
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === TAB));
+}
+/* руководитель фильтрует по менеджеру; у продажника фильтра нет */
+function mayFilterOwner(){
+  return isBossRole() || ['head','regional','auditor'].includes(ME.role) || hasTeam();
+}
+function paintFilters(){
+  $('filterbar').hidden = !mayFilterOwner();
+  if(!mayFilterOwner()){ $('filters').innerHTML = ''; return; }
+  const list = isBossRole() || ['head','regional','auditor'].includes(ME.role)
+    ? EMPS : EMPS.filter(e => e.id === ME.id || e.manager_id === ME.id);
+  $('filters').innerHTML =
+    '<select id="fOwnerSel" class="grow"><option value="">Все менеджеры</option>' +
+    list.map(e => '<option value="' + esc(e.id) + '"' + (F_OWNER === e.id ? ' selected' : '') + '>' +
+      esc(e.full_name) + '</option>').join('') + '</select>';
+  $('fOwnerSel').onchange = () => {
+    F_OWNER = $('fOwnerSel').value;
+    $('fCnt').textContent = '1';
+    $('fCnt').hidden = !F_OWNER;
+    load();
+  };
+  $('fCnt').hidden = !F_OWNER;
+}
+function paintChips(){
+  const items = TAB === 'open'
+    ? [{ key:'all', label:'Все этапы' }].concat(DEAL_OPEN_STAGES.map(s => ({ key:s, label:DEAL_STAGE_RU[s] })))
+    : PERIODS;
+  const cur = TAB === 'open' ? STAGE : PERIOD;
+  // на ПК открытые сделки показываем канбаном — чипы этапов там не нужны
+  $('chips').hidden = TAB === 'open' && isDesktop();
+  $('chips').innerHTML = items.map(i =>
+    '<button class="chip' + (i.key === cur ? ' on' : '') + '" data-c="' + i.key + '">' +
+    esc(i.label) + '</button>').join('');
+  $('chips').querySelectorAll('[data-c]').forEach(b => b.onclick = () => {
+    if(TAB === 'open') STAGE = b.dataset.c; else PERIOD = b.dataset.c;
+    paintChips(); load();
+  });
+}
+
+/* ============================================================
+   ДАННЫЕ
+   ============================================================ */
+function periodRange(){
+  const now = new Date();
+  if(PERIOD === 'week')  return { from: weekStart(now), to: endOfDay(now) };
+  if(PERIOD === 'month') return { from: monthStart(now), to: endOfDay(now) };
+  if(PERIOD === 'lmonth'){
+    const m = monthStart(now);
+    return { from: monthStart(addDays(m, -1)), to: endOfDay(addDays(m, -1)) };
+  }
+  return null;
+}
+
+async function load(){
+  $('list').innerHTML = '<div class="loading">Загрузка…</div>';
+  let q = sb.from('deals').select(DEAL_COLS);
+
+  if(TAB === 'open'){
+    q = q.in('stage', DEAL_OPEN_STAGES);
+    if(!isDesktop() && STAGE !== 'all') q = q.eq('stage', STAGE);
+    q = q.order('updated_at', { ascending:false });
+  }else{
+    q = q.in('stage', ['won','lost']);
+    const r = periodRange();
+    if(r) q = q.gte('closed_at', r.from.toISOString()).lte('closed_at', r.to.toISOString());
+    q = q.order('closed_at', { ascending:false });
+  }
+  if(F_OWNER) q = q.eq('owner_id', F_OWNER);
+
+  const { data, error } = await q.limit(500);
+  if(error){
+    $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>';
+    $('kanban').hidden = true; $('tiles').hidden = true;
+    return;
+  }
+  ROWS = data || [];
+  paint();
+}
+
+function paint(){
+  const kanban = TAB === 'open' && isDesktop();
+  $('kanban').hidden = !kanban;
+  $('list').hidden = kanban;
+  paintTiles();
+  if(kanban) paintKanban(); else paintList();
+}
+
+function paintTiles(){
+  if(TAB !== 'closed'){ $('tiles').hidden = true; return; }
+  const won = ROWS.filter(d => d.stage === 'won');
+  const lost = ROWS.filter(d => d.stage === 'lost');
+  const sum = won.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  const conv = ROWS.length ? Math.round(won.length * 100 / ROWS.length) : null;
+  $('tiles').hidden = false;
+  $('tiles').innerHTML =
+    '<div class="tile ok"><div class="n">' + won.length + '</div><div class="c">Продано</div></div>' +
+    '<div class="tile late"><div class="n">' + lost.length + '</div><div class="c">Отказов</div></div>' +
+    '<div class="tile info"><div class="n">' + esc(fmtMoney(sum, 'TJS')) + '</div><div class="c">Сумма продаж</div></div>' +
+    '<div class="tile warn"><div class="n">' + (conv === null ? '—' : conv + '%') + '</div>' +
+      '<div class="c">Доля продаж</div></div>';
+}
+
+/* пометки: нет следующего шага, давно без движения */
+function dealFlags(d){
+  const f = [];
+  if(DEAL_OPEN_STAGES.includes(d.stage)){
+    if(!d.next_step) f.push({ cls:'warn', text:'Не назначен следующий шаг' });
+    const days = staleDays(d.updated_at);
+    if(days >= 7) f.push({ cls:'late', text:'Без движения ' + days + ' ' + plural(days, 'день', 'дня', 'дней') });
+  }
+  return f;
+}
+function clientName(d){ return d.client ? d.client.full_name : '—'; }
+
+function paintList(){
+  if(!ROWS.length){
+    $('list').innerHTML = '<div class="empty">' +
+      (TAB === 'open' ? 'Открытых сделок нет' : 'За этот период закрытых сделок нет') + '</div>';
+    return;
+  }
+  $('list').innerHTML = ROWS.map(d => {
+    const flags = dealFlags(d);
+    const l2 = [clientName(d), DEAL_STAGE_RU[d.stage] || d.stage]
+      .concat(flags.map(f => f.text)).join(' · ');
+    return '<button class="row" data-deal="' + d.id + '">' +
+      '<span class="dot sg-' + esc(d.stage) + '"></span>' +
+      '<span class="rb">' +
+        '<span class="l1"><span class="t">' + esc(d.title) + '</span>' +
+          (flags.length ? '<span class="mark-nostep">' + icon('flag') + '</span>' : '') +
+          (d.amount ? '<span class="amt">' + esc(fmtMoney(d.amount, d.currency)) + '</span>' : '') +
+        '</span>' +
+        '<span class="l2">' + esc(l2) + '</span>' +
+      '</span></button>';
+  }).join('');
+  $('list').querySelectorAll('[data-deal]').forEach(b =>
+    b.onclick = () => openDeal(Number(b.dataset.deal)));
+}
+
+/* ============================================================
+   КАНБАН (ПК) — карточки перетаскиваются между этапами
+   ============================================================ */
+function paintKanban(){
+  $('kanban').innerHTML = DEAL_OPEN_STAGES.map(st => {
+    const cards = ROWS.filter(d => d.stage === st);
+    const sum = cards.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+    return '<div class="kancol" data-stage="' + st + '">' +
+      '<div class="kh"><span class="dot sg-' + st + '"></span>' + esc(DEAL_STAGE_RU[st]) +
+        '<span class="kn">' + cards.length + (sum ? ' · ' + esc(fmtMoney(sum, 'TJS')) : '') + '</span></div>' +
+      '<div class="kb">' + cards.map(kanCard).join('') + '</div></div>';
+  }).join('');
+
+  $('kanban').querySelectorAll('[data-deal]').forEach(el => {
+    el.onclick = () => openDeal(Number(el.dataset.deal));
+    if(!canEdit()) return;
+    el.draggable = true;
+    el.ondragstart = e => {
+      e.dataTransfer.setData('text/plain', el.dataset.deal);
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('drag');
+    };
+    el.ondragend = () => el.classList.remove('drag');
+  });
+  if(!canEdit()) return;
+  $('kanban').querySelectorAll('.kancol').forEach(col => {
+    col.ondragover = e => { e.preventDefault(); col.classList.add('over'); };
+    col.ondragleave = () => col.classList.remove('over');
+    col.ondrop = e => {
+      e.preventDefault();
+      col.classList.remove('over');
+      const id = Number(e.dataTransfer.getData('text/plain'));
+      const d = ROWS.find(x => x.id === id);
+      if(d && d.stage !== col.dataset.stage) setStage(d, col.dataset.stage);
+    };
+  });
+}
+function kanCard(d){
+  const flags = dealFlags(d);
+  return '<button class="kancard" data-deal="' + d.id + '">' +
+    '<span class="kt">' + esc(d.title) + '</span>' +
+    '<span class="kc">' + esc(clientName(d)) + '</span>' +
+    '<span class="kf">' +
+      (d.amount ? '<span class="money">' + esc(fmtMoney(d.amount, d.currency)) + '</span>' : '') +
+      (d.expected_close ? '<span class="sub">до ' + esc(fmtDateOnly(d.expected_close)) + '</span>' : '') +
+      (flags.length ? '<span class="flag" title="' + esc(flags.map(f => f.text).join('; ')) + '">' +
+        icon('flag') + '</span>' : '') +
+    '</span></button>';
+}
+
+/* ============================================================
+   КАРТОЧКА СДЕЛКИ
+   ============================================================ */
+function canTransfer(d){
+  return canEdit() && (isBossRole() || isManagerOf(d.owner_id));
+}
+
+async function openDeal(id){
+  modalOpen({ title:'Сделка', bodyHTML:'<div class="loading">Загрузка…</div>', wide:true });
+  const { data:d, error } = await sb.from('deals').select(DEAL_COLS).eq('id', id).maybeSingle();
+  if(error){ modalBody().innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!d){ modalBody().innerHTML = '<div class="empty">Сделка не найдена или закрыта для вас</div>'; return; }
+  CUR = d;
+  paintDeal(d);
+}
+
+function paintDeal(d){
+  const flags = dealFlags(d);
+  const kv = [
+    ['Клиент', d.client
+      ? '<a href="clients.html?id=' + d.client.id + '" style="color:var(--brand);font-weight:700">' +
+        esc(d.client.full_name) + '</a>' +
+        (d.client.phone ? ' · ' + phoneHTML(d.client.phone) : '')
+      : '<span class="sub">не указан</span>'],
+    ['Этап', '<span class="dot sg-' + esc(d.stage) + '" style="display:inline-block;margin-right:7px"></span>' +
+      esc(DEAL_STAGE_RU[d.stage] || d.stage)],
+    ['Сумма', d.amount ? '<span class="money">' + esc(fmtMoney(d.amount, d.currency)) + '</span>'
+      : '<span class="sub">не указана</span>'],
+    ['Комплект ЛДСП + фурнитура', d.is_complect ? '<span class="tag-ok">да</span>' : '<span class="tag-off">нет</span>'],
+    ['Купон', d.coupon_code
+      ? '<span class="mono">' + esc(d.coupon_code) + '</span>' +
+        (d.coupon_amount ? ' · ' + esc(fmtMoney(d.coupon_amount, d.currency)) : '')
+      : '<span class="sub">нет</span>'],
+    ['Ожидаемая дата', d.expected_close ? esc(fmtDateOnly(d.expected_close)) : '<span class="sub">не указана</span>'],
+    ['Следующий шаг', d.next_step
+      ? esc(d.next_step) + (d.next_step_at ? ' · <span class="num">' + esc(fmtDateTime(d.next_step_at)) + '</span>' : '')
+      : '<span class="sub">не назначен</span>'],
+    ['Менеджер', esc(empName(d.owner_id))]
+  ];
+  if(d.stage === 'lost') kv.push(['Причина отказа', d.lost_reason ? esc(d.lost_reason) : '<span class="sub">не указана</span>']);
+  if(d.closed_at) kv.push(['Закрыта', '<span class="num">' + esc(fmtDateTime(d.closed_at)) + '</span>']);
+  if(d.erp_doc_no) kv.push(['Реализация 1С', '<span class="mono">' + esc(d.erp_doc_no) + '</span>']);
+
+  const acts = canEdit()
+    ? '<div class="btn-row" style="margin-top:16px">' +
+        '<button class="btn" id="dStage" style="flex:1">' + icon('layers') + 'Сменить этап</button>' +
+        '<button class="btn ghost" id="dEdit">' + icon('edit') + 'Изменить</button>' +
+        (canTransfer(d) ? '<button class="btn ghost" id="dMove">' + icon('user') + 'Передать</button>' : '') +
+      '</div>'
+    : '';
+
+  modalBody().innerHTML =
+    '<div class="chead" style="padding:0 0 12px"><h2>' + esc(d.title) + '</h2>' +
+      '<div class="cmeta">' + esc(DEAL_STAGE_RU[d.stage] || d.stage) +
+      ' · создана ' + esc(fmtDate(d.created_at)) + '</div></div>' +
+    flags.map(f => '<div class="warnbox ' + f.cls + '" style="margin:0 0 10px">' + icon('alert') +
+      '<span>' + esc(f.text) + '</span></div>').join('') +
+    '<dl class="kv" style="padding:0">' +
+      kv.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
+    (d.notes ? '<div class="field-label" style="margin-top:12px">Заметки</div>' +
+      '<div class="text-block">' + esc(d.notes) + '</div>' : '') +
+    acts;
+
+  if(canEdit()){
+    $('dStage').onclick = () => stageMenu(d);
+    $('dEdit').onclick = () => openForm(d);
+    if($('dMove')) $('dMove').onclick = () => askTransfer(d);
+  }
+}
+
+function stageMenu(d){
+  modalOpen({
+    title:'Этап сделки',
+    bodyHTML:'<div class="rows">' + Object.keys(DEAL_STAGE_RU).map(s =>
+      '<button class="row" data-s="' + s + '"' + (s === d.stage ? ' disabled' : '') + '>' +
+        '<span class="dot sg-' + s + '"></span>' +
+        '<span class="rb"><span class="l1"><span class="t">' + esc(DEAL_STAGE_RU[s]) + '</span>' +
+        (s === d.stage ? '<span class="when">сейчас</span>' : '') + '</span></span>' +
+      '</button>').join('') + '</div>'
+  });
+  modalBody().querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+    if(b.dataset.s === d.stage) return;
+    setStage(d, b.dataset.s);
+  });
+}
+
+/* Отказ — обязательно причина. Продажа — подтверждаем сумму, комплект и купон. */
+function setStage(d, stage){
+  if(stage === 'lost') return askLost(d);
+  if(stage === 'won') return askWon(d);
+  applyStage(d, { stage });
+}
+
+function askLost(d){
+  modalOpen({
+    title:'Отказ',
+    bodyHTML:
+      '<div class="field"><label class="field-label" for="lrSel">Причина <span class="req">*</span></label>' +
+        '<select id="lrSel"><option value="">Выберите причину</option>' +
+        LOST_REASONS.map(r => '<option>' + esc(r) + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label class="field-label" for="lrTxt">Подробнее</label>' +
+        '<textarea id="lrTxt" rows="3" placeholder="Что именно сказал клиент"></textarea></div>',
+    saveLabel:'Отметить отказ',
+    onSave: () => {
+      const r = document.getElementById('lrSel').value;
+      if(!r) return modalMsg('Выберите причину отказа');
+      const txt = document.getElementById('lrTxt').value.trim();
+      applyStage(d, { stage:'lost', lost_reason: txt ? r + ' — ' + txt : r });
+    }
+  });
+}
+
+function askWon(d){
+  modalOpen({
+    title:'Продано',
+    bodyHTML:
+      '<div class="field"><label class="field-label" for="wAmt">Сумма сделки <span class="req">*</span></label>' +
+        '<input id="wAmt" class="num" type="number" min="0" step="0.01" value="' + esc(d.amount || '') + '"></div>' +
+      '<label class="chk" style="margin-bottom:12px"><input type="checkbox" id="wCmp"' +
+        (d.is_complect ? ' checked' : '') + '>Комплект ЛДСП + фурнитура</label>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="wCoupon">Купон</label>' +
+          '<input id="wCoupon" value="' + esc(d.coupon_code || '') + '" placeholder="номер"></div>' +
+        '<div class="field"><label class="field-label" for="wCamt">Сумма купона</label>' +
+          '<input id="wCamt" class="num" type="number" min="0" step="0.01" value="' +
+          esc(d.coupon_amount || '') + '"></div>' +
+      '</div>' +
+      '<div class="hint">Номер реализации 1С можно вписать позже, в «Изменить».</div>',
+    saveLabel:'Отметить продажу',
+    onSave: () => {
+      const amt = document.getElementById('wAmt').value;
+      if(!amt || Number(amt) <= 0) return modalMsg('Укажите сумму сделки');
+      const code = document.getElementById('wCoupon').value.trim();
+      const camt = document.getElementById('wCamt').value;
+      applyStage(d, {
+        stage:'won',
+        amount: Number(amt),
+        is_complect: document.getElementById('wCmp').checked,
+        coupon_code: code || null,
+        coupon_amount: code && camt ? Number(camt) : null
+      });
+    }
+  });
+}
+
+async function applyStage(d, patch){
+  const inModal = !!document.getElementById('crmSave');   // из канбана модалки нет
+  modalBusy(true, 'Сохраняем…');
+  const { error } = await sb.from('deals').update(patch).eq('id', d.id);
+  if(error){
+    modalBusy(false, 'Сохранить');
+    if(inModal) return modalMsg(errText(error, 'update'));
+    await load();                                        // вернуть карточку на прежнее место
+    return toast(errText(error, 'update'));
+  }
+  modalClose();
+  if(patch.stage === 'won') playDone();
+  toast('Этап: ' + (DEAL_STAGE_RU[patch.stage] || patch.stage));
+  await load();
+}
+
+function askTransfer(d){
+  modalOpen({
+    title:'Передать сделку',
+    bodyHTML:'<div class="field"><label class="field-label" for="trSel">Новый менеджер</label>' +
+      '<select id="trSel">' + EMPS.map(e =>
+        '<option value="' + esc(e.id) + '"' + (d.owner_id === e.id ? ' selected' : '') + '>' +
+        esc(e.full_name) + '</option>').join('') + '</select></div>' +
+      '<div class="hint">Передать сделку другому менеджеру может только руководитель.</div>',
+    saveLabel:'Передать',
+    onSave: async () => {
+      modalBusy(true, 'Передаём…');
+      const { error } = await sb.from('deals')
+        .update({ owner_id: document.getElementById('trSel').value }).eq('id', d.id);
+      if(error){ modalBusy(false, 'Передать'); return modalMsg(errText(error, 'update')); }
+      modalClose(); toast('Сделка передана'); await load();
+    }
+  });
+}
+
+/* ============================================================
+   СОЗДАНИЕ И ПРАВКА
+   ============================================================ */
+let PICKED = null;    // выбранный клиент для новой сделки
+
+/* Продажу и отказ ставим только через «Сменить этап» — там причина и подтверждение.
+   Если сделка уже закрыта, её этап из списка не убираем, иначе он потеряется. */
+function stageOptions(cur){
+  const keys = DEAL_OPEN_STAGES.concat(DEAL_OPEN_STAGES.includes(cur) ? [] : [cur]);
+  return keys.map(k => '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' +
+    esc(DEAL_STAGE_RU[k] || k) + '</option>').join('');
+}
+
+/* Что сейчас набрано в форме — чтобы выбор клиента не стирал введённое */
+function formDraft(){
+  if(!document.getElementById('fTitle')) return null;
+  const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  const c = id => { const e = document.getElementById(id); return e ? e.checked : false; };
+  return {
+    draft:true,
+    title:g('fTitle'), stage:g('fStage'), amount:g('fAmount'), is_complect:c('fCmp'),
+    coupon_code:g('fCoupon'), coupon_amount:g('fCamt'), expected_close:g('fClose2'),
+    next_step:g('fStep'), step_local:g('fStepAt'), owner_id:g('fOwner2'),
+    erp_doc_no:g('fErp'), notes:g('fNotes')
+  };
+}
+
+async function openForm(d, clientId, draft){
+  if(!draft) PICKED = d && d.client ? d.client : null;
+  if(!d && clientId && !draft){
+    const { data } = await sb.from('clients').select('id,full_name,phone').eq('id', Number(clientId)).maybeSingle();
+    if(data) PICKED = data;
+  }
+  const v = draft || d || {};
+  const stepLocal = draft ? draft.step_local
+    : (v.next_step_at ? isoToLocalInput(new Date(v.next_step_at)) : '');
+  const mayOwner = isBossRole() || hasTeam() || ['head','regional'].includes(ME.role);
+
+  modalOpen({
+    title: d ? 'Изменить сделку' : 'Новая сделка',
+    wide: true,
+    bodyHTML:
+      '<div class="field"><label class="field-label">Клиент <span class="req">*</span></label>' +
+        '<div class="inline-add"><input id="fClient" readonly value="' +
+          esc(PICKED ? PICKED.full_name : '') + '" placeholder="не выбран">' +
+          '<button class="btn ghost" id="fPick" type="button">Выбрать</button></div></div>' +
+      '<div class="field"><label class="field-label" for="fTitle">Название <span class="req">*</span></label>' +
+        '<input id="fTitle" maxlength="200" value="' + esc(v.title || '') + '" ' +
+        'placeholder="Кухня, шкаф-купе…"></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fStage">Этап</label>' +
+          '<select id="fStage">' + stageOptions(v.stage || 'new') + '</select></div>' +
+        '<div class="field"><label class="field-label" for="fAmount">Сумма</label>' +
+          '<input id="fAmount" class="num" type="number" min="0" step="0.01" value="' +
+          esc(v.amount || '') + '"></div>' +
+      '</div>' +
+      '<label class="chk" style="margin-bottom:12px"><input type="checkbox" id="fCmp"' +
+        (v.is_complect ? ' checked' : '') + '>Комплект ЛДСП + фурнитура</label>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fCoupon">Купон</label>' +
+          '<input id="fCoupon" value="' + esc(v.coupon_code || '') + '"></div>' +
+        '<div class="field"><label class="field-label" for="fCamt">Сумма купона</label>' +
+          '<input id="fCamt" class="num" type="number" min="0" step="0.01" value="' +
+          esc(v.coupon_amount || '') + '"></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label" for="fClose2">Ожидаемая дата закрытия</label>' +
+        '<input id="fClose2" type="date" value="' + esc(v.expected_close || '') + '"></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fStep">Следующий шаг</label>' +
+          '<input id="fStep" value="' + esc(v.next_step || '') + '" placeholder="позвонить, отправить расчёт…"></div>' +
+        '<div class="field"><label class="field-label" for="fStepAt">Когда</label>' +
+          '<input id="fStepAt" type="datetime-local" value="' + esc(stepLocal) + '"></div>' +
+      '</div>' +
+      (mayOwner
+        ? '<div class="field"><label class="field-label" for="fOwner2">Менеджер</label>' +
+          '<select id="fOwner2">' + EMPS.map(e =>
+            '<option value="' + esc(e.id) + '"' + ((v.owner_id || ME.id) === e.id ? ' selected' : '') + '>' +
+            esc(e.full_name) + '</option>').join('') + '</select></div>'
+        : '') +
+      '<div class="field"><label class="field-label" for="fErp">Номер реализации 1С</label>' +
+        '<input id="fErp" value="' + esc(v.erp_doc_no || '') + '"></div>' +
+      '<div class="field"><label class="field-label" for="fNotes">Заметки</label>' +
+        '<textarea id="fNotes" rows="3">' + esc(v.notes || '') + '</textarea></div>',
+    saveLabel: d ? 'Сохранить' : 'Создать',
+    onSave: () => saveDeal(d)
+  });
+
+  document.getElementById('fPick').onclick = () => {
+    const keep = formDraft();                 // модалка выбора закроет форму — сохраняем набранное
+    pickClient(c => { PICKED = c; openForm(d, null, keep); });
+  };
+}
+
+async function saveDeal(d){
+  if(!PICKED) return modalMsg('Выберите клиента');
+  const title = document.getElementById('fTitle').value.trim();
+  if(!title) return modalMsg('Впишите название сделки');
+
+  const owner = document.getElementById('fOwner2');
+  const code = document.getElementById('fCoupon').value.trim();
+  const camt = document.getElementById('fCamt').value;
+  const amount = document.getElementById('fAmount').value;
+  const stepAt = document.getElementById('fStepAt').value;
+
+  const rec = {
+    client_id: PICKED.id,
+    title,
+    stage: document.getElementById('fStage').value,
+    amount: amount ? Number(amount) : null,
+    is_complect: document.getElementById('fCmp').checked,
+    coupon_code: code || null,
+    coupon_amount: code && camt ? Number(camt) : null,
+    expected_close: document.getElementById('fClose2').value || null,
+    next_step: document.getElementById('fStep').value.trim() || null,
+    next_step_at: stepAt ? localToISO(stepAt) : null,
+    erp_doc_no: document.getElementById('fErp').value.trim() || null,
+    notes: document.getElementById('fNotes').value.trim() || null
+  };
+  if(owner) rec.owner_id = owner.value;
+  else if(!d) rec.owner_id = ME.id;
+
+  modalBusy(true, 'Сохраняем…');
+  const res = d
+    ? await sb.from('deals').update(rec).eq('id', d.id).select('id').maybeSingle()
+    : await sb.from('deals').insert(rec).select('id').maybeSingle();
+  if(res.error){
+    modalBusy(false, d ? 'Сохранить' : 'Создать');
+    return modalMsg(errText(res.error, d ? 'update' : 'insert'));
+  }
+  modalClose();
+  toast(d ? 'Сохранено' : 'Сделка создана');
+  await load();
+  if(res.data) openDeal(res.data.id);
+}
+</script>
+</body>
+</html>

@@ -729,3 +729,163 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   a{color:#000 !important;text-decoration:none}
   @page{margin:14mm}
 }
+
+/* ============================================================
+   ЭТАП 2 — КЛИЕНТЫ, СДЕЛКИ, ПЛАН
+   ============================================================ */
+
+/* точка вида клиента */
+.dot.k-client{background:var(--info)}
+.dot.k-master{background:var(--brand)}
+.dot.k-dealer{background:var(--plan)}
+.dot.k-company{background:var(--ok)}
+
+/* телефон ссылкой */
+.phone{color:var(--brand);font-weight:700;font-variant-numeric:tabular-nums}
+.phone:hover{text-decoration:underline}
+.callrow{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 12px}
+.callrow .btn{flex:1;min-width:140px}
+
+/* карточка клиента и сделки — общая шапка */
+.chead{padding:16px 16px 12px}
+.chead h2{font:800 20px 'Manrope';line-height:1.3;word-break:break-word}
+.chead .cmeta{margin-top:5px;font-size:14px;color:var(--muted);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* плашки-предупреждения на карточке сделки */
+.warnbox{display:flex;align-items:flex-start;gap:9px;margin:0 16px 12px;padding:10px 13px;
+  border-radius:12px;font-size:14px;font-weight:600;line-height:1.4}
+.warnbox svg{flex:none;margin-top:1px}
+.warnbox.warn{background:rgba(245,179,1,.14);color:var(--warn)}
+.warnbox.late{background:rgba(240,84,106,.14);color:var(--late)}
+.warnbox.info{background:rgba(59,158,255,.14);color:var(--info)}
+
+/* общая лента клиента: дела, сделки, заявки, звонки, замечания */
+.tl{display:flex;flex-direction:column}
+.tlrow{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;min-height:58px;
+  border-bottom:1px solid var(--line);width:100%;text-align:left;background:none;border-left:none;
+  border-right:none;border-top:none;color:inherit;font:inherit;cursor:pointer}
+.tlrow:hover{background:var(--card)}
+.tlrow.flat{cursor:default}
+.tlrow.flat:hover{background:none}
+.tlrow .ti{color:var(--brand);flex:none;display:flex;margin-top:2px}
+.tlrow .ti svg{width:18px;height:18px}
+.tlrow .tb3{flex:1;min-width:0}
+.tlrow .t1{display:flex;align-items:baseline;gap:10px}
+.tlrow .t1 .tt2{flex:1;min-width:0;font-weight:700;font-size:15px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tlrow .t1 .tw{flex:none;font-size:12.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.tlrow .t2{display:block;font-size:13px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- Сделки ---------- */
+.dot.sg-new{background:var(--muted)}
+.dot.sg-consult{background:var(--info)}
+.dot.sg-measure{background:var(--plan)}
+.dot.sg-proposal{background:var(--warn)}
+.dot.sg-waiting{background:var(--line-2)}
+.dot.sg-won{background:var(--ok)}
+.dot.sg-lost{background:var(--late)}
+.money{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+
+/* сумма и подписи в строке сделки */
+.row .l1 .amt{flex:none;font:700 14px 'Manrope';font-variant-numeric:tabular-nums;white-space:nowrap}
+.mark-nostep{color:var(--warn);flex:none;display:inline-flex}
+.mark-nostep svg{width:14px;height:14px}
+
+/* канбан — только на ПК */
+.kanban{display:none}
+.kancol{display:flex;flex-direction:column;min-width:0;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.kancol .kh{display:flex;align-items:center;gap:8px;padding:10px 12px;flex:none;
+  border-bottom:1px solid var(--line);font:700 13.5px 'Manrope'}
+.kancol .kh .kn{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.kancol .kb{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:8px;
+  min-height:120px}
+.kancol.over .kb{background:var(--card-2)}
+.kancard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;
+  cursor:grab;text-align:left;color:inherit;font:inherit;width:100%;display:block}
+.kancard:hover{border-color:var(--line-2)}
+.kancard.drag{opacity:.45}
+.kancard .kt{display:block;font:700 14.5px 'Manrope';line-height:1.3;word-break:break-word}
+.kancard .kc{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kancard .kf{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12.5px}
+.kancard .kf .money{font-size:13px}
+.kancard .kf .flag{margin-left:auto;display:inline-flex;color:var(--warn)}
+.kancard .kf .flag svg{width:14px;height:14px}
+
+/* ---------- Мой план ---------- */
+.planday{display:flex;align-items:center;gap:8px;padding:6px 16px 10px}
+.planday .pd{flex:1;min-width:0;font:800 17px 'Manrope';text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actrow{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;min-height:66px;
+  border-bottom:1px solid var(--line)}
+.actrow.done{opacity:.6}
+.actrow .ai{color:var(--brand);flex:none;display:flex;margin-top:3px}
+.actrow .ab{flex:1;min-width:0}
+.actrow .a1{display:flex;align-items:baseline;gap:10px}
+.actrow .a1 .at{flex:1;min-width:0;font:700 15.5px 'Manrope';
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actrow .a1 .aw{flex:none;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.actrow .a1 .aw.late{color:var(--late);font-weight:700}
+.actrow .a2{display:block;font-size:13px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actrow .aa{display:flex;gap:6px;flex:none;align-items:center}
+.actrow.done .a1 .at{text-decoration:line-through;font-weight:600;color:var(--muted)}
+
+/* быстрое добавление дела */
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 14px}
+.quick button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  min-height:70px;border:1px solid var(--line);background:var(--card);border-radius:13px;
+  color:var(--ink-2);font:600 12.5px 'Manrope';cursor:pointer;transition:border-color .15s,transform .1s}
+.quick button:hover{border-color:var(--line-2);color:var(--ink)}
+.quick button:active{transform:scale(.96)}
+.quick button .qi{color:var(--brand);display:flex}
+
+/* показатели — сворачиваемый блок */
+.kpi{margin:0 16px 14px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden}
+.kpi>summary{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;
+  cursor:pointer;font:700 15px 'Manrope';list-style:none}
+.kpi>summary::-webkit-details-marker{display:none}
+.kpi>summary .kchev{margin-left:auto;color:var(--muted);display:flex;transition:transform .15s}
+.kpi[open]>summary .kchev{transform:rotate(180deg)}
+.kpi .kbody{padding:4px 14px 14px;border-top:1px solid var(--line)}
+.kgrid{display:grid;grid-template-columns:1fr auto auto;gap:7px 14px;align-items:baseline;
+  font-size:14.5px}
+.kgrid .kh2{font:700 12px 'Manrope';color:var(--muted);text-transform:uppercase;
+  letter-spacing:.04em;text-align:right}
+.kgrid .kk{color:var(--muted);font-size:13.5px;min-width:0}
+.kgrid .kv2{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+/* рейтинг команды */
+.rank{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.rank:last-child{border-bottom:none}
+.rank .rn{width:22px;flex:none;font:800 14px 'Manrope';color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.rank.me .rn{color:var(--brand)}
+.rank .rb2{flex:1;min-width:0}
+.rank .rnm{display:block;font-weight:700;font-size:14.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank.me .rnm{color:var(--brand)}
+.rank .rs{display:block;font-size:12.5px;color:var(--muted);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank .rv{flex:none;font:800 15px 'Manrope';font-variant-numeric:tabular-nums}
+
+@media (min-width:1024px){
+  /* канбан вместо списка сделок */
+  .kanban{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;
+    padding:0 24px 20px;align-items:start}
+  .kancol .kb{max-height:calc(100vh - 260px)}
+  .callrow{padding-left:24px;padding-right:24px}
+  .chead{padding-left:24px;padding-right:24px}
+  .warnbox{margin-left:24px;margin-right:24px}
+  .kpi{margin-left:24px;margin-right:24px}
+  .quick{grid-template-columns:repeat(4,minmax(0,150px));padding-left:24px;padding-right:24px}
+  .planday{padding-left:24px;padding-right:24px}
+  .tlrow,.actrow{padding-left:24px;padding-right:24px}
+}
+@media (max-width:380px){
+  .quick button{min-height:64px;font-size:11.5px}
+}

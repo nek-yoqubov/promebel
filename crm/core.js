@@ -507,11 +507,11 @@ const SECTIONS = [
   { key:'author',  group:'work',    label:'Поставленные',   href:'tasks.html?tab=author', icon:'target' },
   { key:'cal',     group:'work',    label:'Календарь',      href:'calendar.html',         icon:'calendar' },
   { key:'plan',    group:'work',    label:'Мой план',       href:'plan.html',             icon:'checkCircle',
-    roles:['sales','head','regional','brand','admin','director'], soon:true },
+    roles:['sales','head','regional','brand','admin','director','auditor'] },
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
-    notRoles:['production','cashier'], soon:true },
+    notRoles:['production','cashier'] },
   { key:'deals',   group:'sales',   label:'Сделки',         href:'deals.html',            icon:'deal',
-    roles:['sales','head','regional','admin','director','auditor'], soon:true },
+    roles:['sales','head','regional','admin','director','auditor'] },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star',
     soon:true },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
@@ -1191,4 +1191,153 @@ function templateRule(t){
     when = d.length === 7 ? 'каждый день' : 'по дням: ' + d.join(', ');
   }
   return when + ' в ' + at + ', срок ' + due + ' до ' + till;
+}
+
+/* ============================================================
+   ЭТАП 2 — ОБЩЕЕ ДЛЯ КЛИЕНТОВ, СДЕЛОК И ПЛАНА
+   ============================================================ */
+
+/* Ревизор всё видит, но ничего не меняет. Кнопки создания и правки прячем. */
+function canEdit(){ return !isAuditor(); }
+
+/* Телефон: для ссылок оставляем только цифры и плюс */
+function phoneDigits(p){ return String(p || '').replace(/[^\d]/g, ''); }
+function telHref(p){ const d = String(p || '').replace(/[^\d+]/g, ''); return d ? 'tel:' + d : ''; }
+function waHref(p){ const d = phoneDigits(p); return d ? 'https://wa.me/' + d : ''; }
+function phoneHTML(p){
+  if(!p) return '';
+  return '<a class="phone" href="' + esc(telHref(p)) + '">' + esc(p) + '</a>';
+}
+
+/* «был контакт 12 дн. назад» — одинаково в списке клиентов и в спящих */
+function contactAgo(iso){
+  if(!iso) return 'контакта ещё не было';
+  const n = Math.abs(dayDiff(new Date(iso), new Date()));
+  if(n === 0) return 'контакт сегодня';
+  if(n === 1) return 'контакт вчера';
+  return 'был контакт ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' назад';
+}
+
+/* Строка клиента — одна и та же в списке, в спящих и в выборе клиента */
+function clientRowHTML(c, opts){
+  const o = opts || {};
+  const l2 = [
+    CLIENT_KIND_RU[c.kind] || c.kind,
+    c.phone || '',
+    o.ownerName !== undefined ? o.ownerName : (c.owner_id ? empName(c.owner_id) : 'без владельца')
+  ].filter(Boolean).join(' · ');
+  const right = o.right || '';
+  return '<button class="row' + (o.active ? ' on' : '') + '" data-client="' + c.id + '">' +
+    '<span class="dot k-' + esc(c.kind) + '"></span>' +
+    '<span class="rb">' +
+      '<span class="l1"><span class="t">' + esc(c.full_name) + '</span>' +
+        (right ? '<span class="when">' + esc(right) + '</span>' : '') + '</span>' +
+      '<span class="l2">' + esc(l2) + '</span>' +
+    '</span></button>';
+}
+
+/* Сделка без движения — база не считает, считаем здесь */
+function staleDays(iso){
+  if(!iso) return 0;
+  return Math.abs(dayDiff(new Date(iso), new Date()));
+}
+
+/* ============================================================
+   МОДАЛКА — общая для страниц этапа 2
+   Разметку не держим на странице, собираем на лету.
+   ============================================================ */
+function modalOpen(o){
+  modalClose();
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.id = 'crmModal';
+  el.innerHTML =
+    '<div class="modal-box"' + (o.wide ? ' style="max-width:720px"' : '') + '>' +
+      '<div class="modal-head"><h2>' + esc(o.title || '') + '</h2>' +
+        '<button class="ib" id="crmModalX" aria-label="Закрыть">' + icon('x') + '</button></div>' +
+      '<div class="modal-body" id="crmModalBody">' + (o.bodyHTML || '') +
+        (o.saveLabel
+          ? '<div class="btn-row" style="margin-top:16px">' +
+              '<button class="btn" id="crmSave" style="flex:1">' + esc(o.saveLabel) + '</button>' +
+              '<button class="btn ghost" id="crmCancel">Отмена</button>' +
+            '</div><div class="msg err" id="crmMsg"></div>'
+          : '') +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(el);
+  document.body.style.overflow = 'hidden';
+  document.getElementById('crmModalX').onclick = modalClose;
+  el.onclick = e => { if(e.target === el) modalClose(); };
+  if(o.saveLabel){
+    document.getElementById('crmCancel').onclick = modalClose;
+    document.getElementById('crmSave').onclick = o.onSave;
+  }
+  return el;
+}
+function modalClose(){
+  const el = document.getElementById('crmModal');
+  if(el) el.remove();
+  document.body.style.overflow = '';
+}
+function modalBody(){ return document.getElementById('crmModalBody'); }
+function modalMsg(t, ok){
+  const m = document.getElementById('crmMsg');
+  if(m){ m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t || ''; }
+}
+function modalBusy(on, label){
+  const b = document.getElementById('crmSave');
+  if(b){ b.disabled = on; if(label) b.textContent = label; if(on) modalMsg(''); }
+}
+/* Короткое подтверждение вместо confirm() — он в PWA выглядит чужим */
+function confirmBox(title, text, okLabel, onOk){
+  modalOpen({
+    title,
+    bodyHTML: '<div class="text-block">' + esc(text) + '</div>',
+    saveLabel: okLabel,
+    onSave: () => { modalClose(); onOk(); }
+  });
+}
+
+/* ============================================================
+   ВЫБОР КЛИЕНТА — нужен в сделках, плане и колл-центре
+   onPick получает {id, full_name, phone, kind}
+   ============================================================ */
+function pickClient(onPick, title){
+  modalOpen({
+    title: title || 'Выбрать клиента',
+    bodyHTML:
+      '<div class="f-search" style="margin-bottom:10px">' + icon('search') +
+        '<input id="pcQ" type="search" placeholder="Имя или телефон" autocomplete="off"></div>' +
+      '<div class="rows" id="pcList"><div class="hint">Введите имя или номер</div></div>'
+  });
+  const q = document.getElementById('pcQ'), list = document.getElementById('pcList');
+  q.focus();
+  let timer = null;
+  q.oninput = () => { clearTimeout(timer); timer = setTimeout(run, 250); };
+  async function run(){
+    const s = q.value.trim();
+    if(s.length < 2){ list.innerHTML = '<div class="hint">Введите имя или номер</div>'; return; }
+    list.innerHTML = '<div class="loading">Ищем…</div>';
+    const { data, error } = await clientSearch(s, 30);
+    if(error){ list.innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+    if(!data.length){ list.innerHTML = '<div class="empty">Никого не нашли</div>'; return; }
+    list.innerHTML = data.map(c => clientRowHTML(c)).join('');
+    list.querySelectorAll('[data-client]').forEach(b => b.onclick = () => {
+      const c = data.find(x => String(x.id) === b.dataset.client);
+      modalClose();
+      onPick(c);
+    });
+  }
+}
+/* Поиск клиента по имени и обоим телефонам. Запятые и скобки ломают or() — убираем. */
+function clientSearch(s, limit){
+  const safe = s.replace(/[,()\\]/g, ' ').replace(/[%_]/g, ' ').trim();
+  if(!safe) return Promise.resolve({ data: [], error: null });
+  const like = '%' + safe + '%';
+  return sb.from('clients')
+    .select('id,kind,full_name,phone,phone2,owner_id,city,company')
+    .eq('is_active', true)
+    .or('full_name.ilike.' + like + ',phone.ilike.' + like + ',phone2.ilike.' + like)
+    .order('full_name')
+    .limit(limit || 30);
 }

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Клиенты</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="split">
+    <div class="col-list">
+      <div class="pagehead"><h1 id="pageTitle">Клиенты</h1>
+        <button class="ib" id="searchBtnPc" aria-label="Поиск"></button>
+        <button class="btn sm" id="addBtnPc" hidden>Новый клиент</button></div>
+
+      <div class="pad" id="searchWrap" hidden style="padding-bottom:0">
+        <div class="f-search"><span id="searchIcon"></span>
+          <input id="fSearch" type="search" placeholder="Имя или телефон" autocomplete="off"></div>
+      </div>
+
+      <div class="chips" id="chips"></div>
+      <div class="rows" id="list"><div class="loading">Загрузка…</div></div>
+    </div>
+
+    <div class="col-detail" id="colDetail">
+      <div class="empty" id="dPlaceholder">Выберите клиента из списка</div>
+
+      <div class="layer" id="detail" hidden>
+        <div class="lhead">
+          <button class="ib" id="dBack" aria-label="Назад"></button>
+          <span class="tt" id="dHeadTitle"></span>
+          <button class="ib" id="dMore" aria-label="Ещё" hidden></button>
+        </div>
+        <div class="lbody" id="dBody"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+
+let KIND = qs.get('tab') === 'sleeping' ? 'sleeping' : 'all';
+let SEARCH = '', ROWS = [], CUR = null;
+
+const CHIPS = [
+  { key:'all',      label:'Все' },
+  { key:'client',   label:'Клиенты' },
+  { key:'master',   label:'Мастера' },
+  { key:'dealer',   label:'Дилеры' },
+  { key:'company',  label:'Компании' },
+  { key:'sleeping', label:'Спящие' }
+];
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({
+    title:'Клиенты',
+    tab:'clients',
+    actions:'<button class="ib" id="searchBtn" aria-label="Поиск">' + icon('search') + '</button>' +
+      (canEdit() ? '<button class="ib" id="addBtn" aria-label="Новый клиент">' + icon('plus') + '</button>' : '')
+  });
+
+  $('searchIcon').innerHTML = icon('search');
+  $('searchBtnPc').innerHTML = icon('search');
+  $('dBack').innerHTML = icon('arrowLeft');
+  $('dMore').innerHTML = icon('dots');
+  $('searchBtn').onclick = toggleSearch;
+  $('searchBtnPc').onclick = toggleSearch;
+  if(canEdit()){
+    $('addBtn').onclick = () => openForm(null);
+    $('addBtnPc').hidden = false;
+    $('addBtnPc').onclick = () => openForm(null);
+  }
+  $('dBack').onclick = () => history.length > 1 ? history.back() : closeDetail();
+
+  let t = null;
+  $('fSearch').oninput = () => {
+    clearTimeout(t);
+    t = setTimeout(() => { SEARCH = $('fSearch').value.trim(); load(); }, 250);
+  };
+
+  addEventListener('popstate', e => {
+    const id = e.state && e.state.client;
+    if(id) openClient(id, false); else closeDetail();
+  });
+
+  paintChips();
+  await load();
+  const open = qs.get('id');
+  if(open) openClient(Number(open), false);
+})();
+
+function paintChips(){
+  $('chips').innerHTML = CHIPS.map(c =>
+    '<button class="chip' + (c.key === KIND ? ' on' : '') + '" data-k="' + c.key + '">' +
+    esc(c.label) + '</button>').join('');
+  $('chips').querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+    KIND = b.dataset.k; paintChips(); syncUrl(); load();
+  });
+}
+function toggleSearch(){
+  const w = $('searchWrap');
+  w.hidden = !w.hidden;
+  if(!w.hidden) $('fSearch').focus();
+  else if(SEARCH){ SEARCH = ''; $('fSearch').value = ''; load(); }
+}
+function syncUrl(){
+  const u = new URL(location.href);
+  if(KIND === 'sleeping') u.searchParams.set('tab', 'sleeping'); else u.searchParams.delete('tab');
+  u.searchParams.delete('id');
+  history.replaceState(null, '', u);
+}
+
+/* ============================================================
+   СПИСОК
+   ============================================================ */
+async function load(){
+  $('list').innerHTML = '<div class="loading">Загрузка…</div>';
+  if(KIND === 'sleeping') return loadSleeping();
+
+  let q = SEARCH
+    ? clientSearch(SEARCH, 300)
+    : sb.from('clients')
+        .select('id,kind,full_name,phone,phone2,owner_id,city,company,last_contact_at')
+        .eq('is_active', true)
+        .order('last_contact_at', { ascending:false, nullsFirst:false })
+        .limit(300);
+
+  const { data, error } = await q;
+  if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  ROWS = (data || []).filter(c => KIND === 'all' || c.kind === KIND);
+  paintList();
+}
+
+async function loadSleeping(){
+  const { data, error } = await sb.schema('crm').rpc('sleeping_clients', { p_kind: null });
+  if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  ROWS = (data || []).map(r => ({ ...r, sleeping:true }));
+  paintList();
+}
+
+/* «12 дн.» справа в строке — длинная фраза туда не влезает */
+function contactShort(iso){
+  if(!iso) return 'не было';
+  const n = Math.abs(dayDiff(new Date(iso), new Date()));
+  if(n === 0) return 'сегодня';
+  if(n === 1) return 'вчера';
+  return n + ' дн.';
+}
+
+function paintList(){
+  if(!ROWS.length){
+    $('list').innerHTML = '<div class="empty">' +
+      (KIND === 'sleeping' ? 'Спящих клиентов нет — со всеми связывались вовремя'
+       : SEARCH ? 'Никого не нашли' : 'Клиентов пока нет') + '</div>';
+    return;
+  }
+  $('list').innerHTML = ROWS.map(c => clientRowHTML(c, {
+    active: CUR && CUR.id === c.id,
+    ownerName: c.sleeping ? (c.owner_name || 'без владельца') : undefined,
+    right: c.sleeping ? c.days + ' дн.' : contactShort(c.last_contact_at)
+  })).join('');
+  $('list').querySelectorAll('[data-client]').forEach(b =>
+    b.onclick = () => openClient(Number(b.dataset.client)));
+}
+
+/* ============================================================
+   КАРТОЧКА КЛИЕНТА
+   ============================================================ */
+async function openClient(id, push){
+  if(!id) return;
+  $('dPlaceholder').hidden = true;
+  $('detail').hidden = false;
+  $('dHeadTitle').textContent = 'Клиент';
+  $('dBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  $('dMore').hidden = true;
+
+  if(push !== false && (!history.state || history.state.client !== id)){
+    history.pushState({ client:id }, '', 'clients.html?id=' + id);
+  }
+
+  const { data:c, error } = await sb.from('clients').select('*').eq('id', id).maybeSingle();
+  if(error){ $('dBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!c){ $('dBody').innerHTML = '<div class="empty">Клиент не найден или закрыт для вас</div>'; return; }
+  CUR = c;
+  paintList();
+  paintClient(c);
+  loadFeed(c.id);
+}
+
+function closeDetail(){
+  $('detail').hidden = true;
+  $('dPlaceholder').hidden = false;
+  CUR = null;
+  paintList();
+}
+
+/* владельца меняет руководитель; база проверяет ещё раз */
+function canChangeOwner(c){
+  if(!canEdit()) return false;
+  if(!c.owner_id) return true;
+  return isBossRole() || ['head','regional','callcenter'].includes(ME.role) || isManagerOf(c.owner_id);
+}
+/* заявку на распил заводит колл-центр и head — и только когда раздел готов */
+function canServiceOrder(){
+  const cc = SECTIONS.find(s => s.key === 'cc');
+  return canEdit() && !!cc && !cc.soon && ['callcenter','head','admin','director'].includes(ME.role);
+}
+
+function paintClient(c){
+  $('dHeadTitle').textContent = c.full_name;
+  $('dMore').hidden = !canEdit();
+  $('dMore').onclick = () => clientMenu(c);
+
+  const kv = [
+    ['Вид', esc(CLIENT_KIND_RU[c.kind] || c.kind)],
+    ['Телефон', c.phone ? phoneHTML(c.phone) : '<span class="sub">не указан</span>'],
+    ['Второй телефон', c.phone2 ? phoneHTML(c.phone2) : '<span class="sub">нет</span>'],
+    ['Город', c.city ? esc(c.city) : '<span class="sub">не указан</span>'],
+    ['Адрес', c.address ? esc(c.address) : '<span class="sub">не указан</span>'],
+    ['Компания', c.company ? esc(c.company) : '<span class="sub">не указана</span>'],
+    ['Источник', c.source ? esc(c.source) : '<span class="sub">не указан</span>'],
+    ['Владелец', c.owner_id
+      ? esc(empName(c.owner_id))
+      : '<span class="sub">без владельца</span>'],
+    ['Последний контакт', c.last_contact_at
+      ? '<span class="num">' + esc(fmtDateTime(c.last_contact_at)) + '</span> · ' + esc(contactAgo(c.last_contact_at))
+      : '<span class="sub">' + esc(contactAgo(null)) + '</span>'],
+    ['Следующий контакт', c.next_contact_at
+      ? '<span class="num">' + esc(fmtDateTime(c.next_contact_at)) + '</span>'
+      : '<span class="sub">не назначен</span>']
+  ];
+  if(c.erp_client_code) kv.push(['Код в 1С', '<span class="mono">' + esc(c.erp_client_code) + '</span>']);
+
+  const tags = (c.tags || []).length
+    ? '<div class="chips-plain" style="padding:0 16px 8px">' +
+      c.tags.map(t => '<span class="tagbox">' + esc(t) + '</span>').join('') + '</div>'
+    : '';
+
+  const calls = [];
+  if(c.phone){
+    calls.push('<a class="btn ghost" href="' + esc(telHref(c.phone)) + '">' + icon('phone') + 'Позвонить</a>');
+    calls.push('<a class="btn ghost" href="' + esc(waHref(c.phone)) + '" target="_blank" rel="noopener">' +
+      icon('message') + 'WhatsApp</a>');
+  }
+
+  const acts = [];
+  if(canEdit()){
+    acts.push('<button class="btn" id="cDeal">' + icon('deal') + 'Сделка</button>');
+    acts.push('<button class="btn ghost" id="cAct">' + icon('phone') + 'Звонок/встреча</button>');
+    if(canServiceOrder()) acts.push('<button class="btn ghost" id="cOrder">' + icon('list') + 'Заявка на распил</button>');
+  }
+
+  $('dBody').innerHTML =
+    '<div class="chead"><h2>' + esc(c.full_name) + '</h2>' +
+      '<div class="cmeta"><span class="dot k-' + esc(c.kind) + '"></span>' +
+      esc(CLIENT_KIND_RU[c.kind] || c.kind) +
+      (c.city ? ' · ' + esc(c.city) : '') +
+      (c.company ? ' · ' + esc(c.company) : '') + '</div></div>' +
+    (calls.length ? '<div class="callrow">' + calls.join('') + '</div>' : '') +
+    (acts.length ? '<div class="callrow">' + acts.join('') + '</div>' : '') +
+    tags +
+    '<dl class="kv">' + kv.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
+    (c.notes ? '<div class="sec">Заметка</div><div class="text-block" style="padding:0 16px 14px">' +
+      esc(c.notes) + '</div>' : '') +
+    '<div class="sec">История</div><div class="tl" id="feed"><div class="loading">Загрузка…</div></div>';
+
+  if(canEdit()){
+    $('cDeal').onclick = () => location.href = 'deals.html?new=1&client=' + c.id;
+    $('cAct').onclick = () => location.href = 'plan.html?new=1&client=' + c.id;
+    if($('cOrder')) $('cOrder').onclick = () => location.href = 'callcenter.html?tab=orders&new=1&client=' + c.id;
+  }
+}
+
+function clientMenu(c){
+  const back = document.createElement('div');
+  back.className = 'backdrop clear';
+  const menu = document.createElement('div');
+  menu.className = 'menu';
+  menu.innerHTML =
+    '<button id="mEdit">' + icon('edit') + 'Изменить</button>' +
+    '<button id="mNext">' + icon('calendar') + 'Следующий контакт</button>' +
+    (canChangeOwner(c) ? '<button id="mOwner">' + icon('user') + 'Сменить владельца</button>' : '');
+  document.body.append(back, menu);
+  const r = $('dMore').getBoundingClientRect();
+  menu.style.top = Math.min(innerHeight - 180, r.bottom + 6) + 'px';
+  menu.style.right = Math.max(8, innerWidth - r.right) + 'px';
+  const close = () => { back.remove(); menu.remove(); };
+  back.onclick = close;
+  $('mEdit').onclick = () => { close(); openForm(c); };
+  $('mNext').onclick = () => { close(); askNextContact(c); };
+  if($('mOwner')) $('mOwner').onclick = () => { close(); askOwner(c); };
+}
+
+function askNextContact(c){
+  const cur = c.next_contact_at ? isoToLocalInput(new Date(c.next_contact_at)) : '';
+  modalOpen({
+    title:'Следующий контакт',
+    bodyHTML:'<div class="field"><label class="field-label" for="ncAt">Когда связаться</label>' +
+      '<input id="ncAt" type="datetime-local" value="' + esc(cur) + '"></div>' +
+      '<div class="hint">Оставьте пустым, чтобы убрать напоминание.</div>',
+    saveLabel:'Сохранить',
+    onSave: async () => {
+      modalBusy(true, 'Сохраняем…');
+      const v = document.getElementById('ncAt').value;
+      const { error } = await sb.from('clients')
+        .update({ next_contact_at: v ? localToISO(v) : null }).eq('id', c.id);
+      if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error, 'update')); }
+      modalClose(); toast('Сохранено'); openClient(c.id, false);
+    }
+  });
+}
+
+function askOwner(c){
+  modalOpen({
+    title:'Владелец клиента',
+    bodyHTML:'<div class="field"><label class="field-label" for="owSel">Кто ведёт клиента</label>' +
+      '<select id="owSel"><option value="">Без владельца</option>' +
+      EMPS.map(e => '<option value="' + esc(e.id) + '"' + (c.owner_id === e.id ? ' selected' : '') + '>' +
+        esc(e.full_name) + '</option>').join('') + '</select></div>',
+    saveLabel:'Сохранить',
+    onSave: async () => {
+      modalBusy(true, 'Сохраняем…');
+      const v = document.getElementById('owSel').value || null;
+      const { error } = await sb.from('clients').update({ owner_id: v }).eq('id', c.id);
+      if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error, 'update')); }
+      modalClose(); toast('Владелец изменён'); openClient(c.id, false);
+    }
+  });
+}
+
+/* ============================================================
+   ОБЩАЯ ЛЕНТА КЛИЕНТА
+   Разделы этапов 3–5 могут быть ещё не заполнены — ошибки молча пропускаем.
+   ============================================================ */
+async function loadFeed(id){
+  const safe = p => p.then(r => r.error ? [] : (r.data || [])).catch(() => []);
+  const [acts, deals, orders, calls, fb] = await Promise.all([
+    safe(sb.from('activities').select('id,kind,title,result,due_at,done_at,deal_id')
+      .eq('client_id', id).order('due_at', { ascending:false }).limit(50)),
+    safe(sb.from('deals').select('id,title,stage,amount,currency,created_at,closed_at')
+      .eq('client_id', id).order('created_at', { ascending:false }).limit(50)),
+    safe(sb.from('service_orders').select('id,status,material,sheets_count,due_date,created_at')
+      .eq('client_id', id).order('created_at', { ascending:false }).limit(30)),
+    safe(sb.from('callbacks').select('id,step,status,due_date,rating,result,done_at')
+      .eq('client_id', id).order('due_date', { ascending:false }).limit(30)),
+    safe(sb.from('feedback').select('id,category,department,text,status,created_at')
+      .eq('client_id', id).order('created_at', { ascending:false }).limit(30))
+  ]);
+
+  const items = [];
+  acts.forEach(a => items.push({
+    at: a.done_at || a.due_at, ic: ACTIVITY_ICON[a.kind] || 'list',
+    title: a.title || ACTIVITY_KIND_RU[a.kind],
+    sub: ACTIVITY_KIND_RU[a.kind] + (a.done_at ? ' · сделано' : ' · запланировано') +
+         (a.result ? ' · ' + a.result : ''),
+    link: 'plan.html?id=' + a.id
+  }));
+  deals.forEach(d => items.push({
+    at: d.closed_at || d.created_at, ic:'deal', title: d.title,
+    sub: (DEAL_STAGE_RU[d.stage] || d.stage) +
+         (d.amount ? ' · ' + fmtMoney(d.amount, d.currency) : ''),
+    link: 'deals.html?id=' + d.id
+  }));
+  orders.forEach(o => items.push({
+    at: o.created_at, ic:'list', title:'Заявка на распил №' + o.id,
+    sub: (SERVICE_STATUS_RU[o.status] || o.status) +
+         (o.material ? ' · ' + o.material : '') +
+         (o.sheets_count ? ' · ' + o.sheets_count + ' л.' : '')
+  }));
+  calls.forEach(c => items.push({
+    at: c.done_at || c.due_date, ic:'phone',
+    title:'Звонок через ' + c.step + ' дн. после заказа',
+    sub: (CALLBACK_STATUS_RU[c.status] || c.status) +
+         (c.rating ? ' · оценка ' + c.rating + ' из 5' : '') +
+         (c.result ? ' · ' + c.result : '')
+  }));
+  fb.forEach(f => items.push({
+    at: f.created_at, ic:'alert', title:'Замечание: ' + (FEEDBACK_CAT_RU[f.category] || f.category),
+    sub: (FEEDBACK_DEPT_RU[f.department] || f.department) + ' · ' +
+         (FEEDBACK_STATUS_RU[f.status] || f.status) + (f.text ? ' · ' + f.text : '')
+  }));
+
+  const feed = $('feed');
+  if(!feed) return;
+  if(!items.length){ feed.innerHTML = '<div class="empty">Пока ничего не было</div>'; return; }
+  items.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+
+  feed.innerHTML = items.map(i =>
+    '<' + (i.link ? 'button' : 'div') + ' class="tlrow' + (i.link ? '' : ' flat') + '"' +
+      (i.link ? ' data-link="' + esc(i.link) + '"' : '') + '>' +
+      '<span class="ti">' + icon(i.ic) + '</span>' +
+      '<span class="tb3">' +
+        '<span class="t1"><span class="tt2">' + esc(i.title) + '</span>' +
+          '<span class="tw">' + esc(i.at ? fmtDate(new Date(i.at).toISOString()) : '') + '</span></span>' +
+        '<span class="t2">' + esc(i.sub) + '</span>' +
+      '</span>' +
+    '</' + (i.link ? 'button' : 'div') + '>').join('');
+  feed.querySelectorAll('[data-link]').forEach(b => b.onclick = () => location.href = b.dataset.link);
+}
+
+/* ============================================================
+   СОЗДАНИЕ И ПРАВКА КЛИЕНТА
+   ============================================================ */
+let DUP_ACK = false;      // подтвердили ли сохранение при найденном дубле
+
+function ownerField(c){
+  // владельца продажнику ставит база; руководитель и колл-центр выбирают сами
+  const may = isBossRole() || ['head','regional','callcenter'].includes(ME.role) || hasTeam();
+  if(!may) return '';
+  const sel = c ? c.owner_id : ME.id;
+  return '<div class="field"><label class="field-label" for="fOwner">Владелец</label>' +
+    '<select id="fOwner"><option value="">Без владельца</option>' +
+    EMPS.map(e => '<option value="' + esc(e.id) + '"' + (sel === e.id ? ' selected' : '') + '>' +
+      esc(e.full_name) + '</option>').join('') + '</select></div>';
+}
+
+function openForm(c){
+  DUP_ACK = false;
+  const v = c || {};
+  modalOpen({
+    title: c ? 'Изменить клиента' : 'Новый клиент',
+    wide: true,
+    bodyHTML:
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fKind">Вид</label>' +
+          '<select id="fKind">' + optionsFrom(CLIENT_KIND_RU, v.kind || 'client') + '</select></div>' +
+        '<div class="field"><label class="field-label" for="fSource">Источник</label>' +
+          '<select id="fSource"><option value="">Не указан</option>' +
+          CLIENT_SOURCES.map(s => '<option' + (v.source === s ? ' selected' : '') + '>' +
+            esc(s) + '</option>').join('') + '</select></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label" for="fName">Имя <span class="req">*</span></label>' +
+        '<input id="fName" maxlength="200" value="' + esc(v.full_name || '') + '"></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fPhone">Телефон</label>' +
+          '<input id="fPhone" type="tel" inputmode="tel" value="' + esc(v.phone || '') + '"></div>' +
+        '<div class="field"><label class="field-label" for="fPhone2">Второй телефон</label>' +
+          '<input id="fPhone2" type="tel" inputmode="tel" value="' + esc(v.phone2 || '') + '"></div>' +
+      '</div>' +
+      '<div id="dupBox"></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fCity">Город</label>' +
+          '<input id="fCity" value="' + esc(v.city || '') + '"></div>' +
+        '<div class="field"><label class="field-label" for="fCompany">Компания</label>' +
+          '<input id="fCompany" value="' + esc(v.company || '') + '"></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label" for="fAddr">Адрес</label>' +
+        '<input id="fAddr" value="' + esc(v.address || '') + '"></div>' +
+      ownerField(c) +
+      '<div class="field"><label class="field-label" for="fTags">Теги</label>' +
+        '<input id="fTags" value="' + esc((v.tags || []).join(', ')) + '" placeholder="через запятую"></div>' +
+      '<div class="field"><label class="field-label" for="fNotes">Заметка</label>' +
+        '<textarea id="fNotes" rows="3">' + esc(v.notes || '') + '</textarea></div>',
+    saveLabel: c ? 'Сохранить' : 'Создать',
+    onSave: () => save(c)
+  });
+
+  // при уходе с поля телефона спрашиваем базу, нет ли такого номера
+  document.getElementById('fPhone').onblur = () => lookupPhone(c);
+  document.getElementById('fName').focus();
+}
+
+async function lookupPhone(c){
+  const box = document.getElementById('dupBox');
+  const phone = document.getElementById('fPhone').value.trim();
+  if(!box) return;
+  box.innerHTML = '';
+  DUP_ACK = false;
+  if(phone.length < 5) return;
+
+  const { data, error } = await sb.schema('crm').rpc('client_lookup', { p_phone: phone });
+  if(error || !data || !data.length) return;
+  const hit = data.find(d => !c || d.id !== c.id);
+  if(!hit) return;
+
+  box.innerHTML =
+    '<div class="warnbox warn">' + icon('alert') +
+      '<span>Такой номер уже есть: <b>' + esc(hit.full_name) + '</b>' +
+      (hit.owner_name ? ', ведёт ' + esc(hit.owner_name) : ', без владельца') + '. ' +
+      (hit.visible ? '' : 'Карточка закрыта для вас.') + '</span></div>' +
+    (hit.visible ? '<div class="btn-row" style="margin:-4px 0 12px">' +
+      '<button class="btn ghost sm" id="dupOpen">Открыть карточку</button></div>' : '');
+  const b = document.getElementById('dupOpen');
+  if(b) b.onclick = () => { modalClose(); openClient(hit.id); };
+  modalBusy(false, c ? 'Всё равно сохранить' : 'Всё равно создать');
+}
+
+async function save(c){
+  const name = document.getElementById('fName').value.trim();
+  if(!name) return modalMsg('Впишите имя');
+
+  // если нашли дубль, первый нажатие только предупреждает
+  const dup = document.getElementById('dupBox');
+  if(dup && dup.innerHTML && !DUP_ACK){
+    DUP_ACK = true;
+    return modalMsg('Номер уже есть в базе. Нажмите ещё раз, чтобы всё равно сохранить.');
+  }
+
+  const owner = document.getElementById('fOwner');
+  const rec = {
+    kind: document.getElementById('fKind').value,
+    full_name: name,
+    phone: document.getElementById('fPhone').value.trim() || null,
+    phone2: document.getElementById('fPhone2').value.trim() || null,
+    city: document.getElementById('fCity').value.trim() || null,
+    address: document.getElementById('fAddr').value.trim() || null,
+    company: document.getElementById('fCompany').value.trim() || null,
+    source: document.getElementById('fSource').value || null,
+    notes: document.getElementById('fNotes').value.trim() || null,
+    tags: document.getElementById('fTags').value.split(',').map(s => s.trim()).filter(Boolean)
+  };
+  if(owner) rec.owner_id = owner.value || null;
+
+  modalBusy(true, 'Сохраняем…');
+  const res = c
+    ? await sb.from('clients').update(rec).eq('id', c.id).select('id').maybeSingle()
+    : await sb.from('clients').insert(rec).select('id').maybeSingle();
+  if(res.error){
+    modalBusy(false, c ? 'Сохранить' : 'Создать');
+    return modalMsg(errText(res.error, c ? 'update' : 'insert'));
+  }
+  modalClose();
+  toast(c ? 'Сохранено' : 'Клиент создан');
+  await load();
+  openClient(res.data ? res.data.id : c.id, false);
+}
+</script>
+</body>
+</html>

@@ -537,19 +537,23 @@ function canSee(s){
 function visibleSections(){ return SECTIONS.filter(canSee); }
 function isAuditor(){ return ME && ME.role === 'auditor'; }   // ревизор всё видит, но ничего не меняет
 
-/* Нижняя панель: пять пунктов. У колл-центра «Задачи» становится «Обзвон». */
+/* Нижняя панель: пять пунктов. У колл-центра «Задачи» становится «Обзвон».
+   Ревизор ничего не меняет — круглой кнопки «Новая задача» у него нет, пунктов четыре. */
 function tabItems(){
   const cc = SECTIONS.find(s => s.key === 'cc');
   const first = (ME && ME.role === 'callcenter' && cc && !cc.soon)
     ? { key:'cc', label:'Обзвон', href:'callcenter.html', icon:'phone' }
     : { key:'tasks', label:'Задачи', href:'tasks.html?tab=mine', icon:'list' };
-  return [
+  const items = [
     { key:'home', label:'Сегодня', href:'index.html', icon:'calendar' },
-    first,
-    { key:'add', label:'Новая задача', href:'new-task.html', icon:'plus', fab:true },
+    first
+  ];
+  if(!isAuditor()) items.push({ key:'add', label:'Новая задача', href:'new-task.html', icon:'plus', fab:true });
+  items.push(
     { key:'notif', label:'Уведомления', href:'notifications.html', icon:'bell', bell:true },
     { key:'profile', label:'Профиль', href:'profile.html', icon:'user' }
-  ];
+  );
+  return items;
 }
 
 /* ============================================================
@@ -561,7 +565,8 @@ async function renderShell(opts){
   const tab = o.tab || '';
   await loadEmployees();   // нужен, чтобы понять, есть ли подчинённые
 
-  const tabbar = tabItems().map(n => {
+  const tabs = tabItems();
+  const tabbar = tabs.map(n => {
     const on = n.key === tab || (n.key === 'tasks' && tab === 'author');
     if(n.fab){
       return '<a class="tb fab" href="' + n.href + '" aria-label="' + esc(n.label) + '">' + icon(n.icon) + '</a>';
@@ -609,7 +614,7 @@ async function renderShell(opts){
         '<span class="smi"><b>' + esc(ME ? ME.full_name : '') + '</b>' +
         '<i>' + esc(ME ? (ROLE_RU[ME.role] || ME.role) : '') + '</i></span></a>' +
     '</aside>' +
-    '<nav class="tabbar">' + tabbar + '</nav>';
+    '<nav class="tabbar' + (tabs.length === 4 ? ' four' : '') + '">' + tabbar + '</nav>';
 
   document.body.insertAdjacentHTML('afterbegin', shell);
   document.body.classList.add('shell');

@@ -22,7 +22,19 @@
   </div>
 
   <div class="chips" id="kinds"></div>
-  <div class="toolbar" id="filters"></div>
+
+  <!-- телефон: одна кнопка; ПК: лист раскрыт строкой фильтров -->
+  <div class="filterbar">
+    <button class="btn ghost sm" id="fOpen">Фильтры<span class="fc" id="fCnt" hidden></span></button>
+  </div>
+  <div class="fsheet" id="fsheet">
+    <div class="fsh"><span class="t">Фильтры</span>
+      <button class="ib" id="fClose" aria-label="Закрыть"></button></div>
+    <div class="fsb"><div class="toolbar" id="filters"></div></div>
+    <div class="fsf">
+      <button class="btn ghost" id="fReset">Сбросить</button>
+      <button class="btn" id="fDone">Готово</button></div>
+  </div>
 
   <div class="calhead">
     <button class="ib" id="prev" aria-label="Назад"></button>
@@ -80,6 +92,15 @@ let ON = { task:true, event:true, plan:true, call:true };
   $('today').onclick = () => { CUR = startOfToday(); SEL = startOfToday(); load(); };
   $('dayClose').onclick = () => { $('daySheet').hidden = true; SEL = null; paint(); };
   $('dayAdd').onclick = dayMenu;
+  if(isAuditor()) $('dayAdd').hidden = true;   // ревизор ничего не создаёт
+  $('fClose').innerHTML = icon('x');
+  $('fOpen').onclick = openFilters;
+  $('fClose').onclick = closeFilters;
+  $('fDone').onclick = closeFilters;
+  $('fReset').onclick = () => {
+    F_EMP = ''; F_BRANCH = ''; F_KIND = '';
+    paintFilters(); closeFilters(); load();
+  };
 
   const { data } = await sb.schema('crm').rpc('can_plan_events');
   CAN_EVENTS = !!data;
@@ -119,9 +140,30 @@ function paintFilters(){
   html += '<select id="fKind" class="grow"><option value="">Любой вид события</option>' +
     optionsFrom(EVENT_KIND_RU, F_KIND) + '</select>';
   $('filters').innerHTML = html;
-  if($('fEmp')) $('fEmp').onchange = () => { F_EMP = $('fEmp').value; load(); };
-  $('fBranch').onchange = () => { F_BRANCH = $('fBranch').value; load(); };
-  $('fKind').onchange = () => { F_KIND = $('fKind').value; load(); };
+  if($('fEmp')) $('fEmp').onchange = () => { F_EMP = $('fEmp').value; paintFilterCount(); load(); };
+  $('fBranch').onchange = () => { F_BRANCH = $('fBranch').value; paintFilterCount(); load(); };
+  $('fKind').onchange = () => { F_KIND = $('fKind').value; paintFilterCount(); load(); };
+  paintFilterCount();
+}
+/* сколько фильтров включено — цифрой на кнопке */
+function paintFilterCount(){
+  const n = [F_EMP, F_BRANCH, F_KIND].filter(Boolean).length;
+  const el = $('fCnt');
+  el.textContent = n;
+  el.hidden = !n;
+}
+function openFilters(){
+  $('fsheet').classList.add('open');
+  if(!$('fBack')){
+    const b = document.createElement('div');
+    b.className = 'backdrop'; b.id = 'fBack';
+    b.onclick = closeFilters;
+    document.body.append(b);
+  }
+}
+function closeFilters(){
+  $('fsheet').classList.remove('open');
+  const b = $('fBack'); if(b) b.remove();
 }
 
 /* ============================================================
@@ -251,7 +293,7 @@ function paint(){
         '" data-d="' + ymd(d) + '">' +
       '<span class="dn">' + d.getDate() + '</span>' +
       show.map(i => '<span class="ev"><span class="dot ' + dotClass(i) + '"></span>' +
-        esc(i.title) + '</span>').join('') +
+        '<span class="t">' + esc(i.title) + '</span></span>').join('') +
       (list.length > show.length ? '<div class="more">ещё ' + (list.length - show.length) + '</div>' : '') +
       '</div>';
   }).join('');
@@ -280,11 +322,14 @@ function dayTitle(d){
   return base;
 }
 function itemHTML(i){
+  const when = i.type === 'call' ? '' : fmtTime(i.at.toISOString());
   return '<button class="dayitem" data-link="' + esc(i.link) + '">' +
-    '<span class="dot ' + dotClass(i) + '" style="margin-top:6px"></span>' +
-    '<span class="db"><span class="dt2">' + esc(i.title) + '</span>' +
-    '<span class="ds2">' + esc(i.sub || '') + '</span></span>' +
-    '<span class="dw">' + esc(i.type === 'call' ? '' : fmtTime(i.at.toISOString())) + '</span></button>';
+    '<span class="dot ' + dotClass(i) + '"></span>' +
+    '<span class="db">' +
+      '<span class="d1"><span class="dt2">' + esc(i.title) + '</span>' +
+        (when ? '<span class="dw">' + esc(when) + '</span>' : '') + '</span>' +
+      '<span class="ds2">' + esc(i.sub || '') + '</span>' +
+    '</span></button>';
 }
 function wireItems(root){
   root.querySelectorAll('[data-link]').forEach(b => b.onclick = () => location.href = b.dataset.link);

@@ -76,6 +76,7 @@ svg.mark,img.mark{display:block;flex:none}
   display:grid;grid-template-columns:repeat(5,1fr);align-items:center;
   background:var(--panel);border-top:1px solid var(--line);
 }
+.tabbar.four{grid-template-columns:repeat(4,1fr)}   /* у ревизора нет кнопки «Новая задача» */
 .tb{
   position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:2px;height:100%;color:var(--muted);transition:color .15s;min-width:0;
@@ -349,17 +350,28 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .cal .ev{display:flex;align-items:center;gap:5px;font-size:11.5px;margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .cal .ev .dot{width:7px;height:7px}
+.cal .ev .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .cal .more{font-size:11px;color:var(--muted);margin-top:3px}
 .cal.week .cell{min-height:190px}
 .calhead{display:flex;align-items:center;gap:8px;padding:6px 16px 10px}
-.calhead .ttl{flex:1;font:800 17px 'Manrope';text-align:center}
-.dayitem{display:flex;align-items:flex-start;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);
+.calhead .ttl{flex:1;min-width:0;font:800 17px 'Manrope';text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dayitem{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;min-height:62px;
+  border-bottom:1px solid var(--line);
   width:100%;text-align:left;background:none;border-left:none;border-right:none;border-top:none;
   color:inherit;cursor:pointer}
-.dayitem .db{flex:1;min-width:0}
-.dayitem .dt2{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dayitem .ds2{font-size:13px;color:var(--muted);margin-top:2px}
-.dayitem .dw{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.dayitem:hover{background:var(--card)}
+.dayitem:active{background:var(--card-2)}
+.dayitem>.dot{margin-top:8px}
+.dayitem .db{display:block;flex:1;min-width:0}
+/* первая строка: название слева с многоточием, время справа не сжимается */
+.dayitem .d1{display:flex;align-items:baseline;gap:10px}
+.dayitem .dt2{display:block;flex:1;min-width:0;font:700 15.5px 'Manrope';
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dayitem .dw{flex:none;font-size:13px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.dayitem .ds2{display:block;font-size:13px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .daysheet{position:fixed;left:0;right:0;bottom:0;z-index:65;background:var(--panel);
   border-radius:18px 18px 0 0;box-shadow:var(--shadow);max-height:70vh;display:flex;flex-direction:column;
   padding-bottom:calc(env(safe-area-inset-bottom) + var(--tabbar));animation:sheetUp .2s ease-out}
@@ -447,6 +459,26 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .period::-webkit-scrollbar{display:none}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 12px;align-items:center}
 .toolbar .grow{flex:1;min-width:0}
+/* селект уже своего текста — обрезаем многоточием, а не распираем строку */
+.toolbar select{text-overflow:ellipsis}
+
+/* ---------- Кнопка «Фильтры» и лист снизу (телефон) ---------- */
+.filterbar{display:flex;gap:8px;padding:0 16px 12px}
+.filterbar .btn{flex:1}
+.filterbar .fc{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;
+  padding:0 6px;border-radius:10px;background:var(--brand);color:var(--brand-ink);
+  font:700 12px 'Manrope';font-variant-numeric:tabular-nums}
+.fsheet{display:none;position:fixed;left:0;right:0;bottom:0;z-index:72;background:var(--panel);
+  border-radius:18px 18px 0 0;box-shadow:var(--shadow);max-height:82vh;flex-direction:column;
+  padding-bottom:calc(env(safe-area-inset-bottom) + 10px);animation:sheetUp .2s ease-out}
+.fsheet.open{display:flex}
+.fsheet .fsh{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 16px;flex:none;
+  border-bottom:1px solid var(--line)}
+.fsheet .fsh .t{flex:1;font:800 16px 'Manrope'}
+.fsheet .fsb{flex:1;overflow:auto}
+.fsheet .fsb .toolbar{flex-direction:column;align-items:stretch;padding:12px 16px}
+.fsheet .fsf{display:flex;gap:9px;padding:10px 16px 4px;flex:none;border-top:1px solid var(--line)}
+.fsheet .fsf .btn{flex:1}
 
 /* ---------- Модалка (админка, личное дело, ссылки) ---------- */
 .modal{position:fixed;inset:0;z-index:70;background:#0009;display:flex;align-items:center;
@@ -585,10 +617,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .sme .smi b{display:block;font:700 14px 'Manrope';white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sme .smi i{font-style:normal;font-size:12.5px;color:var(--muted)}
 
+  /* на ПК лист фильтров разворачивается в обычную строку */
+  .filterbar{display:none}
+  .fsheet{display:block;position:static;background:none;box-shadow:none;border-radius:0;
+    max-height:none;padding-bottom:0;animation:none}
+  .fsheet .fsh,.fsheet .fsf{display:none}
+  .fsheet .fsb{overflow:visible}
+  .fsheet .fsb .toolbar{flex-direction:row;align-items:center;padding:0 24px 12px}
+
   .main{max-width:none;margin:0;padding:0}
   .pagehead{display:flex;align-items:center;gap:12px;padding:20px 24px 8px}
   .pagehead h1{font:800 24px 'Manrope';flex:1;min-width:0}
-  .pad,.sec,.seg,.chips,.stats,.adm-bar,.lgrid{padding-left:24px;padding-right:24px}
+  .pad,.sec,.seg,.chips,.stats,.adm-bar,.lgrid,.period,.toolbar,.calhead{
+    padding-left:24px;padding-right:24px}
   .seg,.panel{margin-left:24px;margin-right:24px}
   .row{padding-left:24px;padding-right:24px}
   .hr{margin-left:24px;margin-right:24px}
@@ -639,6 +680,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .kv{grid-template-columns:auto 1fr}
   .tiles{grid-template-columns:1fr 1fr}
   .bub{max-width:88%}
+  /* заголовок периода и стрелки помещаются в одну строку */
+  .calhead{gap:4px;padding-left:10px;padding-right:10px}
+  .calhead .ttl{font-size:15px}
+  .calhead .btn.sm{padding:0 10px;font-size:13.5px}
 }
 @media (max-width:380px){
   .tb .lb{font-size:9.5px}

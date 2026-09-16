@@ -41,7 +41,7 @@ let CAN_EDIT = false;
   if(!await requireAuth()) return;
   CAN_EDIT = isBossRole();
 
-  renderShell({
+  await renderShell({
     title:'Ссылки и планы',
     tab:'links',
     actions: CAN_EDIT ? '<button class="ib" id="addLink" aria-label="Добавить ссылку">' + icon('plus') + '</button>' : ''

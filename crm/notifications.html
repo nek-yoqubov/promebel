@@ -26,7 +26,7 @@ const $ = id => document.getElementById(id);
 
 (async () => {
   if(!await requireAuth()) return;
-  renderShell({
+  await renderShell({
     title:'Уведомления',
     tab:'notif',
     actions:'<button class="ib" id="readAll" title="Прочитать все">' + icon('check') + '</button>'
@@ -44,7 +44,7 @@ async function load(){
   }
   $('list').innerHTML = NOTIFS.map(n =>
     '<button class="row' + (n.read_at ? '' : ' unread') + '" data-id="' + n.id + '"' +
-      (n.task_id ? ' data-task="' + n.task_id + '"' : '') + '>' +
+      (notifLink(n) ? ' data-link="' + esc(notifLink(n)) + '"' : '') + '>' +
       '<span class="dot' + (n.read_at ? ' st-canceled' : '') + '"></span>' +
       '<span class="rb">' +
         '<span class="l1"><span class="t">' + esc(notifTitle(n)) + '</span>' +
@@ -57,7 +57,7 @@ async function load(){
       const id = Number(b.dataset.id);
       const n = NOTIFS.find(x => x.id === id);
       if(n && !n.read_at) await markRead([id]);
-      if(b.dataset.task) location.href = 'tasks.html?task=' + b.dataset.task;
+      if(b.dataset.link) location.href = b.dataset.link;
       else b.classList.remove('unread');
     };
   });

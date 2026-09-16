@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Панель руководителя</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.pcard{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);
+  width:100%;text-align:left;background:none;border-left:none;border-right:none;border-top:none;
+  color:inherit;cursor:pointer}
+.pcard.alarm{box-shadow:inset 3px 0 0 var(--late)}
+.pcard .pb{flex:1;min-width:0}
+.pcard .pn{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard .pp{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard .ps{font-size:13px;color:var(--ink-2);margin-top:4px}
+.dashtbl td{white-space:nowrap}
+.dashtbl td.name{white-space:normal}
+.salesgrid{display:grid;grid-template-columns:1fr auto;gap:8px 16px;font-size:15px}
+.salesgrid .k{color:var(--muted);font-size:14px}
+.salesgrid .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Панель руководителя</h1>
+    <button class="btn ghost sm" id="xlsPc"></button>
+    <button class="btn ghost sm" id="pdfPc"></button></div>
+
+  <div class="period" id="period"></div>
+  <div class="toolbar" id="toolbar"></div>
+  <div class="tiles" id="tiles"></div>
+
+  <div id="body"><div class="loading">Загрузка…</div></div>
+</main>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head"><h2 id="mTitle"></h2><button class="ib" id="mClose"></button></div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<script src="supabase.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+let ROWS = [], FROM = null, TO = null, PERIOD = 'week';
+let F_MANAGER = '', F_ROLE = '';
+let SORT = 'overdue', DESC = true;
+
+const PERIODS = [
+  { key:'week',   label:'Эта неделя' },
+  { key:'lweek',  label:'Прошлая неделя' },
+  { key:'month',  label:'Этот месяц' },
+  { key:'lmonth', label:'Прошлый месяц' },
+  { key:'custom', label:'Свой период' }
+];
+const COLS = [
+  { key:'full_name',     label:'Сотрудник' },
+  { key:'manager_name',  label:'Руководитель' },
+  { key:'in_progress',   label:'В работе',      num:true },
+  { key:'overdue',       label:'Просрочено',    num:true },
+  { key:'overdue_2d',    label:'Дольше 2 дней', num:true },
+  { key:'review',        label:'На проверке',   num:true },
+  { key:'done',          label:'Сделано',       num:true },
+  { key:'on_time_pct',   label:'В срок %',      num:true },
+  { key:'last_activity', label:'Последняя активность' }
+];
+
+(async () => {
+  if(!await requireAuth()) return;
+  // раздел для руководителей; у кого нет команды и роли — уводим
+  if(!['admin','director','auditor','head','regional'].includes(ME.role) && !hasTeam()){
+    location.replace('index.html'); return;
+  }
+  await renderShell({
+    title:'Панель',
+    tab:'dash',
+    actions:'<button class="ib" id="xls" aria-label="Excel">' + icon('table') + '</button>' +
+            '<button class="ib" id="pdf" aria-label="Печать">' + icon('printer') + '</button>'
+  });
+
+  $('xlsPc').innerHTML = icon('table') + 'Excel';
+  $('pdfPc').innerHTML = icon('printer') + 'PDF';
+  [['xls','xlsPc'], ['pdf','pdfPc']].forEach(pair => {
+    $(pair[0]).onclick = pair[1] === 'xlsPc' ? toXlsx : toPdf;
+    $(pair[1]).onclick = pair[1] === 'xlsPc' ? toXlsx : toPdf;
+  });
+  $('mClose').innerHTML = icon('x');
+  $('mClose').onclick = closeModal;
+  $('modal').onclick = e => { if(e.target === $('modal')) closeModal(); };
+
+  setPeriod('week');
+  paintPeriod();
+  paintToolbar();
+  await load();
+})();
+
+/* ============================================================
+   ПЕРИОД
+   ============================================================ */
+function setPeriod(key, from, to){
+  PERIOD = key;
+  const now = new Date();
+  if(key === 'week'){ FROM = weekStart(now); TO = endOfDay(now); }
+  else if(key === 'lweek'){ FROM = addDays(weekStart(now), -7); TO = endOfDay(addDays(weekStart(now), -1)); }
+  else if(key === 'month'){ FROM = monthStart(now); TO = endOfDay(now); }
+  else if(key === 'lmonth'){
+    const m = monthStart(now);
+    FROM = monthStart(addDays(m, -1));
+    TO = endOfDay(addDays(m, -1));
+  }else if(key === 'custom' && from && to){ FROM = from; TO = endOfDay(to); }
+}
+function paintPeriod(){
+  $('period').innerHTML = PERIODS.map(p =>
+    '<button class="chip' + (p.key === PERIOD ? ' on' : '') + '" data-p="' + p.key + '">' +
+    esc(p.label) + '</button>').join('');
+  $('period').querySelectorAll('[data-p]').forEach(b => b.onclick = () => {
+    if(b.dataset.p === 'custom') askCustom();
+    else { setPeriod(b.dataset.p); paintPeriod(); load(); }
+  });
+}
+function askCustom(){
+  openModal('Свой период',
+    '<div class="row2">' +
+      '<div class="field"><label class="field-label" for="cFrom">С</label>' +
+        '<input id="cFrom" class="num" type="date" value="' + ymd(FROM) + '"></div>' +
+      '<div class="field"><label class="field-label" for="cTo">По</label>' +
+        '<input id="cTo" class="num" type="date" value="' + ymd(TO) + '"></div>' +
+    '</div>',
+    'Показать', () => {
+      const f = $('cFrom').value, t = $('cTo').value;
+      if(!f || !t) return mFail('Укажите обе даты');
+      if(new Date(f) > new Date(t)) return mFail('Начало позже конца');
+      setPeriod('custom', new Date(f), new Date(t));
+      closeModal(); paintPeriod(); load();
+    });
+}
+
+/* ============================================================
+   ФИЛЬТРЫ
+   ============================================================ */
+function paintToolbar(){
+  const bosses = EMPS.filter(e => EMPS.some(x => x.manager_id === e.id));
+  const roles = [...new Set(EMPS.map(e => e.role))];
+  $('toolbar').innerHTML =
+    '<select id="fMgr" class="grow"><option value="">Все руководители</option>' +
+      bosses.map(b => '<option value="' + esc(b.id) + '"' + (F_MANAGER === b.id ? ' selected' : '') + '>' +
+        esc(b.full_name) + '</option>').join('') + '</select>' +
+    '<select id="fRole" class="grow"><option value="">Все роли</option>' +
+      roles.map(r => '<option value="' + esc(r) + '"' + (F_ROLE === r ? ' selected' : '') + '>' +
+        esc(ROLE_RU[r] || r) + '</option>').join('') + '</select>';
+  $('fMgr').onchange = () => { F_MANAGER = $('fMgr').value; paint(); };
+  $('fRole').onchange = () => { F_ROLE = $('fRole').value; paint(); };
+}
+
+/* ============================================================
+   ДАННЫЕ
+   ============================================================ */
+async function load(){
+  $('body').innerHTML = '<div class="loading">Загрузка…</div>';
+  const { data, error } = await sb.schema('crm').rpc('dash_team', {
+    p_from: FROM.toISOString(), p_to: TO.toISOString()
+  });
+  if(error){ $('body').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  ROWS = data || [];
+  paint();
+}
+
+function filtered(){
+  return ROWS.filter(r => {
+    if(F_ROLE && r.role !== F_ROLE) return false;
+    if(F_MANAGER){
+      const e = EMP_BY_ID[r.employee_id];
+      if(!e || e.manager_id !== F_MANAGER) return false;
+    }
+    return true;
+  });
+}
+function sorted(rows){
+  const dir = DESC ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    let x = a[SORT], y = b[SORT];
+    if(SORT === 'last_activity'){ x = x ? new Date(x).getTime() : 0; y = y ? new Date(y).getTime() : 0; }
+    if(typeof x === 'string' || typeof y === 'string')
+      return String(x || '').localeCompare(String(y || ''), 'ru') * dir;
+    return ((Number(x) || 0) - (Number(y) || 0)) * dir;
+  });
+}
+
+function paint(){
+  const rows = sorted(filtered());
+  paintTiles(rows);
+
+  if(!rows.length){
+    $('body').innerHTML = '<div class="empty">За этот период данных нет</div>';
+    return;
+  }
+  $('body').innerHTML = matchMedia('(min-width:1024px)').matches ? tableHTML(rows) : cardsHTML(rows);
+
+  $('body').querySelectorAll('[data-emp]').forEach(el =>
+    el.onclick = () => location.href = 'tasks.html?tab=all&assignee=' + encodeURIComponent(el.dataset.emp));
+  $('body').querySelectorAll('[data-sales]').forEach(el =>
+    el.onclick = e => { e.stopPropagation(); openSales(el.dataset.sales); });
+  $('body').querySelectorAll('th.sortable').forEach(th =>
+    th.onclick = () => {
+      const k = th.dataset.k;
+      if(SORT === k) DESC = !DESC; else { SORT = k; DESC = true; }
+      paint();
+    });
+}
+
+function paintTiles(rows){
+  const sum = k => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const done = sum('done'), onTime = sum('done_on_time');
+  const pct = done ? Math.round(onTime * 100 / done) : null;
+  $('tiles').innerHTML =
+    tile(sum('in_progress'), 'В работе', 'info') +
+    tile(sum('overdue'), 'Просрочено', 'late') +
+    tile(sum('review'), 'Ждут проверки', 'warn') +
+    tile(pct === null ? '—' : pct + '%', 'Выполнено в срок', 'ok');
+}
+function tile(n, c, cls){
+  return '<div class="tile ' + cls + '"><div class="n">' + esc(String(n)) + '</div>' +
+    '<div class="c">' + esc(c) + '</div></div>';
+}
+
+function pctHTML(v){
+  if(v === null || v === undefined) return '<span class="dim">—</span>';
+  const n = Number(v);
+  const cls = n < 60 ? 'pct-low' : n <= 85 ? 'pct-mid' : 'pct-hi';
+  return '<span class="' + cls + '">' + n + '%</span>';
+}
+/* «сегодня 14:20» / «3 дня назад»; больше 3 рабочих дней — серым с пометкой */
+function activityHTML(iso){
+  if(!iso) return '<span class="stale">не было</span>';
+  const days = Math.abs(dayDiff(new Date(iso), new Date()));
+  const txt = esc(agoText(iso));
+  return days > 3 ? '<span class="stale">' + txt + ' · давно</span>' : txt;
+}
+const SALES_ROLES = ['sales','head','regional'];
+
+function tableHTML(rows){
+  return '<div class="panel" style="padding:8px 0"><table class="tbl dashtbl"><thead><tr>' +
+    COLS.map(c => '<th class="sortable" data-k="' + c.key + '">' + esc(c.label) +
+      (SORT === c.key ? (DESC ? ' ↓' : ' ↑') : '') + '</th>').join('') +
+    '<th></th></tr></thead><tbody>' +
+    rows.map(r =>
+      '<tr class="' + (Number(r.overdue_2d) > 0 ? 'alarm' : '') + '" data-emp="' + esc(r.employee_id) + '" style="cursor:pointer">' +
+        '<td class="name"><span class="nm">' + esc(r.full_name) + '</span>' +
+          (r.position ? '<div class="dim" style="font-size:13px">' + esc(r.position) + '</div>' : '') + '</td>' +
+        '<td>' + (r.manager_name ? esc(r.manager_name) : '<span class="dim">—</span>') + '</td>' +
+        '<td class="num">' + (r.in_progress || 0) + '</td>' +
+        '<td class="num">' + (Number(r.overdue) ? '<b style="color:var(--late)">' + r.overdue + '</b>' : '0') + '</td>' +
+        '<td class="num">' + (r.overdue_2d || 0) + '</td>' +
+        '<td class="num">' + (r.review || 0) + '</td>' +
+        '<td class="num">' + (r.done || 0) + '</td>' +
+        '<td>' + pctHTML(r.on_time_pct) + '</td>' +
+        '<td>' + activityHTML(r.last_activity) + '</td>' +
+        '<td>' + (SALES_ROLES.includes(r.role)
+          ? '<button class="btn ghost sm" data-sales="' + esc(r.employee_id) + '">Продажи</button>' : '') + '</td>' +
+      '</tr>').join('') +
+    '</tbody></table></div>';
+}
+
+function cardsHTML(rows){
+  return rows.map(r =>
+    '<button class="pcard' + (Number(r.overdue_2d) > 0 ? ' alarm' : '') + '" data-emp="' + esc(r.employee_id) + '">' +
+      '<span class="pb">' +
+        '<span class="pn">' + esc(r.full_name) + '</span>' +
+        '<span class="pp">' + esc(r.position || ROLE_RU[r.role] || r.role) + '</span>' +
+        '<span class="ps">в работе ' + (r.in_progress || 0) +
+          ' · на проверке ' + (r.review || 0) +
+          ' · в срок ' + (r.on_time_pct === null ? '—' : r.on_time_pct + '%') + '</span>' +
+      '</span>' +
+      '<span class="bigno' + (Number(r.overdue) ? ' late' : '') + '">' + (r.overdue || 0) + '</span>' +
+    '</button>').join('');
+}
+
+/* ============================================================
+   ПРОДАЖИ СОТРУДНИКА
+   ============================================================ */
+async function openSales(id){
+  const e = EMP_BY_ID[id];
+  openModal('Продажи — ' + (e ? e.full_name : ''), '<div class="loading">Считаем…</div>', null);
+  const { data, error } = await sb.schema('crm').rpc('sales_stats', {
+    p_emp: id, p_from: FROM.toISOString(), p_to: TO.toISOString()
+  });
+  if(error){ $('mBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  $('mBody').innerHTML = salesHTML(data) +
+    '<div class="hint" style="margin-top:12px">План/факт по деньгам появится после подключения 1С</div>' +
+    '<div class="btn-row" style="margin-top:14px"><button class="btn ghost" id="mCancel">Закрыть</button></div>';
+  $('mCancel').onclick = closeModal;
+}
+function salesHTML(d){
+  if(!d) return '<div class="empty">Показатели этого сотрудника вам не открыты</div>';
+  const rows = [
+    ['Открытых сделок', d.deals_open],
+    ['Новых сделок', d.deals_new],
+    ['Продано, штук', d.won],
+    ['Продано, сумма', d.won_amount === undefined ? null : fmtMoney(d.won_amount, 'TJS')],
+    ['Из них комплектом', d.complect],
+    ['С купоном', d.coupons],
+    ['Отказов', d.lost],
+    ['Звонков', d.calls_done],
+    ['Встреч и визитов', d.meetings_done],
+    ['Пропущено дел по плану', d.plan_missed],
+    ['Новых клиентов', d.new_clients]
+  ];
+  return '<div class="salesgrid">' + rows.map(r =>
+    '<div class="k">' + esc(r[0]) + '</div><div class="v">' +
+    (r[1] === null || r[1] === undefined ? '—' : esc(String(r[1]))) + '</div>').join('') + '</div>';
+}
+
+/* ============================================================
+   ЭКСПОРТ
+   ============================================================ */
+function toXlsx(){
+  const rows = sorted(filtered()).map(r => ({
+    'Сотрудник': r.full_name,
+    'Должность': r.position || '',
+    'Роль': ROLE_RU[r.role] || r.role,
+    'Филиал': r.branch_name || '',
+    'Руководитель': r.manager_name || '',
+    'В работе': r.in_progress || 0,
+    'Просрочено': r.overdue || 0,
+    'Дольше 2 дней': r.overdue_2d || 0,
+    'На проверке': r.review || 0,
+    'Сделано': r.done || 0,
+    'В срок %': r.on_time_pct === null ? '' : r.on_time_pct,
+    'Последняя активность': r.last_activity ? fmtDateTime(r.last_activity) : ''
+  }));
+  exportXlsx(rows, 'Команда', 'komanda-' + ymd(FROM) + '.xlsx');
+}
+function toPdf(){
+  printReport('Панель руководителя', fmtPeriod(FROM, TO));
+}
+
+/* ---------- модалка ---------- */
+function openModal(title, bodyHTML, saveLabel, onSave){
+  $('mTitle').textContent = title;
+  $('mBody').innerHTML = bodyHTML +
+    (saveLabel ? '<div class="btn-row" style="margin-top:16px">' +
+      '<button class="btn" id="mSave" style="flex:1">' + esc(saveLabel) + '</button>' +
+      '<button class="btn ghost" id="mCancel">Отмена</button>' +
+    '</div><div class="msg err" id="mMsg"></div>' : '');
+  $('modal').hidden = false;
+  document.body.style.overflow = 'hidden';
+  if(saveLabel){ $('mCancel').onclick = closeModal; $('mSave').onclick = onSave; }
+}
+function closeModal(){ $('modal').hidden = true; document.body.style.overflow = ''; }
+function mFail(t){ const m = $('mMsg'); if(m){ m.className = 'msg err'; m.textContent = t; } }
+function mBusy(on, label){ const b = $('mSave'); if(b){ b.disabled = on; b.textContent = label; if(on) mFail(''); } }
+</script>
+</body>
+</html>

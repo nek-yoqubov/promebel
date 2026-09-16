@@ -167,7 +167,7 @@ let CAN_REVIEW = false; // компетенции и оценка
   // ни кадровик, ни руководитель — смотреть нечего
   if(!CAN_REVIEW){ location.replace('index.html'); return; }
 
-  renderShell({ title:'Личное дело', tab:'admin', back:'admin.html' });
+  await renderShell({ title:'Личное дело', tab:'admin', back:'admin.html' });
   $('mClose').innerHTML = icon('x');
   $('mClose').onclick = closeModal;
   $('modal').onclick = e => { if(e.target === $('modal')) closeModal(); };

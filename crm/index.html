@@ -10,6 +10,25 @@
 <meta name="theme-color" content="#11131a">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="crm.css">
+<style>
+.tcard{display:flex;align-items:center;gap:12px;margin:0 16px 12px;padding:14px 16px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;cursor:pointer;
+  color:inherit;width:calc(100% - 32px);text-align:left}
+.tcard .ic{color:var(--brand);flex:none;display:flex}
+.tcard .tx{flex:1;min-width:0;font-weight:700}
+.tcard .tx i{display:block;font-style:normal;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px}
+.tcard .n{font:800 22px 'Manrope';font-variant-numeric:tabular-nums;flex:none}
+.tcard .n.late{color:var(--late)}
+.act{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
+.act .ic{color:var(--muted);flex:none;display:flex}
+.act .ab{flex:1;min-width:0}
+.act .at{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act .as{font-size:13px;color:var(--muted);margin-top:2px}
+.act .aw{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.act.over .aw{color:var(--late);font-weight:700}
+@media (min-width:1024px){ .tcard{margin-left:24px;margin-right:24px;width:calc(100% - 48px)}
+  .act{padding-left:24px;padding-right:24px} }
+</style>
 </head>
 <body>
 <main class="main" id="main">
@@ -22,20 +41,42 @@
     <button class="stat review"><span class="n" id="nReview">—</span><span class="c">На проверке у меня</span></button>
   </div>
 
+  <div id="teamCard"></div>
+  <div id="callCard"></div>
+
+  <div id="planBlock" hidden>
+    <div class="sec">План на сегодня</div>
+    <div id="planList"></div>
+  </div>
+
+  <div id="evBlock" hidden>
+    <div class="sec">События сегодня и завтра</div>
+    <div id="evList"></div>
+  </div>
+
   <div class="sec">Ближайшие задачи</div>
   <div class="rows" id="soon"><div class="loading">Загрузка…</div></div>
 </main>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head"><h2 id="mTitle"></h2>
+      <button class="ib" id="mClose"></button></div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
 
 <script src="supabase.min.js"></script>
 <script src="core.js"></script>
 <script>
 initTheme();
 const $ = id => document.getElementById(id);
+const ACT_ICON = { call:'phone', meeting:'users', visit:'building', message:'message', other:'list' };
+const ACT_RU = { call:'Звонок', meeting:'Встреча', visit:'Визит', message:'Сообщение', other:'Дело' };
 
 (async () => {
   if(!await requireAuth()) return;
-  renderShell({ title:'Сегодня', tab:'home' });
-  await loadEmployees();
+  await renderShell({ title:'Сегодня', tab:'home' });
 
   const h = new Date().getHours();
   const hi = h < 6 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
@@ -46,11 +87,17 @@ const $ = id => document.getElementById(id);
   stats[1].onclick = () => location.href = 'tasks.html?tab=mine&f=today';
   stats[2].onclick = () => location.href = 'tasks.html?tab=author&f=review';
 
-  await load();
+  $('mClose').innerHTML = icon('x');
+  $('mClose').onclick = closeModal;
+  $('modal').onclick = e => { if(e.target === $('modal')) closeModal(); };
+
+  await loadTasks();
+  // блоки показываем только если в них что-то есть
+  loadPlan(); loadCallbacks(); loadEvents(); loadTeam();
   maybeInviteNotifications();
 })();
 
-async function load(){
+async function loadTasks(){
   const active = ['new','in_progress','review'];
   const [mine, review] = await Promise.all([
     sb.from('v_tasks').select(TASK_COLS).is('archived_at', null)
@@ -58,7 +105,6 @@ async function load(){
     sb.from('v_tasks').select('id').is('archived_at', null)
       .eq('author_id', ME.id).eq('status', 'review').limit(200)
   ]);
-
   if(mine.error){ $('soon').innerHTML = '<div class="empty">' + esc(errText(mine.error)) + '</div>'; return; }
   const rows = (mine.data || []).sort(cmpTasks);
 
@@ -75,6 +121,125 @@ async function load(){
   $('soon').querySelectorAll('[data-task]').forEach(b =>
     b.onclick = () => location.href = 'tasks.html?task=' + b.dataset.task);
 }
+
+/* ---------- План на сегодня (activities) ---------- */
+async function loadPlan(){
+  const { data, error } = await sb.from('activities')
+    .select('id, kind, title, note, due_at, client_id, deal_id')
+    .eq('owner_id', ME.id).is('done_at', null)
+    .lte('due_at', endOfToday().toISOString())
+    .order('due_at').limit(20);
+  if(error || !data || !data.length) return;
+
+  $('planBlock').hidden = false;
+  const now = new Date();
+  $('planList').innerHTML = data.map(a => {
+    const over = a.due_at && new Date(a.due_at) < startOfToday();
+    return '<div class="act' + (over ? ' over' : '') + '">' +
+      '<span class="ic">' + icon(ACT_ICON[a.kind] || 'list') + '</span>' +
+      '<span class="ab"><span class="at">' + esc(a.title || ACT_RU[a.kind] || 'Дело') + '</span>' +
+        '<span class="as">' + esc(ACT_RU[a.kind] || '') + (a.note ? ' · ' + esc(a.note) : '') + '</span></span>' +
+      '<span class="aw">' + esc(over ? shortDue(a.due_at) : fmtTime(a.due_at)) + '</span>' +
+      '<button class="btn ghost sm" data-done="' + a.id + '">Готово</button>' +
+    '</div>';
+  }).join('');
+  $('planList').querySelectorAll('[data-done]').forEach(b =>
+    b.onclick = () => askResult(Number(b.dataset.done)));
+}
+
+function askResult(id){
+  openModal('Дело сделано', 
+    '<div class="field"><label class="field-label" for="res">Результат</label>' +
+    '<textarea id="res" rows="3" placeholder="Коротко: о чём договорились"></textarea></div>',
+    'Отметить', async () => {
+      mBusy(true, 'Сохраняем…');
+      const { error } = await sb.from('activities')
+        .update({ result: $('res').value.trim() || null, done_at: new Date().toISOString() })
+        .eq('id', id);
+      if(error){ mBusy(false, 'Отметить'); return mFail(errText(error, 'update')); }
+      closeModal();
+      $('planBlock').hidden = true;
+      $('planList').innerHTML = '';
+      await loadPlan();
+      toast('Отмечено');
+    });
+}
+
+/* ---------- Обзвон на сегодня (callbacks) ---------- */
+async function loadCallbacks(){
+  const { data, error } = await sb.from('callbacks')
+    .select('id').eq('assignee_id', ME.id).eq('status', 'pending')
+    .lte('due_date', ymd(new Date())).limit(200);
+  if(error || !data || !data.length) return;
+  $('callCard').innerHTML =
+    '<button class="tcard" id="callGo">' +
+      '<span class="ic">' + icon('phone') + '</span>' +
+      '<span class="tx">Обзвон на сегодня<i>Клиенты ждут звонка</i></span>' +
+      '<span class="n">' + data.length + '</span></button>';
+  $('callGo').onclick = () => location.href = 'callcenter.html';
+}
+
+/* ---------- События сегодня и завтра ---------- */
+async function loadEvents(){
+  const from = startOfToday().toISOString();
+  const to = endOfDay(addDays(new Date(), 1)).toISOString();
+  const [own, part] = await Promise.all([
+    sb.from('events').select('id, kind, title, starts_at, location')
+      .eq('owner_id', ME.id).gte('starts_at', from).lte('starts_at', to),
+    sb.from('events').select('id, kind, title, starts_at, location')
+      .contains('participants', [ME.id]).gte('starts_at', from).lte('starts_at', to)
+  ]);
+  const map = {};
+  (own.data || []).concat(part.data || []).forEach(e => map[e.id] = e);
+  const rows = Object.values(map).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  if(!rows.length) return;
+
+  $('evBlock').hidden = false;
+  $('evList').innerHTML = rows.map(e =>
+    '<div class="act" data-ev="' + e.id + '" style="cursor:pointer">' +
+      '<span class="ic">' + icon('star') + '</span>' +
+      '<span class="ab"><span class="at">' + esc(e.title) + '</span>' +
+        '<span class="as">' + esc(EVENT_KIND_RU[e.kind] || e.kind) +
+          (e.location ? ' · ' + esc(e.location) : '') + '</span></span>' +
+      '<span class="aw">' + esc(shortDue(e.starts_at)) + '</span></div>').join('');
+  $('evList').querySelectorAll('[data-ev]').forEach(el =>
+    el.onclick = () => location.href = 'events.html?id=' + el.dataset.ev);
+}
+
+/* ---------- Карточка для руководителя ---------- */
+async function loadTeam(){
+  if(!hasTeam() && !['admin','director','head','regional','auditor'].includes(ME.role)) return;
+  const from = weekStart(new Date()), to = endOfDay(new Date());
+  const { data, error } = await sb.schema('crm').rpc('dash_team', {
+    p_from: from.toISOString(), p_to: to.toISOString()
+  });
+  if(error || !data || !data.length) return;
+  const overdue = data.reduce((s, r) => s + (Number(r.overdue) || 0), 0);
+  $('teamCard').innerHTML =
+    '<button class="tcard" id="teamGo">' +
+      '<span class="ic">' + icon('chart') + '</span>' +
+      '<span class="tx">Команда<i>' + data.length + ' ' +
+        plural(data.length, 'сотрудник', 'сотрудника', 'сотрудников') + ' · открыть панель</i></span>' +
+      '<span class="n' + (overdue ? ' late' : '') + '">' + overdue + '</span></button>';
+  $('teamGo').onclick = () => location.href = 'dashboard.html';
+}
+
+/* ---------- модалка ---------- */
+function openModal(title, bodyHTML, saveLabel, onSave){
+  $('mTitle').textContent = title;
+  $('mBody').innerHTML = bodyHTML +
+    '<div class="btn-row" style="margin-top:16px">' +
+      '<button class="btn" id="mSave" style="flex:1">' + esc(saveLabel) + '</button>' +
+      '<button class="btn ghost" id="mCancel">Отмена</button>' +
+    '</div><div class="msg err" id="mMsg"></div>';
+  $('modal').hidden = false;
+  document.body.style.overflow = 'hidden';
+  $('mCancel').onclick = closeModal;
+  $('mSave').onclick = onSave;
+}
+function closeModal(){ $('modal').hidden = true; document.body.style.overflow = ''; }
+function mFail(t){ const m = $('mMsg'); if(m){ m.className = 'msg err'; m.textContent = t; } }
+function mBusy(on, label){ const b = $('mSave'); if(b){ b.disabled = on; b.textContent = label; if(on) mFail(''); } }
 </script>
 </body>
 </html>

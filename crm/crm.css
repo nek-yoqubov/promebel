@@ -67,7 +67,6 @@ svg.i{width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none;
   stroke-linecap:round;stroke-linejoin:round;flex:none}
 svg.i.sm{width:17px;height:17px}
 svg.mark,img.mark{display:block;flex:none}
-.pagehead{display:none}
 
 /* ---------- Нижние вкладки (телефон) ---------- */
 .tabbar{
@@ -100,6 +99,7 @@ svg.mark,img.mark{display:block;flex:none}
 .pad{padding:16px}
 .sec{font:700 15px 'Manrope';margin:20px 16px 8px;color:var(--ink)}
 .sec:first-child{margin-top:14px}
+.pagehead{display:none}          /* на телефоне заголовок уже в шапке */
 .sub{color:var(--muted);font-size:14px}
 .empty{color:var(--muted);text-align:center;padding:44px 16px;font-size:15px}
 .loading{color:var(--muted);text-align:center;padding:34px 0;font-size:15px}
@@ -194,6 +194,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .l2{display:flex;align-items:center;gap:10px;margin-top:3px;font-size:13.5px;color:var(--muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .l2 .subs{font-variant-numeric:tabular-nums}
+.l2 .clipn{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
+.l2 .clipn svg{width:13px;height:13px}
 .pri{color:var(--warn);flex:none;display:inline-flex}
 .pri svg{width:14px;height:14px}
 .pri.critical{color:var(--late)}
@@ -209,8 +211,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 }
 .stat:active{transform:scale(.97)}
 .stat:hover{border-color:var(--line-2)}
-.stat .n{display:block;font:800 26px 'Manrope';font-variant-numeric:tabular-nums;line-height:1.1}
-.stat .c{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.25}
+.stat .n,.stat .c{display:block}
+.stat .n{font:800 26px 'Manrope';font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .c{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.25}
 .stat.late .n{color:var(--late)}
 .stat.today .n{color:var(--warn)}
 .stat.review .n{color:var(--info)}
@@ -331,6 +334,120 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   pointer-events:none;animation:pop .15s ease-out}
 .doneov img{width:140px;height:140px}
 
+/* ---------- Календарь ---------- */
+.calwrap{display:block}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.cal .wd{background:var(--panel);padding:7px 4px;text-align:center;font:700 12px 'Manrope';color:var(--muted)}
+.cal .cell{background:var(--bg);min-height:84px;padding:4px 5px 6px;cursor:pointer;overflow:hidden}
+.cal .cell:hover{background:var(--card)}
+.cal .cell.other{opacity:.4}
+.cal .cell.sel{background:var(--card-2)}
+.cal .dn{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;
+  font:700 13px 'Manrope';font-variant-numeric:tabular-nums}
+.cal .cell.today .dn{background:var(--brand);color:var(--brand-ink);border-radius:50%}
+.cal .ev{display:flex;align-items:center;gap:5px;font-size:11.5px;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+.cal .ev .dot{width:7px;height:7px}
+.cal .more{font-size:11px;color:var(--muted);margin-top:3px}
+.cal.week .cell{min-height:190px}
+.calhead{display:flex;align-items:center;gap:8px;padding:6px 16px 10px}
+.calhead .ttl{flex:1;font:800 17px 'Manrope';text-align:center}
+.dayitem{display:flex;align-items:flex-start;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);
+  width:100%;text-align:left;background:none;border-left:none;border-right:none;border-top:none;
+  color:inherit;cursor:pointer}
+.dayitem .db{flex:1;min-width:0}
+.dayitem .dt2{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dayitem .ds2{font-size:13px;color:var(--muted);margin-top:2px}
+.dayitem .dw{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.daysheet{position:fixed;left:0;right:0;bottom:0;z-index:65;background:var(--panel);
+  border-radius:18px 18px 0 0;box-shadow:var(--shadow);max-height:70vh;display:flex;flex-direction:column;
+  padding-bottom:calc(env(safe-area-inset-bottom) + var(--tabbar));animation:sheetUp .2s ease-out}
+.daysheet[hidden]{display:none}
+.daysheet .dh{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 16px;
+  border-bottom:1px solid var(--line)}
+.daysheet .dh .t{flex:1;font:800 16px 'Manrope'}
+.daysheet .db2{overflow:auto}
+.dot.k-task{background:var(--info)} .dot.k-event{background:var(--plan)}
+.dot.k-plan{background:var(--brand)} .dot.k-call{background:var(--ok)}
+@media (min-width:1024px){
+  .calwrap{display:grid;grid-template-columns:1fr 340px}
+  .calwrap .daypanel{border-left:1px solid var(--line);overflow:auto}
+  .daysheet{position:static;max-height:none;border-radius:0;box-shadow:none;padding-bottom:0;
+    animation:none;background:none}
+  .cal .cell{min-height:104px}
+}
+
+/* ---------- Вложения ---------- */
+.filerow{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:9px 12px;max-width:80%;align-self:flex-start}
+.filerow.me{align-self:flex-end}
+.filerow .fi{color:var(--brand);flex:none;display:flex}
+.filerow .fm{flex:1;min-width:0}
+.filerow .fn{font-weight:700;font-size:14.5px;word-break:break-word}
+.filerow .fs{font-size:12px;color:var(--muted);margin-top:2px}
+.thumb{max-width:80%;align-self:flex-start;border-radius:14px;overflow:hidden;position:relative;
+  border:1px solid var(--line);background:var(--card)}
+.thumb.me{align-self:flex-end}
+.thumb img{display:block;width:100%;max-height:260px;object-fit:cover;cursor:pointer}
+.thumb .cap{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;color:var(--muted)}
+.thumb .cap .who{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer{position:fixed;inset:0;z-index:120;background:#000d;display:flex;align-items:center;
+  justify-content:center;padding:16px;animation:pop .15s ease-out}
+.viewer img{max-width:100%;max-height:100%;border-radius:10px}
+.viewer .ib{position:absolute;top:10px;right:10px;color:#fff;background:#0006}
+.clipbtn{width:var(--tap);height:var(--tap);border-radius:50%;border:none;background:var(--card-2);
+  color:var(--ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.clipbtn:active{transform:scale(.93)}
+.needreport{display:inline-flex;align-items:center;gap:6px;color:var(--warn);font-weight:700;font-size:13px}
+.switch{display:flex;align-items:center;gap:12px;min-height:var(--tap);cursor:pointer;user-select:none}
+.switch input{width:auto;min-height:0;margin:0}
+.switch .sl{flex:1;font-weight:600}
+.switch .sl i{display:block;font-style:normal;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px}
+.wdays{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.wdays button{height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);
+  color:var(--ink-2);font:700 13px 'Manrope';cursor:pointer}
+.wdays button.on{background:var(--brand);color:var(--brand-ink);border-color:transparent}
+.tplrow{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.tplrow .tb2{flex:1;min-width:0}
+.tplrow .tn{font-weight:700}
+.tplrow .tr{font-size:13px;color:var(--muted);margin-top:3px}
+.tplrow.off{opacity:.55}
+
+/* ---------- Глобальный поиск ---------- */
+.gsearch{position:fixed;inset:0;z-index:90;background:var(--bg);display:flex;flex-direction:column;
+  animation:pop .15s ease-out}
+.gs-head{display:flex;align-items:center;gap:6px;padding:0 6px;height:var(--tbar);flex:none;
+  background:var(--panel);border-bottom:1px solid var(--line)}
+.gs-head input{border:none;background:none;min-height:0;height:44px;padding:0 6px;font-size:17px}
+.gs-head input:focus{outline:none}
+.gs-body{flex:1;overflow:auto}
+
+/* ---------- Плашки итогов ---------- */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px 16px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.tile .n{font:800 24px 'Manrope';font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .c{font-size:12.5px;color:var(--muted);margin-top:3px}
+.tile.late .n{color:var(--late)}
+.tile.warn .n{color:var(--warn)}
+.tile.ok .n{color:var(--ok)}
+.tile.info .n{color:var(--info)}
+
+/* ---------- Панель руководителя ---------- */
+.tbl tr.alarm td:first-child{box-shadow:inset 3px 0 0 var(--late)}
+.pct-low{color:var(--late);font-weight:700}
+.pct-mid{color:var(--warn);font-weight:700}
+.pct-hi{color:var(--ok);font-weight:700}
+.stale{color:var(--muted)}
+.tbl th.sortable{cursor:pointer;user-select:none}
+.tbl th.sortable:hover{color:var(--ink)}
+.bigno{font:800 22px 'Manrope';font-variant-numeric:tabular-nums}
+.bigno.late{color:var(--late)}
+.period{display:flex;gap:8px;overflow-x:auto;padding:4px 16px 10px;scrollbar-width:none}
+.period::-webkit-scrollbar{display:none}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 12px;align-items:center}
+.toolbar .grow{flex:1;min-width:0}
+
 /* ---------- Модалка (админка, личное дело, ссылки) ---------- */
 .modal{position:fixed;inset:0;z-index:70;background:#0009;display:flex;align-items:center;
   justify-content:center;padding:0;overflow:auto;animation:pop .16s ease-out}
@@ -442,6 +559,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .slogo{display:block;padding:6px 8px 18px}
   .slogo img{display:block;width:100%;max-width:200px;height:auto}
   .snav{display:flex;flex-direction:column;gap:2px;flex:1;overflow:auto}
+  .sgt{font:700 11px 'Manrope';letter-spacing:.04em;color:var(--muted);
+    padding:12px 12px 4px;text-transform:uppercase}
+  .sgs{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;margin-bottom:8px;
+    padding:0 12px;border:1px solid var(--line);background:var(--card);border-radius:11px;
+    color:var(--muted);font:600 14px 'Manrope';cursor:pointer;text-align:left}
+  .sgs:hover{border-color:var(--line-2);color:var(--ink)}
+  .gsearch{left:var(--side)}
+  .tiles{grid-template-columns:repeat(4,minmax(0,200px))}
   .sd{
     position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;
     border-radius:11px;color:var(--ink-2);font:600 15px 'Manrope';transition:background .15s,color .15s;
@@ -512,6 +637,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .tbl td.acts-cell::before{display:none}
   .tbl .acts{justify-content:flex-start}
   .kv{grid-template-columns:auto 1fr}
+  .tiles{grid-template-columns:1fr 1fr}
   .bub{max-width:88%}
 }
 @media (max-width:380px){
@@ -528,4 +654,33 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
     animation-duration:.001ms !important;animation-iteration-count:1 !important;
     transition-duration:.001ms !important;scroll-behavior:auto !important;
   }
+}
+
+/* ============================================================
+   ПЕЧАТЬ — лист без меню и кнопок, шапка с логотипом
+   ============================================================ */
+.print-head{display:none}
+@media print{
+  :root{--bg:#fff;--panel:#fff;--card:#fff;--card-2:#fff;--ink:#000;--ink-2:#222;--muted:#555;
+    --line:#bbb;--line-2:#999;--brand:#e2670f;--brand-ink:#fff}
+  body,body.light{background:#fff !important;color:#000 !important;padding:0 !important;font-size:12pt}
+  .tbar,.tabbar,.side,.composer,.act-bar,.strip,.toast,.doneov,.gsearch,.backdrop,.menu,
+  .btn,.ib,.chips,.seg,.period,.toolbar,.adm-bar,.addrow,.ladmin,.acts,.acts-cell,
+  .modal,.tb,.fab{display:none !important}
+  .main{max-width:none !important;margin:0 !important;padding:0 !important}
+  .print-head{display:block;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #333}
+  .print-head .ph-logo img{height:34px;width:auto;display:block}
+  .print-head .ph-t{font:800 20px 'Manrope';margin-top:10px}
+  .print-head .ph-p{color:#555;font-size:12pt;margin-top:2px}
+  .tbl{width:100% !important;font-size:10pt}
+  .tbl th,.tbl td{display:table-cell !important;border-bottom:1px solid #ccc;padding:6px 8px}
+  .tbl thead{display:table-header-group !important}
+  .tbl tr{display:table-row !important;background:none !important;border:none !important;
+    padding:0 !important;margin:0 !important}
+  .tbl td::before{display:none !important}
+  .panel{border:none !important;padding:0 !important;margin:0 !important}
+  .tiles{display:flex !important;gap:18px;padding:0 0 12px}
+  .tile{border:none !important;padding:0 !important}
+  a{color:#000 !important;text-decoration:none}
+  @page{margin:14mm}
 }

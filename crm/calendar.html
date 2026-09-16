@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Календарь</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Календарь</h1></div>
+
+  <div class="seg" id="mode">
+    <button data-m="month">Месяц</button>
+    <button data-m="week">Неделя</button>
+    <button data-m="list">Список</button>
+  </div>
+
+  <div class="chips" id="kinds"></div>
+  <div class="toolbar" id="filters"></div>
+
+  <div class="calhead">
+    <button class="ib" id="prev" aria-label="Назад"></button>
+    <span class="ttl" id="ttl"></span>
+    <button class="ib" id="next" aria-label="Вперёд"></button>
+    <button class="btn ghost sm" id="today">Сегодня</button>
+  </div>
+
+  <div class="calwrap">
+    <div id="grid"><div class="loading">Загрузка…</div></div>
+    <div class="daypanel">
+      <div class="daysheet" id="daySheet" hidden>
+        <div class="dh"><span class="t" id="dayTitle"></span>
+          <button class="ib" id="dayAdd" aria-label="Добавить"></button>
+          <button class="ib" id="dayClose" aria-label="Закрыть"></button></div>
+        <div class="db2" id="dayBody"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+
+let MODE = matchMedia('(min-width:1024px)').matches ? 'month' : 'list';
+let CUR = startOfToday();          // опорная дата периода
+let SEL = null;                    // выбранный день
+let ITEMS = [];
+let CAN_EVENTS = false;
+let F_EMP = '', F_BRANCH = '', F_KIND = '';
+
+const KINDS = [
+  { key:'task',  label:'Задачи' },
+  { key:'event', label:'События' },
+  { key:'plan',  label:'Мой план' },
+  { key:'call',  label:'Обзвон', boss:true }
+];
+let ON = { task:true, event:true, plan:true, call:true };
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'Календарь', tab:'cal' });
+
+  $('prev').innerHTML = icon('arrowLeft');
+  $('next').innerHTML = icon('arrowLeft');
+  $('next').style.transform = 'rotate(180deg)';
+  $('dayAdd').innerHTML = icon('plus');
+  $('dayClose').innerHTML = icon('x');
+  $('prev').onclick = () => shift(-1);
+  $('next').onclick = () => shift(1);
+  $('today').onclick = () => { CUR = startOfToday(); SEL = startOfToday(); load(); };
+  $('dayClose').onclick = () => { $('daySheet').hidden = true; SEL = null; paint(); };
+  $('dayAdd').onclick = dayMenu;
+
+  const { data } = await sb.schema('crm').rpc('can_plan_events');
+  CAN_EVENTS = !!data;
+
+  document.querySelectorAll('#mode button').forEach(b => b.onclick = () => {
+    MODE = b.dataset.m; paintMode(); load();
+  });
+  paintMode(); paintKinds(); paintFilters();
+  await load();
+})();
+
+function paintMode(){
+  document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.m === MODE));
+}
+function canSeeCalls(){
+  return ME && (['callcenter','head','admin','director','auditor'].includes(ME.role) || hasTeam());
+}
+function paintKinds(){
+  $('kinds').innerHTML = KINDS.filter(k => !k.boss || canSeeCalls()).map(k =>
+    '<button class="chip' + (ON[k.key] ? ' on' : '') + '" data-k="' + k.key + '">' +
+    esc(k.label) + '</button>').join('');
+  $('kinds').querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+    ON[b.dataset.k] = !ON[b.dataset.k]; paintKinds(); load();
+  });
+}
+function paintFilters(){
+  const team = hasTeam() || isBossRole() || ['head','regional','auditor'].includes(ME.role);
+  let html = '';
+  if(team){
+    html += '<select id="fEmp" class="grow"><option value="">Все сотрудники</option>' +
+      EMPS.map(e => '<option value="' + esc(e.id) + '"' + (F_EMP === e.id ? ' selected' : '') + '>' +
+        esc(e.full_name) + '</option>').join('') + '</select>';
+  }
+  html += '<select id="fBranch" class="grow"><option value="">Все филиалы</option>' +
+    BRANCHES.map(b => '<option value="' + b.id + '"' + (String(F_BRANCH) === String(b.id) ? ' selected' : '') + '>' +
+      esc(b.name) + '</option>').join('') + '</select>';
+  html += '<select id="fKind" class="grow"><option value="">Любой вид события</option>' +
+    optionsFrom(EVENT_KIND_RU, F_KIND) + '</select>';
+  $('filters').innerHTML = html;
+  if($('fEmp')) $('fEmp').onchange = () => { F_EMP = $('fEmp').value; load(); };
+  $('fBranch').onchange = () => { F_BRANCH = $('fBranch').value; load(); };
+  $('fKind').onchange = () => { F_KIND = $('fKind').value; load(); };
+}
+
+/* ============================================================
+   ПЕРИОД
+   ============================================================ */
+function range(){
+  if(MODE === 'week'){
+    const from = weekStart(CUR);
+    return { from, to: endOfDay(addDays(from, 6)) };
+  }
+  if(MODE === 'list'){
+    const from = startOfToday();
+    return { from, to: endOfDay(addDays(from, 30)) };
+  }
+  const first = new Date(CUR.getFullYear(), CUR.getMonth(), 1);
+  const last = new Date(CUR.getFullYear(), CUR.getMonth() + 1, 0);
+  return { from: weekStart(first), to: endOfDay(addDays(weekStart(last), 6)) };
+}
+function shift(dir){
+  if(MODE === 'week') CUR = addDays(CUR, 7 * dir);
+  else if(MODE === 'list') CUR = addDays(CUR, 30 * dir);
+  else CUR = new Date(CUR.getFullYear(), CUR.getMonth() + dir, 1);
+  load();
+}
+const MONTHS_FULL = ['январь','февраль','март','апрель','май','июнь','июль',
+  'август','сентябрь','октябрь','ноябрь','декабрь'];
+function paintTitle(){
+  const r = range();
+  $('ttl').textContent = MODE === 'month'
+    ? MONTHS_FULL[CUR.getMonth()] + ' ' + CUR.getFullYear()
+    : MODE === 'week' ? fmtDate(r.from.toISOString()) + ' — ' + fmtDate(r.to.toISOString())
+    : 'Ближайший месяц';
+}
+
+/* ============================================================
+   ДАННЫЕ
+   ============================================================ */
+async function load(){
+  paintTitle();
+  $('grid').innerHTML = '<div class="loading">Загрузка…</div>';
+  const r = range();
+  const from = r.from.toISOString(), to = r.to.toISOString();
+  const jobs = [];
+
+  if(ON.task){
+    let q = sb.from('v_tasks').select(TASK_COLS).is('archived_at', null)
+      .not('due_at', 'is', null).gte('due_at', from).lte('due_at', to);
+    if(F_EMP) q = q.eq('assignee_id', F_EMP);
+    if(F_BRANCH) q = q.eq('branch_id', Number(F_BRANCH));
+    jobs.push(q.limit(400).then(res => (res.data || []).map(t => ({
+      type:'task', id:t.id, at:new Date(t.due_at), title:t.title,
+      sub:(t.assignee_name || '') + ' · ' + (STATUS_RU[t.status] || t.status),
+      late:t.is_overdue && t.status !== 'done' && t.status !== 'canceled',
+      status:t.status, link:'tasks.html?task=' + t.id
+    }))));
+  }else jobs.push(Promise.resolve([]));
+
+  if(ON.event){
+    let q = sb.from('events').select('id,kind,title,brand,starts_at,ends_at,location,branch_ids,owner_id,participants,status')
+      .gte('starts_at', from).lte('starts_at', to);
+    if(F_KIND) q = q.eq('kind', F_KIND);
+    jobs.push(q.limit(300).then(res => (res.data || [])
+      .filter(e => !F_BRANCH || (e.branch_ids || []).includes(Number(F_BRANCH)))
+      .filter(e => !F_EMP || e.owner_id === F_EMP || (e.participants || []).includes(F_EMP))
+      .map(e => ({
+        type:'event', id:e.id, at:new Date(e.starts_at), title:e.title,
+        sub:(EVENT_KIND_RU[e.kind] || e.kind) + (e.location ? ' · ' + e.location : ''),
+        link:'events.html?id=' + e.id
+      }))));
+  }else jobs.push(Promise.resolve([]));
+
+  if(ON.plan){
+    jobs.push(sb.from('activities').select('id,kind,title,due_at,client_id,done_at')
+      .eq('owner_id', F_EMP || ME.id).not('due_at', 'is', null)
+      .gte('due_at', from).lte('due_at', to).limit(300)
+      .then(res => (res.data || []).map(a => ({
+        type:'plan', id:a.id, at:new Date(a.due_at), title:a.title || ACTIVITY_KIND_RU[a.kind],
+        sub:ACTIVITY_KIND_RU[a.kind] + (a.done_at ? ' · сделано' : ''),
+        link:'plan.html?id=' + a.id
+      }))));
+  }else jobs.push(Promise.resolve([]));
+
+  if(ON.call && canSeeCalls()){
+    let q = sb.from('callbacks').select('id,client_id,step,due_date,status,assignee_id')
+      .gte('due_date', ymd(r.from)).lte('due_date', ymd(r.to));
+    if(F_EMP) q = q.eq('assignee_id', F_EMP);
+    jobs.push(q.limit(300).then(res => (res.data || []).map(c => ({
+      type:'call', id:c.id, at:new Date(c.due_date + 'T09:00'),
+      title:'Звонок через ' + c.step + ' дн.',
+      sub:CALLBACK_STATUS_RU[c.status] || c.status,
+      link:'callcenter.html'
+    }))));
+  }else jobs.push(Promise.resolve([]));
+
+  const parts = await Promise.all(jobs);
+  ITEMS = parts.flat().sort((a, b) => a.at - b.at);
+  paint();
+}
+
+function itemsOf(d){
+  const k = ymd(d);
+  return ITEMS.filter(i => ymd(i.at) === k);
+}
+function dotClass(i){
+  if(i.type === 'task') return i.late ? 'late' : 'st-' + i.status;
+  return 'k-' + i.type;
+}
+
+/* ============================================================
+   ОТРИСОВКА
+   ============================================================ */
+function paint(){
+  if(MODE === 'list') return paintList();
+  const r = range();
+  const cells = [];
+  for(let d = new Date(r.from); d <= r.to; d = addDays(d, 1)) cells.push(new Date(d));
+
+  const wd = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(w => '<div class="wd">' + w + '</div>').join('');
+  const today = ymd(new Date());
+  const html = cells.map(d => {
+    const list = itemsOf(d);
+    const show = list.slice(0, MODE === 'week' ? 8 : 3);
+    return '<div class="cell' +
+        (d.getMonth() !== CUR.getMonth() && MODE === 'month' ? ' other' : '') +
+        (ymd(d) === today ? ' today' : '') +
+        (SEL && ymd(d) === ymd(SEL) ? ' sel' : '') +
+        '" data-d="' + ymd(d) + '">' +
+      '<span class="dn">' + d.getDate() + '</span>' +
+      show.map(i => '<span class="ev"><span class="dot ' + dotClass(i) + '"></span>' +
+        esc(i.title) + '</span>').join('') +
+      (list.length > show.length ? '<div class="more">ещё ' + (list.length - show.length) + '</div>' : '') +
+      '</div>';
+  }).join('');
+
+  $('grid').innerHTML = '<div class="cal' + (MODE === 'week' ? ' week' : '') + '">' + wd + html + '</div>';
+  $('grid').querySelectorAll('[data-d]').forEach(c =>
+    c.onclick = () => openDay(new Date(c.dataset.d + 'T00:00')));
+}
+
+function paintList(){
+  if(!ITEMS.length){ $('grid').innerHTML = '<div class="empty">На ближайший месяц ничего нет</div>'; return; }
+  const byDay = {};
+  ITEMS.forEach(i => { const k = ymd(i.at); (byDay[k] = byDay[k] || []).push(i); });
+  $('grid').innerHTML = Object.keys(byDay).sort().map(k => {
+    const d = new Date(k + 'T00:00');
+    return '<div class="sec">' + esc(dayTitle(d)) + '</div>' +
+      byDay[k].map(itemHTML).join('');
+  }).join('');
+  wireItems($('grid'));
+}
+function dayTitle(d){
+  const dd = dayDiff(d, new Date());
+  const base = d.getDate() + ' ' + MONTHS[d.getMonth()];
+  if(dd === 0) return 'Сегодня, ' + base;
+  if(dd === 1) return 'Завтра, ' + base;
+  return base;
+}
+function itemHTML(i){
+  return '<button class="dayitem" data-link="' + esc(i.link) + '">' +
+    '<span class="dot ' + dotClass(i) + '" style="margin-top:6px"></span>' +
+    '<span class="db"><span class="dt2">' + esc(i.title) + '</span>' +
+    '<span class="ds2">' + esc(i.sub || '') + '</span></span>' +
+    '<span class="dw">' + esc(i.type === 'call' ? '' : fmtTime(i.at.toISOString())) + '</span></button>';
+}
+function wireItems(root){
+  root.querySelectorAll('[data-link]').forEach(b => b.onclick = () => location.href = b.dataset.link);
+}
+
+/* ---------- день ---------- */
+function openDay(d){
+  SEL = d;
+  const list = itemsOf(d);
+  $('dayTitle').textContent = dayTitle(d);
+  $('dayBody').innerHTML = list.length
+    ? list.map(itemHTML).join('')
+    : '<div class="empty">В этот день ничего нет</div>';
+  wireItems($('dayBody'));
+  $('daySheet').hidden = false;
+  paint();
+}
+function dayMenu(){
+  if(!SEL) return;
+  const back = document.createElement('div');
+  back.className = 'backdrop clear';
+  const menu = document.createElement('div');
+  menu.className = 'menu';
+  menu.innerHTML =
+    '<button id="addTask">' + icon('list') + 'Задача на этот день</button>' +
+    (CAN_EVENTS ? '<button id="addEv">' + icon('star') + 'Событие</button>' : '');
+  document.body.append(back, menu);
+  const r = $('dayAdd').getBoundingClientRect();
+  menu.style.top = Math.min(innerHeight - 140, r.bottom + 6) + 'px';
+  menu.style.right = Math.max(8, innerWidth - r.right) + 'px';
+  const close = () => { back.remove(); menu.remove(); };
+  back.onclick = close;
+  document.getElementById('addTask').onclick = () =>
+    location.href = 'new-task.html?due=' + ymd(SEL);
+  if(CAN_EVENTS) document.getElementById('addEv').onclick = () =>
+    location.href = 'events.html?new=1&date=' + ymd(SEL);
+}
+</script>
+</body>
+</html>

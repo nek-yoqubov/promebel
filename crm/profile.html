@@ -68,7 +68,7 @@ const $ = id => document.getElementById(id);
 
 (async () => {
   if(!await requireAuth()) return;
-  renderShell({ title:'Профиль', tab:'profile' });
+  await renderShell({ title:'Профиль', tab:'profile' });
 
   $('ava').textContent = initials(ME.full_name);
   $('mName').textContent = ME.full_name;
@@ -225,14 +225,17 @@ function paintApp(){
   }
 }
 
+/* Разделы — те же правила видимости, что и в боковом меню */
 function paintNav(){
-  let html = '<a class="gi" href="links.html"><span class="gic">' + icon('link') + '</span>' +
-    '<span class="gl">Ссылки и планы</span><span class="gv">' + icon('chevron') + '</span></a>';
-  if(isHrRole()){
-    html += '<a class="gi" href="admin.html"><span class="gic">' + icon('users') + '</span>' +
-      '<span class="gl">Сотрудники</span><span class="gv">' + icon('chevron') + '</span></a>';
-  }
-  $('navBox').innerHTML = html;
+  const skip = ['home','tasks','author'];          // они и так в нижней панели
+  $('navBox').innerHTML = visibleSections()
+    .filter(s => !skip.includes(s.key))
+    .map(s => s.soon
+      ? '<div class="gi static"><span class="gic">' + icon(s.icon) + '</span>' +
+        '<span class="gl">' + esc(s.label) + '</span><span class="gv">скоро</span></div>'
+      : '<a class="gi" href="' + s.href + '"><span class="gic">' + icon(s.icon) + '</span>' +
+        '<span class="gl">' + esc(s.label) + '</span>' +
+        '<span class="gv">' + icon('chevron') + '</span></a>').join('');
 }
 
 function row(ic, title, note, value, plain){

@@ -46,9 +46,13 @@
         <div class="lfoot">
           <div class="act-bar" id="dActs"></div>
           <div class="composer">
+            <button class="clipbtn" id="clip" aria-label="Прикрепить"></button>
             <textarea id="cmBody" rows="1" placeholder="Комментарий"></textarea>
             <button class="send" id="cmSend" aria-label="Отправить"></button>
           </div>
+          <input id="fileCam" type="file" accept="image/*" capture="environment" hidden>
+          <input id="filePick" type="file" hidden
+            accept="image/jpeg,image/png,image/webp,image/heic,application/pdf,.xlsx,.docx,.xls,.doc,.txt">
           <div class="msg err" id="dMsg" style="padding:0 12px 8px;margin:0"></div>
         </div>
       </div>
@@ -66,6 +70,7 @@ const qs = new URLSearchParams(location.search);
 let TAB = ['mine','author','all'].includes(qs.get('tab')) ? qs.get('tab') : 'mine';
 let FILTER = qs.get('f') || 'active';
 let ROWS = [], CUR = null, SEARCH = '';
+let ASSIGNEE = qs.get('assignee') || '';   // приходит из панели руководителя
 
 const CHIPS = [
   { key:'active',   label:'Активные' },
@@ -73,13 +78,16 @@ const CHIPS = [
   { key:'today',    label:'Сегодня' },
   { key:'review',   label:'На проверке' },
   { key:'high',     label:'Высокий приоритет' },
-  { key:'done',     label:'Выполненные' }
+  { key:'done',     label:'Выполненные' },
+  { key:'archive',  label:'Архив' },
+  { key:'tpl',      label:'Повторяющиеся', onlyAuthor:true }
 ];
+let FILES = [];      // вложения открытой задачи
 const isDesktop = () => matchMedia('(min-width:1024px)').matches;
 
 (async () => {
   if(!await requireAuth()) return;
-  renderShell({
+  await renderShell({
     title:'Задачи',
     tab: TAB === 'author' ? 'author' : 'tasks',
     actions:'<button class="ib" id="searchBtn" aria-label="Поиск">' + icon('search') + '</button>'
@@ -95,7 +103,12 @@ const isDesktop = () => matchMedia('(min-width:1024px)').matches;
   $('searchBtnPc').onclick = toggleSearch;
 
   document.querySelectorAll('#seg button').forEach(b => {
-    b.onclick = () => { TAB = b.dataset.tab; paintSeg(); syncUrl(); load(); };
+    b.onclick = () => {
+      TAB = b.dataset.tab;
+      // «Повторяющиеся» есть только на «Поставленные мной» — уходим с них при смене вкладки
+      if(FILTER === 'tpl' && TAB !== 'author') FILTER = 'active';
+      paintSeg(); paintChips(); syncUrl(); load();
+    };
   });
   paintSeg();
   paintChips();
@@ -106,6 +119,10 @@ const isDesktop = () => matchMedia('(min-width:1024px)').matches;
   $('dBack').onclick = () => history.length > 1 ? history.back() : closeDetail();
   $('dMore').onclick = openMenu;
   $('cmSend').onclick = addComment;
+  $('clip').innerHTML = icon('clip');
+  $('clip').onclick = pickFile;
+  $('fileCam').onchange = () => sendFile($('fileCam'));
+  $('filePick').onchange = () => sendFile($('filePick'));
   autoGrow($('cmBody'));
   $('cmBody').addEventListener('keydown', e => {
     if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); addComment(); }
@@ -125,12 +142,16 @@ function paintSeg(){
   document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.tab === TAB));
 }
 function paintChips(){
-  $('chips').innerHTML = CHIPS.map(c =>
+  const who = ASSIGNEE
+    ? '<button class="chip on" id="chipWho">' + esc(empName(ASSIGNEE)) + ' ' + icon('x') + '</button>'
+    : '';
+  $('chips').innerHTML = who + CHIPS.filter(c => !c.onlyAuthor || TAB === 'author').map(c =>
     '<button class="chip' + (c.key === FILTER ? ' on' : '') + '" data-f="' + c.key + '">' +
     esc(c.label) + '</button>').join('');
-  $('chips').querySelectorAll('.chip').forEach(b => {
+  $('chips').querySelectorAll('[data-f]').forEach(b => {
     b.onclick = () => { FILTER = b.dataset.f; paintChips(); syncUrl(); load(); };
   });
+  if(ASSIGNEE) $('chipWho').onclick = () => { ASSIGNEE = ''; paintChips(); syncUrl(); load(); };
 }
 function toggleSearch(){
   const w = $('searchWrap');
@@ -142,6 +163,7 @@ function syncUrl(){
   const u = new URL(location.href);
   u.searchParams.set('tab', TAB);
   u.searchParams.set('f', FILTER);
+  if(ASSIGNEE) u.searchParams.set('assignee', ASSIGNEE); else u.searchParams.delete('assignee');
   u.searchParams.delete('task');
   history.replaceState(null, '', u);
 }
@@ -151,12 +173,17 @@ function syncUrl(){
    ============================================================ */
 async function load(){
   $('list').innerHTML = '<div class="loading">Загрузка…</div>';
+  if(FILTER === 'tpl' && TAB === 'author') return loadTemplates();
 
-  let q = sb.from('v_tasks').select(TASK_COLS).is('archived_at', null);
+  let q = sb.from('v_tasks').select(TASK_COLS);
+  // архив — отдельный чип, во всех остальных выборках архивных не показываем
+  q = FILTER === 'archive' ? q.not('archived_at', 'is', null) : q.is('archived_at', null);
   if(TAB === 'mine') q = q.eq('assignee_id', ME.id);
   if(TAB === 'author') q = q.eq('author_id', ME.id);
+  if(ASSIGNEE) q = q.eq('assignee_id', ASSIGNEE);
 
-  if(FILTER === 'active') q = q.in('status', ['new','in_progress','review']);
+  if(FILTER === 'archive'){ /* только архивные, сортировка ниже */ }
+  else if(FILTER === 'active') q = q.in('status', ['new','in_progress','review']);
   else if(FILTER === 'overdue') q = q.eq('is_overdue', true);
   else if(FILTER === 'review') q = q.eq('status', 'review');
   else if(FILTER === 'done') q = q.eq('status', 'done');
@@ -170,8 +197,50 @@ async function load(){
 
   const { data, error } = await q.limit(500);
   if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
-  ROWS = (data || []).sort(cmpTasks);
+  ROWS = data || [];
+  ROWS.sort(FILTER === 'archive'
+    ? (a, b) => new Date(b.completed_at || b.archived_at || 0) - new Date(a.completed_at || a.archived_at || 0)
+    : cmpTasks);
   paintList();
+}
+
+/* ---------- Повторяющиеся задачи ---------- */
+async function loadTemplates(){
+  const { data, error } = await sb.from('task_templates')
+    .select('*').eq('author_id', ME.id).order('created_at', { ascending:false });
+  if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  const rows = data || [];
+  if(!rows.length){
+    $('list').innerHTML = '<div class="empty">Повторяющихся задач нет. ' +
+      'Включите «Повторять» при постановке задачи.</div>';
+    return;
+  }
+  $('list').innerHTML = rows.map(t =>
+    '<div class="tplrow' + (t.is_active ? '' : ' off') + '">' +
+      '<span class="tb2">' +
+        '<span class="tn">' + esc(t.title) + '</span>' +
+        '<span class="tr">' + esc(empName(t.assignee_id)) + ' · ' + esc(templateRule(t)) + '</span>' +
+        '<span class="tr">следующая — ' + esc(t.next_run_at ? fmtDate(t.next_run_at) : '—') + '</span>' +
+      '</span>' +
+      '<span class="acts">' +
+        '<button class="btn ghost sm" data-tgl="' + t.id + '">' + (t.is_active ? 'Выключить' : 'Включить') + '</button>' +
+        '<a class="btn ghost sm" href="new-task.html?tpl=' + t.id + '">Изменить</a>' +
+        '<button class="btn danger sm" data-del="' + t.id + '">' + icon('trash') + '</button>' +
+      '</span>' +
+    '</div>').join('');
+
+  $('list').querySelectorAll('[data-tgl]').forEach(b => b.onclick = async () => {
+    const t = rows.find(x => x.id === Number(b.dataset.tgl));
+    const { error } = await sb.from('task_templates').update({ is_active: !t.is_active }).eq('id', t.id);
+    if(error) return toast(errText(error, 'update'));
+    loadTemplates();
+  });
+  $('list').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const { error } = await sb.from('task_templates').delete().eq('id', Number(b.dataset.del));
+    if(error) return toast(errText(error));
+    toast('Повтор удалён');
+    loadTemplates();
+  });
 }
 
 function paintList(){
@@ -211,13 +280,16 @@ async function openTask(id, push){
   CUR = t;
   paintList();
 
-  const [subs, comments, events] = await Promise.all([
+  const [subs, comments, events, files] = await Promise.all([
     sb.from('v_tasks').select(TASK_COLS).eq('parent_id', id).order('created_at'),
     sb.from('task_comments').select('id,body,author_id,created_at').eq('task_id', id).order('created_at'),
     sb.from('task_events').select('id,event_type,from_status,to_status,actor_id,created_at')
+      .eq('task_id', id).order('created_at'),
+    sb.from('task_files').select('id,file_path,file_name,size_bytes,author_id,created_at')
       .eq('task_id', id).order('created_at')
   ]);
-  paintTask(t, subs.data || [], comments.data || [], events.data || []);
+  FILES = files.data || [];
+  paintTask(t, subs.data || [], comments.data || [], events.data || [], FILES);
 }
 
 function closeDetail(){
@@ -227,7 +299,7 @@ function closeDetail(){
   paintList();
 }
 
-function paintTask(t, subs, comments, events){
+function paintTask(t, subs, comments, events, files){
   const d = dueInfo(t);
   const late = t.is_overdue && t.status !== 'done' && t.status !== 'canceled';
   $('dHeadTitle').textContent = t.title;
@@ -249,9 +321,13 @@ function paintTask(t, subs, comments, events){
 
   let html =
     '<div class="dhead">' +
-      '<h2>' + esc(t.title) + '</h2>' +
+      '<h2>' + (CUR.template_id ? icon('repeat') + ' ' : '') + esc(t.title) + '</h2>' +
       '<div class="stat-line">' + statusDot(t) + '<span>' + esc(STATUS_RU[t.status] || t.status) +
         (late ? ' · <span class="late">' + esc(d.text) + '</span>' : '') + '</span></div>' +
+      (CUR.report_required
+        ? '<div class="needreport" style="margin-top:8px">' + icon('camera') +
+          'Нужен отчёт: фото или файл</div>' : '') +
+      (t.archived_at ? '<div class="sub" style="margin-top:6px">В архиве · только чтение</div>' : '') +
     '</div>' +
     '<dl class="kv">' + kv.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
     '<div class="meta-small">Задача <span class="mono">№' + t.id + '</span> · создана ' +
@@ -278,11 +354,14 @@ function paintTask(t, subs, comments, events){
   // комментарии и события одной лентой, как в чате
   const feed = comments.map(c => ({ kind:'c', at:c.created_at, data:c }))
     .concat(events.map(e => ({ kind:'e', at:e.created_at, data:e })))
+    .concat((files || []).map(f => ({ kind:'f', at:f.created_at, data:f })))
     .sort((a, b) => new Date(a.at) - new Date(b.at));
 
   html += '<div class="sec">Обсуждение</div><div class="feed">' +
-    (feed.length ? feed.map(f => f.kind === 'c' ? bubbleHTML(f.data) : sysHTML(f.data)).join('')
-                 : '<div class="sys">Пока ничего не происходило</div>') +
+    (feed.length
+      ? feed.map(f => f.kind === 'c' ? bubbleHTML(f.data)
+                    : f.kind === 'f' ? fileHTML(f.data) : sysHTML(f.data)).join('')
+      : '<div class="sys">Пока ничего не происходило</div>') +
     '</div>';
 
   $('dBody').innerHTML = html;
@@ -290,8 +369,12 @@ function paintTask(t, subs, comments, events){
     b.onclick = () => openTask(Number(b.dataset.task)));
   $('dBody').querySelectorAll('[data-open]').forEach(a =>
     a.onclick = e => { e.preventDefault(); openTask(Number(a.dataset.open)); });
+  wireFiles();
 
   paintActions(t);
+  const readonly = !!t.archived_at;
+  $('dActs').hidden = readonly;
+  document.querySelector('.composer').hidden = readonly;
   $('dBody').scrollTop = 0;
 }
 
@@ -301,6 +384,22 @@ function bubbleHTML(c){
     '<div class="a">' + esc(empName(c.author_id)) + '</div>' +
     '<div class="b">' + esc(c.body) + '</div>' +
     '<div class="d">' + esc(fmtWhen(c.created_at)) + '</div></div>';
+}
+function fileHTML(f){
+  const mine = f.author_id === ME.id;
+  const cap = esc(empName(f.author_id)) + ' · ' + esc(fmtWhen(f.created_at)) +
+    (canDeleteFile(f) ? '<button class="ib" data-delfile="' + f.id + '" aria-label="Удалить">' +
+      icon('trash') + '</button>' : '');
+  if(isImageFile(f.file_name)){
+    return '<div class="thumb' + (mine ? ' me' : '') + '" data-img="' + f.id + '">' +
+      '<img data-src="' + esc(f.file_path) + '" alt="' + esc(f.file_name) + '">' +
+      '<div class="cap"><span class="who">' + cap + '</span></div></div>';
+  }
+  return '<div class="filerow' + (mine ? ' me' : '') + '">' +
+    '<span class="fi">' + icon('file') + '</span>' +
+    '<span class="fm"><span class="fn">' + esc(f.file_name) + '</span>' +
+    '<span class="fs">' + esc(fmtSize(f.size_bytes)) + ' · ' + cap + '</span></span>' +
+    '<button class="btn ghost sm" data-openfile="' + f.id + '">Открыть</button></div>';
 }
 function sysHTML(e){
   return '<div class="sys">' + esc(eventText(e)) + ' · ' + esc(fmtWhen(e.created_at)) + '</div>';
@@ -368,6 +467,8 @@ async function changeStatus(id, status){
     // сообщения триггеров написаны по-русски — показываем как есть
     $('dMsg').textContent = errText(error, 'task-edit');
     document.querySelectorAll('#dActs .btn').forEach(b => b.disabled = false);
+    // не хватает фотоотчёта — сразу предлагаем прикрепить
+    if(/отчёт|отчет|файл|фото/i.test(error.message || '')) pickFile();
     return;
   }
   if(status === 'done' || status === 'review') playDone();
@@ -387,6 +488,74 @@ async function addComment(){
   await openTask(CUR.id, false);
   const feed = $('dBody').querySelector('.feed');
   if(feed) feed.scrollIntoView({ block:'end' });
+}
+
+/* ============================================================
+   ВЛОЖЕНИЯ
+   ============================================================ */
+async function wireFiles(){
+  // миниатюры грузим по временной ссылке, в разметку пути не подставляем заранее
+  const imgs = [...$('dBody').querySelectorAll('img[data-src]')];
+  for(const img of imgs){
+    const url = await fileUrl(img.dataset.src);
+    if(url) img.src = url;
+  }
+  $('dBody').querySelectorAll('.thumb img').forEach(img =>
+    img.onclick = () => { if(img.src) openImage(img.src); });
+
+  $('dBody').querySelectorAll('[data-openfile]').forEach(b => b.onclick = async () => {
+    const f = FILES.find(x => x.id === Number(b.dataset.openfile));
+    const w = window.open('', '_blank');           // окно открываем сразу по нажатию
+    const url = await fileUrl(f.file_path);
+    if(!url){ if(w) w.close(); return toast('Файл недоступен'); }
+    if(w) w.location.href = url; else location.href = url;
+  });
+
+  $('dBody').querySelectorAll('[data-delfile]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const f = FILES.find(x => x.id === Number(b.dataset.delfile));
+    const r = await removeTaskFile(f);
+    if(r.error) return toast(r.error);
+    toast('Файл удалён');
+    await openTask(CUR.id, false);
+  });
+}
+
+function pickFile(){
+  if(!CUR) return;
+  // на телефоне спрашиваем: камера или файл
+  if(matchMedia('(max-width:1023px)').matches){
+    const back = document.createElement('div');
+    back.className = 'backdrop clear';
+    const menu = document.createElement('div');
+    menu.className = 'menu';
+    menu.innerHTML =
+      '<button id="mCam">' + icon('camera') + 'Камера</button>' +
+      '<button id="mFile">' + icon('file') + 'Файл</button>';
+    document.body.append(back, menu);
+    const r = $('clip').getBoundingClientRect();
+    menu.style.left = '10px';
+    menu.style.top = Math.max(10, r.top - 110) + 'px';
+    const close = () => { back.remove(); menu.remove(); };
+    back.onclick = close;
+    document.getElementById('mCam').onclick = () => { close(); $('fileCam').click(); };
+    document.getElementById('mFile').onclick = () => { close(); $('filePick').click(); };
+    return;
+  }
+  $('filePick').click();
+}
+
+async function sendFile(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if(!file || !CUR) return;
+  $('clip').disabled = true;
+  toast('Загружаем…');
+  const r = await uploadTaskFile(CUR.id, file);
+  $('clip').disabled = false;
+  if(r.error){ $('dMsg').textContent = r.error; return; }
+  await openTask(CUR.id, false);
+  toast('Файл отправлен');
 }
 
 function autoGrow(el){

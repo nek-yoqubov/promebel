@@ -50,6 +50,71 @@ const DOC_TYPE_RU = {
 const LINK_CAT_RU = { kpi:'KPI', plan:'Планы', doc:'Документы', other:'Прочее' };
 const LINK_CAT_ORDER = ['kpi','plan','doc','other'];
 
+/* --- продажи --- */
+const CLIENT_KIND_RU = { client:'Клиент', master:'Мастер', dealer:'Дилер', company:'Компания' };
+const CLIENT_KIND_ORDER = ['client','master','dealer','company'];
+const CLIENT_SOURCES = ['Шоурум','Звонок','Instagram','Рекомендация','Мастер привёл','Другое'];
+const DEAL_STAGE_RU = {
+  new:'Новая', consult:'Консультация', measure:'Замер', proposal:'Расчёт отправлен',
+  waiting:'Думает', won:'Продано', lost:'Отказ'
+};
+const DEAL_OPEN_STAGES = ['new','consult','measure','proposal','waiting'];
+const LOST_REASONS = ['Дорого','Ушёл к конкуренту','Нет в наличии','Передумал','Не дозвонились','Другое'];
+const ACTIVITY_KIND_RU = { call:'Звонок', meeting:'Встреча', visit:'Визит', message:'Сообщение', other:'Другое' };
+const ACTIVITY_ICON = { call:'phone', meeting:'users', visit:'building', message:'message', other:'list' };
+
+/* --- события --- */
+const EVENT_KIND_RU = {
+  visit:'Визит', presentation:'Презентация', masterclass:'Мастер-класс',
+  promo:'Акция', meeting:'Встреча', training:'Обучение', other:'Другое'
+};
+const EVENT_STATUS_RU = {
+  planned:'Запланировано', prep:'Подготовка', live:'Идёт', done:'Проведено', canceled:'Отменено'
+};
+const EVENT_BRANDS = ['EGGER','ULTRADECOR','Blum','GTV','Starax'];
+
+/* --- колл-центр --- */
+const CALLBACK_STATUS_RU = { pending:'Ждёт звонка', done:'Дозвонились', no_answer:'Не ответил', skipped:'Пропущен' };
+const SERVICE_STATUS_RU = {
+  new:'Новая', accepted:'Принята', in_work:'В работе', ready:'Готово', done:'Выдано', canceled:'Отменена'
+};
+const FEEDBACK_CAT_RU = {
+  quality:'Качество', timing:'Сроки', service:'Обслуживание',
+  product:'Товар', price:'Цена', other:'Другое'
+};
+const FEEDBACK_DEPT_RU = {
+  production:'Производство', sales:'Продажи', warehouse:'Склад',
+  delivery:'Доставка', management:'Руководство', other:'Другое'
+};
+const FEEDBACK_STATUS_RU = { new:'Новое', forwarded:'Передано', resolved:'Решено' };
+
+/* --- подбор --- */
+const VACANCY_STAGE_RU = {
+  request:'Заявка', published:'Публикация', screening:'Отбор резюме', interviews:'Собеседования',
+  offer:'Оффер', onboarding:'Оформление', probation:'Испытательный срок',
+  closed:'Закрыта', canceled:'Отменена'
+};
+const VACANCY_OPEN_STAGES = ['request','published','screening','interviews','offer','onboarding','probation'];
+const CANDIDATE_STAGE_RU = {
+  new:'Новый', screening:'Рассмотрение', interview:'Собеседование',
+  offer:'Оффер', hired:'Принят', rejected:'Отказ'
+};
+const ADAPT_RESULT_RU = { passed:'Прошёл', extended:'Продлить', failed:'Не прошёл' };
+
+/* --- журнал действий --- */
+const AUDIT_TABLE_RU = {
+  tasks:'Задачи', task_templates:'Повторяющиеся задачи', employees:'Сотрудники',
+  employee_hr:'Кадровые данные', employee_docs:'Документы', employee_skills:'Компетенции',
+  employee_review:'Оценка', clients:'Клиенты', deals:'Сделки', activities:'План',
+  events:'События', event_checks:'Проверки акций', vacancies:'Вакансии', candidates:'Кандидаты',
+  adaptations:'Адаптация', service_orders:'Заявки', callbacks:'Обзвон', feedback:'Замечания',
+  links:'Ссылки', branches:'Филиалы', regions:'Регионы'
+};
+function optionsFrom(dict, sel){
+  return Object.keys(dict).map(k =>
+    '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(dict[k]) + '</option>').join('');
+}
+
 /* Роль — это только права. Как должность зовётся в компании, пишут текстом в position. */
 function roleOptions(sel){
   return Object.keys(ROLE_RU).map(k =>
@@ -152,7 +217,10 @@ function fmtMoney(v, currency){
   if(v === null || v === undefined || v === '') return '—';
   const n = Number(v);
   if(isNaN(n)) return '—';
-  return n.toLocaleString('ru-RU', { maximumFractionDigits:2 }) + ' ' + (currency || 'TJS');
+  const cur = currency || 'TJS';
+  // разделитель тысяч — пробел, а не неразрывный
+  const num = n.toLocaleString('ru-RU', { maximumFractionDigits:2 }).replace(/\u00a0/g, ' ');
+  return num + ' ' + (CURRENCY_RU[cur] || cur);
 }
 const TRANSLIT = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',
   к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',
@@ -376,7 +444,18 @@ const ICONS = {
   upload:'<svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 8 12 3 17 8"/><path d="M12 3v12"/></svg>',
   telegram:'<svg class="i" viewBox="0 0 24 24"><path d="M21.5 4.3 2.9 11.2c-.9.3-.9 1.6 0 1.9l4.7 1.5 1.8 5.4c.3.8 1.3 1 1.9.4l2.6-2.5 4.6 3.4c.7.5 1.7.1 1.9-.7l3-14.3c.2-.9-.7-1.6-1.9-1z"/><path d="m7.6 14.6 9.9-6.7-7.6 8"/></svg>',
   chevron:'<svg class="i sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
-  settings:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>'
+  deal:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/></svg>',
+  phone:'<svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
+  chart:'<svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 3L20 7"/></svg>',
+  star:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"/></svg>',
+  clip:'<svg class="i" viewBox="0 0 24 24"><path d="M21 11.5 12.2 20a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 1 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 1 1-2.6-2.6L15 6.6"/></svg>',
+  repeat:'<svg class="i sm" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  camera:'<svg class="i" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+  image:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg>',
+  table:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
+  printer:'<svg class="i" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+  down:'<svg class="i sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>',
+    settings:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>'
 };
 function icon(name){ return ICONS[name] || ''; }
 
@@ -412,25 +491,77 @@ function initTheme(){ applyTheme(localStorage.getItem('crm_theme') || 'dark'); }
    ПК: постоянная боковая панель слева.
    Каждая страница вызывает renderShell({title, tab}).
    ============================================================ */
-const NAV_MAIN = [
-  { key:'home',   label:'Сегодня',      href:'index.html',            icon:'calendar' },
-  { key:'tasks',  label:'Задачи',       href:'tasks.html?tab=mine',   icon:'list' },
-  { key:'add',    label:'Новая задача', href:'new-task.html',         icon:'plus', fab:true },
-  { key:'notif',  label:'Уведомления',  href:'notifications.html',    icon:'bell', bell:true },
-  { key:'profile',label:'Профиль',      href:'profile.html',          icon:'user' }
+/* ============================================================
+   РАЗДЕЛЫ И ВИДИМОСТЬ
+   Права держит RLS. Здесь мы только прячем то, что роли не нужно.
+   ============================================================ */
+const GROUPS = [
+  { key:'work',    label:'Работа' },
+  { key:'sales',   label:'Продажи' },
+  { key:'company', label:'Компания' },
+  { key:'control', label:'Контроль' }
 ];
-const NAV_EXTRA = [
-  { key:'author', label:'Поставленные', href:'tasks.html?tab=author', icon:'target' },
-  { key:'admin', label:'Сотрудники',     href:'admin.html', icon:'users', roles:['admin','director','hr'] },
-  { key:'links', label:'Ссылки и планы', href:'links.html', icon:'link' },
-  { key:'cal',   label:'Календарь',      icon:'calendar', soon:true }
+const SECTIONS = [
+  { key:'home',    group:'work',    label:'Сегодня',        href:'index.html',            icon:'calendar' },
+  { key:'tasks',   group:'work',    label:'Задачи',         href:'tasks.html?tab=mine',   icon:'list' },
+  { key:'author',  group:'work',    label:'Поставленные',   href:'tasks.html?tab=author', icon:'target' },
+  { key:'cal',     group:'work',    label:'Календарь',      href:'calendar.html',         icon:'calendar' },
+  { key:'plan',    group:'work',    label:'Мой план',       href:'plan.html',             icon:'checkCircle',
+    roles:['sales','head','regional','brand','admin','director'], soon:true },
+  { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
+    notRoles:['production','cashier'], soon:true },
+  { key:'deals',   group:'sales',   label:'Сделки',         href:'deals.html',            icon:'deal',
+    roles:['sales','head','regional','admin','director','auditor'], soon:true },
+  { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star',
+    soon:true },
+  { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
+    roles:['callcenter','head','admin','director','auditor'], soon:true },
+  { key:'hr',      group:'company', label:'Подбор и адаптация', href:'hr.html',           icon:'idcard',
+    roles:['hr','admin','director'], orBoss:true, soon:true },
+  { key:'admin',   group:'company', label:'Сотрудники',     href:'admin.html',            icon:'users',
+    roles:['admin','director','hr'] },
+  { key:'links',   group:'company', label:'Ссылки и планы', href:'links.html',            icon:'link' },
+  { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
+    roles:['admin','director','auditor','head','regional'], orBoss:true },
+  { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',
+    roles:['admin','director'], soon:true }
 ];
+/* есть ли у меня подчинённые */
+function hasTeam(){ return !!(ME && EMPS.some(e => e.manager_id === ME.id)); }
+function canSee(s){
+  if(!ME) return false;
+  if(s.notRoles && s.notRoles.includes(ME.role)) return false;
+  if(s.roles && !s.roles.includes(ME.role)) return s.orBoss ? hasTeam() : false;
+  return true;
+}
+function visibleSections(){ return SECTIONS.filter(canSee); }
+function isAuditor(){ return ME && ME.role === 'auditor'; }   // ревизор всё видит, но ничего не меняет
 
-function renderShell(opts){
+/* Нижняя панель: пять пунктов. У колл-центра «Задачи» становится «Обзвон». */
+function tabItems(){
+  const cc = SECTIONS.find(s => s.key === 'cc');
+  const first = (ME && ME.role === 'callcenter' && cc && !cc.soon)
+    ? { key:'cc', label:'Обзвон', href:'callcenter.html', icon:'phone' }
+    : { key:'tasks', label:'Задачи', href:'tasks.html?tab=mine', icon:'list' };
+  return [
+    { key:'home', label:'Сегодня', href:'index.html', icon:'calendar' },
+    first,
+    { key:'add', label:'Новая задача', href:'new-task.html', icon:'plus', fab:true },
+    { key:'notif', label:'Уведомления', href:'notifications.html', icon:'bell', bell:true },
+    { key:'profile', label:'Профиль', href:'profile.html', icon:'user' }
+  ];
+}
+
+/* ============================================================
+   КАРКАС НАВИГАЦИИ
+   Телефон: шапка 56px + нижние вкладки. ПК: боковая панель с группами.
+   ============================================================ */
+async function renderShell(opts){
   const o = opts || {};
   const tab = o.tab || '';
+  await loadEmployees();   // нужен, чтобы понять, есть ли подчинённые
 
-  const tabbar = NAV_MAIN.map(n => {
+  const tabbar = tabItems().map(n => {
     const on = n.key === tab || (n.key === 'tasks' && tab === 'author');
     if(n.fab){
       return '<a class="tb fab" href="' + n.href + '" aria-label="' + esc(n.label) + '">' + icon(n.icon) + '</a>';
@@ -440,18 +571,20 @@ function renderShell(opts){
       '<span class="lb">' + esc(n.label) + '</span></a>';
   }).join('');
 
-  const main = NAV_MAIN.filter(n => !n.fab && n.key !== 'profile');
-  const sideItems = main.slice(0, 2).concat(NAV_EXTRA.slice(0, 1), main.slice(2), NAV_EXTRA.slice(1))
-    .filter(n => !n.roles || (ME && n.roles.includes(ME.role)))
-    .map(n => {
-      const on = n.key === tab;
-      if(n.soon){
-        return '<span class="sd soon">' + icon(n.icon) + '<span>' + esc(n.label) + '</span>' +
-          '<span class="tag">скоро</span></span>';
-      }
-      return '<a class="sd' + (on ? ' on' : '') + '" href="' + n.href + '">' + icon(n.icon) +
-        '<span>' + esc(n.label) + '</span>' +
-        (n.bell ? '<span class="cnt" data-unread hidden></span>' : '') + '</a>';
+  const item = n => n.soon
+    ? '<span class="sd soon">' + icon(n.icon) + '<span>' + esc(n.label) + '</span>' +
+      '<span class="tag">скоро</span></span>'
+    : '<a class="sd' + (n.key === tab ? ' on' : '') + '" href="' + n.href + '">' +
+      icon(n.icon) + '<span>' + esc(n.label) + '</span>' +
+      (n.bell ? '<span class="cnt" data-unread hidden></span>' : '') + '</a>';
+
+  const vis = visibleSections();
+  const sideNav =
+    item({ key:'notif', label:'Уведомления', href:'notifications.html', icon:'bell', bell:true }) +
+    GROUPS.map(g => {
+      const rows = vis.filter(s => s.group === g.key);
+      if(!rows.length) return '';                       // пустые группы не показываем
+      return '<div class="sgt">' + esc(g.label) + '</div>' + rows.map(item).join('');
     }).join('');
 
   const shell =
@@ -461,13 +594,16 @@ function renderShell(opts){
         : '<a class="ib logo" href="index.html" aria-label="На главную">' + logoMark(26) + '</a>') +
       '<h1 class="tt">' + esc(o.title || '') + '</h1>' +
       '<div class="ta">' + (o.actions || '') +
+        '<button class="ib" id="gsOpen" aria-label="Поиск">' + icon('search') + '</button>' +
         '<a class="ib" href="notifications.html" aria-label="Уведомления">' + icon('bell') +
           '<span class="cnt" data-unread hidden></span></a>' +
       '</div>' +
     '</header>' +
     '<aside class="side">' +
-      '<a class="slogo" href="index.html"><img src="logo-h-dark.png" data-dark="logo-h-dark.png" data-light="logo-h-light.png" alt="PRO MEBEL"></a>' +
-      '<nav class="snav">' + sideItems + '</nav>' +
+      '<a class="slogo" href="index.html"><img src="logo-h-dark.png" ' +
+        'data-dark="logo-h-dark.png" data-light="logo-h-light.png" alt="PRO MEBEL"></a>' +
+      '<button class="sgs" id="gsOpenPc">' + icon('search') + '<span>Поиск</span></button>' +
+      '<nav class="snav">' + sideNav + '</nav>' +
       '<a class="sme" href="profile.html">' +
         '<span class="ava">' + esc(ME ? initials(ME.full_name) : '') + '</span>' +
         '<span class="smi"><b>' + esc(ME ? ME.full_name : '') + '</b>' +
@@ -484,8 +620,74 @@ function renderShell(opts){
       else location.href = String(o.back);
     };
   }
+  document.getElementById('gsOpen').onclick = openSearch;
+  document.getElementById('gsOpenPc').onclick = openSearch;
   applyTheme(localStorage.getItem('crm_theme') || 'dark');
   refreshUnread();
+}
+
+/* ============================================================
+   ГЛОБАЛЬНЫЙ ПОИСК — RPC crm.search(q)
+   ============================================================ */
+const SEARCH_KIND_RU = {
+  task:'Задачи', client:'Клиенты', deal:'Сделки',
+  event:'События', vacancy:'Вакансии', employee:'Сотрудники'
+};
+function openSearch(){
+  if(document.getElementById('gsearch')) return;
+  const el = document.createElement('div');
+  el.className = 'gsearch';
+  el.id = 'gsearch';
+  el.innerHTML =
+    '<div class="gs-head">' +
+      '<button class="ib" id="gsClose" aria-label="Закрыть">' + icon('arrowLeft') + '</button>' +
+      '<input id="gsInput" type="search" placeholder="Задача, клиент, сделка, событие…" autocomplete="off">' +
+    '</div>' +
+    '<div class="gs-body" id="gsBody"><div class="empty">Введите хотя бы два символа</div></div>';
+  document.body.appendChild(el);
+
+  const close = () => { el.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if(e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  document.getElementById('gsClose').onclick = close;
+
+  let timer = null;
+  const input = document.getElementById('gsInput');
+  input.focus();
+  input.oninput = () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if(q.length < 2){
+      document.getElementById('gsBody').innerHTML = '<div class="empty">Введите хотя бы два символа</div>';
+      return;
+    }
+    timer = setTimeout(() => runSearch(q), 300);
+  };
+}
+async function runSearch(q){
+  const box = document.getElementById('gsBody');
+  if(!box) return;
+  box.innerHTML = '<div class="loading">Ищем…</div>';
+  const { data, error } = await sb.schema('crm').rpc('search', { q });
+  if(!document.getElementById('gsBody')) return;
+  if(error){ box.innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  const rows = data || [];
+  if(!rows.length){ box.innerHTML = '<div class="empty">Ничего не нашлось</div>'; return; }
+
+  let html = '';
+  Object.keys(SEARCH_KIND_RU).forEach(k => {
+    const part = rows.filter(r => r.kind === k);
+    if(!part.length) return;
+    html += '<div class="sec">' + esc(SEARCH_KIND_RU[k]) + '</div><div class="rows">' +
+      part.map(r =>
+        '<button class="row" data-link="' + esc(r.link) + '">' +
+          '<span class="rb"><span class="l1"><span class="t">' + esc(r.title) + '</span></span>' +
+          (r.sub ? '<span class="l2">' + esc(r.sub) + '</span>' : '') + '</span></button>').join('') +
+      '</div>';
+  });
+  box.innerHTML = html;
+  box.querySelectorAll('[data-link]').forEach(b =>
+    b.onclick = () => location.href = b.dataset.link);
 }
 
 /* ============================================================
@@ -495,7 +697,7 @@ let NOTIFS = [];
 
 async function loadNotifications(limit){
   const { data, error } = await sb.from('notifications')
-    .select('id, kind, title, body, read_at, task_id, created_at')
+    .select('id, kind, title, body, read_at, task_id, link, created_at')
     .order('created_at', { ascending:false }).limit(limit || 50);
   if(error){ console.error('notifications', error); return []; }
   NOTIFS = data || [];
@@ -793,12 +995,16 @@ function taskRowHTML(t, opts){
     : '';
   const subs = Number(t.subtasks_total) > 0
     ? '<span class="subs">' + t.subtasks_done + '/' + t.subtasks_total + '</span>' : '';
-  const l2 = [esc(who), subs].filter(Boolean).join(' · ');
+  const clip = Number(t.files_count) > 0
+    ? '<span class="clipn">' + icon('clip') + Number(t.files_count) + '</span>' : '';
+  const rep = t.template_id ? '<span class="pri" style="color:var(--muted)">' + icon('repeat') + '</span>' : '';
+  const rpt = t.report_required ? '<span class="pri">' + icon('camera') + '</span>' : '';
+  const l2 = [esc(who), subs, clip].filter(Boolean).join(' · ');
 
   return '<button class="row' + (done ? ' muted' : '') + (o.active ? ' on' : '') + '" data-task="' + t.id + '">' +
     statusDot(t) +
     '<span class="rb">' +
-      '<span class="l1"><span class="t">' + esc(t.title) + '</span>' + pri +
+      '<span class="l1"><span class="t">' + esc(t.title) + '</span>' + rep + rpt + pri +
         (when ? '<span class="when' + (late ? ' late' : '') + '">' + esc(when) + '</span>' : '') +
       '</span>' +
       '<span class="l2">' + l2 + '</span>' +
@@ -816,5 +1022,168 @@ function cmpTasks(a, b){
   return new Date(b.created_at) - new Date(a.created_at);
 }
 const TASK_COLS = 'id,title,description,author_id,assignee_id,parent_id,branch_id,priority,status,' +
-  'due_at,done_criteria,created_at,is_overdue,assignee_name,assignee_role,author_name,branch_name,' +
-  'subtasks_total,subtasks_done';
+  'due_at,done_criteria,created_at,archived_at,completed_at,is_overdue,assignee_name,assignee_role,' +
+  'author_name,branch_name,subtasks_total,subtasks_done,report_required,template_id,event_id,files_count';
+
+/* ============================================================
+   ДЕНЬГИ, ЭКСПОРТ, ПЕЧАТЬ
+   ============================================================ */
+const CURRENCY_RU = { TJS:'сом', USD:'$', EUR:'€', RUB:'руб.', UZS:'сум' };
+function som(v){ return fmtMoney(v, 'TJS'); }
+
+/* Уведомление может вести не только на задачу */
+function notifLink(n){
+  if(n.link) return n.link;
+  if(n.task_id) return 'tasks.html?task=' + n.task_id;
+  return null;
+}
+
+/* Excel: выгружаем то, что сейчас на экране. xlsx.full.min.js подключается на странице. */
+function exportXlsx(rows, sheetName, fileName){
+  if(typeof XLSX === 'undefined'){ toast('Библиотека выгрузки не загрузилась'); return; }
+  if(!rows || !rows.length){ toast('Нечего выгружать'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Лист').slice(0, 30));
+  XLSX.writeFile(wb, fileName || 'export.xlsx');
+}
+
+/* Печать: шапка с логотипом и названием отчёта, всё лишнее скрывает @media print */
+function printReport(title, period){
+  let head = document.getElementById('printHead');
+  if(!head){
+    head = document.createElement('div');
+    head.id = 'printHead';
+    head.className = 'print-head';
+    document.body.appendChild(head);
+  }
+  head.innerHTML =
+    '<div class="ph-logo"><img src="logo-h-light.png" alt="PRO MEBEL"></div>' +
+    '<div class="ph-t">' + esc(title || '') + '</div>' +
+    '<div class="ph-p">' + esc(period || '') + '</div>';
+  window.print();
+}
+
+/* Период для отчётов: понедельник текущей недели и т.д. */
+function weekStart(d){
+  const x = new Date(d || new Date());
+  const wd = (x.getDay() + 6) % 7;          // 0 = понедельник
+  x.setDate(x.getDate() - wd);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function monthStart(d){
+  const x = new Date(d || new Date());
+  x.setDate(1); x.setHours(0, 0, 0, 0);
+  return x;
+}
+function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function endOfDay(d){ const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
+function ymd(d){ return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+function fmtPeriod(from, to){ return fmtDate(from.toISOString()) + ' — ' + fmtDate(to.toISOString()); }
+
+/* «сегодня 14:20» / «3 дня назад» / «—» */
+function agoText(iso){
+  if(!iso) return '—';
+  const d = new Date(iso), dd = dayDiff(d, new Date());
+  if(dd === 0) return 'сегодня ' + fmtTime(iso);
+  if(dd === -1) return 'вчера ' + fmtTime(iso);
+  const n = Math.abs(dd);
+  return n + ' ' + plural(n, 'день', 'дня', 'дней') + ' назад';
+}
+
+/* ============================================================
+   ФАЙЛЫ ЗАДАЧ — приватный bucket crm-files
+   Путь: tasks/<id>/<uuid>-<имя>. Фото сжимаем на телефоне.
+   ============================================================ */
+const FILE_MAX = 20 * 1024 * 1024;
+const FILE_TYPES = [
+  'image/jpeg','image/png','image/webp','image/heic','application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel','application/msword','text/plain'
+];
+function isImageFile(nameOrType){
+  return /\.(jpe?g|png|webp|heic)$/i.test(nameOrType) || /^image\//i.test(nameOrType);
+}
+/* Фото ужимаем до 1600px по длинной стороне. HEIC отдаём как есть — canvas его не читает. */
+async function shrinkImage(file){
+  if(!/^image\/(jpeg|png|webp)$/i.test(file.type)) return file;
+  try{
+    const bmp = await createImageBitmap(file);
+    const max = 1600;
+    if(bmp.width <= max && bmp.height <= max && file.size < 1.5 * 1024 * 1024) return file;
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k);
+    c.height = Math.round(bmp.height * k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
+    if(!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.(png|webp|jpeg)$/i, '.jpg'), { type:'image/jpeg' });
+  }catch(e){ return file; }
+}
+function uuid(){
+  return (crypto.randomUUID && crypto.randomUUID()) ||
+    ('f' + Date.now().toString(16) + Math.floor(Math.random() * 1e9).toString(16));
+}
+async function uploadTaskFile(taskId, file){
+  if(file.size > FILE_MAX) return { error:'Файл больше 20 МБ' };
+  const small = await shrinkImage(file);
+  if(FILE_TYPES.indexOf(small.type) === -1 && !isImageFile(small.name))
+    return { error:'Такой тип файла нельзя' };
+
+  const path = 'tasks/' + taskId + '/' + uuid() + '-' + safeFileName(small.name);
+  const up = await sb.storage.from('crm-files').upload(path, small, { contentType: small.type });
+  if(up.error) return { error: errText(up.error) };
+
+  const { error } = await sb.from('task_files').insert({
+    task_id: taskId, author_id: ME.id, file_path: path,
+    file_name: file.name, size_bytes: small.size
+  });
+  if(error){
+    await sb.storage.from('crm-files').remove([path]);   // строка не записалась — файл не оставляем
+    return { error: errText(error, 'insert') };
+  }
+  return { ok:true };
+}
+async function fileUrl(path){
+  const { data, error } = await sb.storage.from('crm-files').createSignedUrl(path, 60);
+  return error ? null : data.signedUrl;
+}
+async function removeTaskFile(f){
+  const rm = await sb.storage.from('crm-files').remove([f.file_path]);
+  if(rm.error) return { error: errText(rm.error) };
+  const { error } = await sb.from('task_files').delete().eq('id', f.id);
+  return error ? { error: errText(error) } : { ok:true };
+}
+function canDeleteFile(f){ return !!(ME && (f.author_id === ME.id || isBossRole())); }
+
+/* Картинка на весь экран */
+function openImage(url){
+  const el = document.createElement('div');
+  el.className = 'viewer';
+  el.innerHTML = '<button class="ib" aria-label="Закрыть">' + icon('x') + '</button>' +
+    '<img src="' + esc(url) + '" alt="">';
+  el.onclick = () => el.remove();
+  document.body.appendChild(el);
+}
+
+/* ============================================================
+   ПОВТОРЯЮЩИЕСЯ ЗАДАЧИ — текст правила для списка
+   ============================================================ */
+const WEEKDAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+function templateRule(t){
+  const at = String(t.create_time || '08:00').slice(0, 5);
+  const due = t.due_days ? ('через ' + t.due_days + ' ' + plural(t.due_days, 'день', 'дня', 'дней'))
+                         : 'в тот же день';
+  const till = String(t.due_time || '18:00').slice(0, 5);
+  let when = '';
+  if(t.freq === 'daily') when = 'каждый день';
+  else if(t.freq === 'monthly') when = 'каждое ' + t.month_day + ' число';
+  else {
+    const d = (t.weekdays || []).map(n => WEEKDAYS[n - 1]).filter(Boolean);
+    when = d.length === 7 ? 'каждый день' : 'по дням: ' + d.join(', ');
+  }
+  return when + ' в ' + at + ', срок ' + due + ' до ' + till;
+}

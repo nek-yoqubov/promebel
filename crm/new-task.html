@@ -86,6 +86,59 @@
       </div>
     </div>
 
+    <div class="field">
+      <label class="switch"><input type="checkbox" id="needReport">
+        <span class="sl">Нужен фотоотчёт при сдаче<i>Без файла задачу нельзя будет отправить на проверку</i></span>
+      </label>
+    </div>
+
+    <div class="field">
+      <label class="switch"><input type="checkbox" id="repeat">
+        <span class="sl">Повторять<i>Платформа будет создавать задачу сама</i></span>
+      </label>
+    </div>
+
+    <div id="repBox" hidden>
+      <div class="field">
+        <label class="field-label" for="freq">Частота</label>
+        <select id="freq">
+          <option value="daily">Каждый день</option>
+          <option value="weekly">По дням недели</option>
+          <option value="monthly">Раз в месяц</option>
+        </select>
+      </div>
+      <div class="field" id="wdBox" hidden>
+        <label class="field-label">Дни недели</label>
+        <div class="wdays" id="wdays"></div>
+      </div>
+      <div class="field" id="mdBox" hidden>
+        <label class="field-label" for="monthDay">Число месяца</label>
+        <input id="monthDay" class="num" type="number" min="1" max="31" value="1">
+        <div class="hint">Если в месяце меньше дней, задача придёт в последний день</div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="field-label" for="createTime">Создавать в</label>
+          <input id="createTime" class="num" type="time" value="08:00">
+        </div>
+        <div class="field">
+          <label class="field-label" for="dueTime">Срок до</label>
+          <input id="dueTime" class="num" type="time" value="18:00">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="dueDays">Срок</label>
+        <select id="dueDays">
+          <option value="0">В тот же день</option>
+          <option value="1">Через 1 день</option>
+          <option value="2">Через 2 дня</option>
+          <option value="3">Через 3 дня</option>
+          <option value="7">Через неделю</option>
+        </select>
+      </div>
+      <div class="hint" id="repHint"></div>
+    </div>
+
     <div class="sticky">
       <button class="btn block" id="save">Поставить задачу</button>
       <div class="msg err" id="msg"></div>
@@ -103,7 +156,7 @@ let ASSIGNEE = null, PRIORITY = 'normal';
 
 (async () => {
   if(!await requireAuth()) return;
-  renderShell({ title:'Новая задача', tab:'add', back:'tasks.html' });
+  await renderShell({ title:'Новая задача', tab:'add', back:'tasks.html' });
 
   await Promise.all([loadEmployees(), loadBranches()]);
   paintPeople('');
@@ -117,8 +170,69 @@ let ASSIGNEE = null, PRIORITY = 'normal';
     document.querySelectorAll('#prio button').forEach(x => x.classList.toggle('on', x === b));
   });
   $('save').onclick = save;
+
+  // повторы
+  paintWeekdays();
+  $('repeat').onchange = () => {
+    $('repBox').hidden = !$('repeat').checked;
+    $('save').textContent = $('repeat').checked ? 'Сохранить повтор' : 'Поставить задачу';
+    paintRepHint();
+  };
+  $('freq').onchange = () => {
+    $('wdBox').hidden = $('freq').value !== 'weekly';
+    $('mdBox').hidden = $('freq').value !== 'monthly';
+    paintRepHint();
+  };
+  ['monthDay','createTime','dueTime','dueDays'].forEach(id => $(id).onchange = paintRepHint);
+
+  // срок дня из календаря: new-task.html?due=YYYY-MM-DD
+  const dueParam = qs.get('due');
+  if(dueParam){
+    const d = new Date(dueParam + 'T18:00');
+    if(!isNaN(d)) $('due').value = isoToLocalInput(d);
+  }
+  // задача подготовки к событию
+  if(qs.get('event')) await showEvent(qs.get('event'));
+
   $('title').focus();
 })();
+
+/* ---------- повторы ---------- */
+let WD = [1,2,3,4,5,6];
+function paintWeekdays(){
+  $('wdays').innerHTML = WEEKDAYS.map((w, i) =>
+    '<button type="button" class="' + (WD.includes(i + 1) ? 'on' : '') + '" data-d="' + (i + 1) + '">' +
+    esc(w) + '</button>').join('');
+  $('wdays').querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    const n = Number(b.dataset.d);
+    WD = WD.includes(n) ? WD.filter(x => x !== n) : WD.concat(n).sort();
+    paintWeekdays(); paintRepHint();
+  });
+}
+function repRule(){
+  return {
+    freq: $('freq').value,
+    weekdays: $('freq').value === 'daily' ? [1,2,3,4,5,6] : WD,
+    month_day: $('freq').value === 'monthly' ? Number($('monthDay').value) || 1 : null,
+    create_time: $('createTime').value || '08:00',
+    due_days: Number($('dueDays').value) || 0,
+    due_time: $('dueTime').value || '18:00'
+  };
+}
+function paintRepHint(){
+  if(!$('repeat').checked){ $('repHint').textContent = ''; return; }
+  $('repHint').textContent = 'Будет создаваться: ' + templateRule(repRule());
+}
+
+/* ---------- задача подготовки к событию ---------- */
+let EVENT_ID = null;
+async function showEvent(id){
+  const { data } = await sb.from('events').select('id,title').eq('id', id).maybeSingle();
+  if(!data) return;
+  EVENT_ID = data.id;
+  $('title').insertAdjacentHTML('afterend',
+    '<div class="hint">К событию: <b>' + esc(data.title) + '</b></div>');
+}
 
 /* Сверху те, кому база точно разрешит: я и мои подчинённые */
 function paintPeople(q){
@@ -174,22 +288,43 @@ async function save(){
   const title = $('title').value.trim();
   if(!title){ msg.textContent = 'Впишите название задачи'; $('title').focus(); return; }
   if(!ASSIGNEE){ msg.textContent = 'Выберите исполнителя'; $('who').focus(); return; }
-  const due = localToISO($('due').value);
+  const due = localToISO($('due').value);   // для повтора срок считает база
   if($('due').value && !due){ msg.textContent = 'Срок указан неверно'; return; }
 
-  btn.disabled = true; btn.textContent = 'Сохраняем…';
-  const { error } = await sb.from('tasks').insert({
+  const common = {
     title,
     description: $('description').value.trim() || null,
+    done_criteria: $('criteria').value.trim() || null,
     author_id: ME.id,                       // постановщик всегда я
     assignee_id: ASSIGNEE,
-    parent_id: $('parent').value ? Number($('parent').value) : null,
     branch_id: $('branch').value ? Number($('branch').value) : null,
     priority: PRIORITY,
+    report_required: $('needReport').checked
+  };
+
+  // повтор — это шаблон, задачи из него создаёт база
+  if($('repeat').checked){
+    const r = repRule();
+    if(r.freq === 'weekly' && !r.weekdays.length){ msg.textContent = 'Выберите хотя бы один день недели'; return; }
+    btn.disabled = true; btn.textContent = 'Сохраняем…';
+    const { error } = await sb.from('task_templates').insert(Object.assign({}, common, r));
+    if(error){
+      msg.textContent = errText(error, 'insert');
+      btn.disabled = false; btn.textContent = 'Сохранить повтор';
+      return;
+    }
+    playDone();
+    setTimeout(() => location.replace('tasks.html?tab=author&f=tpl'), 900);
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Сохраняем…';
+  const { error } = await sb.from('tasks').insert(Object.assign({}, common, {
+    parent_id: $('parent').value ? Number($('parent').value) : null,
     status: 'new',
     due_at: due,
-    done_criteria: $('criteria').value.trim() || null
-  });
+    event_id: EVENT_ID
+  }));
   if(error){
     msg.textContent = errText(error, 'task-add');
     btn.disabled = false; btn.textContent = 'Поставить задачу';

@@ -16,7 +16,8 @@
   <div class="split">
     <div class="col-list">
       <div class="pagehead"><h1 id="pageTitle">Задачи</h1>
-        <button class="ib" id="searchBtnPc" aria-label="Поиск"></button></div>
+        <button class="ib" id="searchBtnPc" aria-label="Поиск"></button>
+        <a class="btn sm" id="addBtnPc" href="new-task.html" hidden>Новая задача</a></div>
 
       <div class="pad" id="searchWrap" hidden style="padding-bottom:0">
         <div class="f-search"><span id="searchIcon"></span>
@@ -96,6 +97,7 @@ const isDesktop = () => matchMedia('(min-width:1024px)').matches;
 
   $('searchIcon').innerHTML = icon('search');
   $('searchBtnPc').innerHTML = icon('search');
+  if(canEdit()) $('addBtnPc').hidden = false;   // ревизор задач не ставит
   $('dBack').innerHTML = icon('arrowLeft');
   $('dMore').innerHTML = icon('dots');
   $('cmSend').innerHTML = icon('send');

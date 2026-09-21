@@ -597,6 +597,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
     padding:0 12px;border:1px solid var(--line);background:var(--card);border-radius:11px;
     color:var(--muted);font:600 14px 'Manrope';cursor:pointer;text-align:left}
   .sgs:hover{border-color:var(--line-2);color:var(--ink)}
+  /* «Новая задача» — на ПК вместо круглой кнопки нижней панели */
+  .sadd{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;margin-bottom:10px;
+    padding:0 12px;border-radius:11px;background:var(--brand);color:var(--brand-ink);
+    font:700 14.5px 'Manrope';transition:filter .15s}
+  .sadd:hover{filter:brightness(1.07)}
+  .sadd svg{color:var(--brand-ink)}
   .gsearch{left:var(--side)}
   .tiles{grid-template-columns:repeat(4,minmax(0,200px))}
   .sd{
@@ -872,6 +878,47 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .rank .rs{display:block;font-size:12.5px;color:var(--muted);margin-top:1px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rank .rv{flex:none;font:800 15px 'Manrope';font-variant-numeric:tabular-nums}
+
+/* ---------- Средний чек из 1С ---------- */
+.ac .acs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.ac .acc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 10px}
+.ac .acc .acl{font:700 11px 'Manrope';color:var(--muted);text-transform:uppercase;
+  letter-spacing:.04em}
+.ac .acc .acv{font:800 17px 'Manrope';font-variant-numeric:tabular-nums;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac .acc .acn{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+/* полоса плана: зелёная, когда план взят, иначе фирменная оранжевая */
+.acp{margin-bottom:10px}
+.acp .acpt{display:flex;align-items:baseline;gap:8px;font-size:13.5px;margin-bottom:5px}
+.acp .acpt>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acp .acpt b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.acp .acpt .sub{font-size:inherit;white-space:nowrap}
+.acp .acpt .acpp{margin-left:auto;font:800 13.5px 'Manrope';font-variant-numeric:tabular-nums;
+  color:var(--brand)}
+.acp.hit .acpt .acpp{color:var(--ok)}
+.acp .bar{height:7px;border-radius:999px;background:var(--card-2);overflow:hidden}
+.acp .bar i{display:block;height:100%;border-radius:999px;background:var(--brand);
+  transition:width .3s}
+.acp.hit .bar i{background:var(--ok)}
+/* таблица по всем — руководителю */
+.acrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.acrow:last-child{border-bottom:none}
+.acrow.me .acnm{color:var(--brand)}
+.acrow .acnm{flex:1;min-width:0;font-weight:700;font-size:14.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acrow .acch{flex:none;width:80px;text-align:right;font-size:13px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.acrow .acav{flex:none;font:800 15px 'Manrope';font-variant-numeric:tabular-nums;
+  text-align:right;min-width:96px}
+.acrow .acpl{flex:none;width:56px;text-align:right;font:700 13px 'Manrope';
+  font-variant-numeric:tabular-nums;color:var(--muted)}
+.acrow .acpl.hit{color:var(--ok)}
+@media (max-width:380px){
+  .ac .acs{gap:6px}
+  .ac .acc{padding:8px}
+  .ac .acc .acv{font-size:15px}
+  .acrow .acch{display:none}
+}
 
 @media (min-width:1024px){
   /* канбан вместо списка сделок */

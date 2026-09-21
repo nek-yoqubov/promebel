@@ -482,8 +482,10 @@ async function loadKpi(){
     '</div>' +
     '<div class="hint">План/факт по деньгам появится после подключения 1С</div>';
 
-  $('kbody').innerHTML = html + '<div id="rankBox"></div>';
+  $('kbody').innerHTML = html +
+    '<div id="acBox"></div><div id="acAllBox"></div><div id="rankBox"></div>';
   loadRank();
+  loadAvgCheck();
 }
 
 async function stats(emp, from, to){
@@ -526,6 +528,118 @@ async function loadRank(){
         '<span class="rv">' + esc(fmtMoney(r.d.won_amount || 0, 'TJS')) + '</span>' +
       '</div>').join('') +
     '<div class="hint">Место — по сумме продаж за текущий месяц.</div>';
+}
+
+/* ============================================================
+   СРЕДНИЙ ЧЕК ИЗ 1С
+   crm.avg_check(from, to) — строка на каждого, кого мне открыли,
+   crm.avg_check_daily(emp, from, to) — тот же чек по дням.
+   Дни берём по Душанбе: смену в 1С закрывают там, а телефон
+   сотрудника может стоять в другом поясе.
+   Если 1С не отвечает или сотрудник к ней не привязан — блока
+   просто нет, остальные показатели от этого не страдают.
+   ============================================================ */
+async function loadAvgCheck(){
+  const box = $('acBox'), all = $('acAllBox');
+  if(!box) return;
+  const who = WHO;                       // пока считаем, сотрудника могли переключить
+
+  const today = tzYmd(), mStart = tzMonthStart(today), wStart = tzWeekStart(today);
+  const { data, error } = await sb.schema('crm').rpc('avg_check', { p_from: mStart, p_to: today });
+  if(who !== WHO) return;
+  if(error){ box.innerHTML = ''; if(all) all.innerHTML = ''; return; }
+
+  const rows = data || [];
+  paintAvgAll(all, rows, who);
+
+  const mine = rows.find(r => r.employee_id === who);
+  if(!mine || !mine.erp_manager){ box.innerHTML = ''; return; }   // не заведён в 1С
+
+  box.innerHTML = '<div class="sec" style="margin-left:0">Средний чек (1С)</div>' +
+    '<div class="loading">Считаем…</div>';
+
+  // неделя может начаться в прошлом месяце — тогда берём дни с её понедельника
+  const dFrom = wStart < mStart ? wStart : mStart;
+  const day = await sb.schema('crm').rpc('avg_check_daily', {
+    p_emp: who, p_from: dFrom, p_to: today
+  });
+  if(who !== WHO) return;
+  paintAvg(box, mine, (!day.error && day.data) || [], today, wStart);
+}
+
+/* суммы за отрезок: средний чек считаем от сумм, а не усредняем средние */
+function sumDays(days, from, to){
+  let checks = 0, amount = 0;
+  days.forEach(d => {
+    const b = String(d.bdate || '').slice(0, 10);
+    if(b >= from && b <= to){
+      checks += Number(d.checks) || 0;
+      amount += Number(d.amount) || 0;
+    }
+  });
+  return { checks: checks, avg: checks ? amount / checks : 0 };
+}
+
+function paintAvg(box, mine, days, today, wStart){
+  const cards = [
+    ['Сегодня', sumDays(days, today, today)],
+    ['Неделя',  sumDays(days, wStart, today)],
+    ['Месяц',   { checks: Number(mine.checks) || 0, avg: Number(mine.avg_check) || 0 }]
+  ];
+  const card = c =>
+    '<div class="acc"><div class="acl">' + esc(c[0]) + '</div>' +
+      '<div class="acv">' + esc(c[1].checks ? fmtMoney(c[1].avg, 'TJS') : '—') + '</div>' +
+      '<div class="acn">' + c[1].checks + ' ' +
+        esc(plural(c[1].checks, 'чек', 'чека', 'чеков')) + '</div></div>';
+
+  box.innerHTML = '<div class="sec" style="margin-left:0">Средний чек (1С)</div>' +
+    '<div class="ac">' +
+      '<div class="acs">' + cards.map(card).join('') + '</div>' +
+      avgBar('Средний чек за месяц', Number(mine.avg_check) || 0, Number(mine.target_avg) || 0,
+        v => fmtMoney(v, 'TJS')) +
+      avgBar('Чеков за месяц', Number(mine.checks) || 0, Number(mine.target_checks) || 0,
+        v => String(Math.round(v))) +
+      '<div class="hint">Данные из 1С, обновляются раз в час</div>' +
+    '</div>';
+}
+
+/* Полоса «факт из плана». План взят — зелёная, иначе фирменная оранжевая. */
+function avgBar(label, fact, target, fmt){
+  if(!target) return '';                 // плана нет — и полосы нет
+  const pct = Math.round(fact / target * 100);
+  const hit = fact >= target;
+  return '<div class="acp' + (hit ? ' hit' : '') + '">' +
+    '<div class="acpt"><span>' + esc(label) + '</span>' +
+      '<b>' + esc(fmt(fact)) + '</b>' +
+      '<span class="sub">из ' + esc(fmt(target)) + '</span>' +
+      '<span class="acpp">' + pct + '%</span></div>' +
+    '<div class="bar"><i style="width:' + Math.max(0, Math.min(pct, 100)) + '%"></i></div></div>';
+}
+
+/* Руководителю — все, кого ему открыла 1С, по убыванию среднего чека */
+function paintAvgAll(box, rows, who){
+  if(!box) return;
+  box.innerHTML = '';
+  if(!mayPickWho()) return;
+  const list = rows.filter(r => r.erp_manager)
+    .sort((a, b) => (Number(b.avg_check) || 0) - (Number(a.avg_check) || 0));
+  if(list.length < 2) return;            // таблица из одного себя ни о чём не говорит
+
+  box.innerHTML = '<div class="sec" style="margin-left:0">Средний чек за месяц</div>' +
+    list.map(r => {
+      const checks = Number(r.checks) || 0;
+      const avg = Number(r.avg_check) || 0, target = Number(r.target_avg) || 0;
+      const pct = target ? Math.round(avg / target * 100) : null;
+      return '<div class="acrow' + (r.employee_id === who ? ' me' : '') + '">' +
+        '<span class="acnm">' + esc(r.full_name) + '</span>' +
+        '<span class="acch">' + checks + ' ' +
+          esc(plural(checks, 'чек', 'чека', 'чеков')) + '</span>' +
+        '<span class="acav">' + esc(fmtMoney(avg, 'TJS')) + '</span>' +
+        '<span class="acpl' + (pct !== null && pct >= 100 ? ' hit' : '') + '">' +
+          (pct === null ? '—' : pct + '%') + '</span>' +
+      '</div>';
+    }).join('') +
+    '<div class="hint">Порядок — по среднему чеку. Процент — от личного плана.</div>';
 }
 </script>
 </body>

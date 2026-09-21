@@ -608,6 +608,9 @@ async function renderShell(opts){
       '<a class="slogo" href="index.html"><img src="logo-h-dark.png" ' +
         'data-dark="logo-h-dark.png" data-light="logo-h-light.png" alt="PRO MEBEL"></a>' +
       '<button class="sgs" id="gsOpenPc">' + icon('search') + '<span>Поиск</span></button>' +
+      // на ПК круглой кнопки нижней панели нет — ставим обычную. Ревизор ничего не создаёт.
+      (isAuditor() ? '' :
+        '<a class="sadd" href="new-task.html">' + icon('plus') + '<span>Новая задача</span></a>') +
       '<nav class="snav">' + sideNav + '</nav>' +
       '<a class="sme" href="profile.html">' +
         '<span class="ava">' + esc(ME ? initials(ME.full_name) : '') + '</span>' +
@@ -1086,6 +1089,35 @@ function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate() + n); retur
 function endOfDay(d){ const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 function ymd(d){ return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
 function fmtPeriod(from, to){ return fmtDate(from.toISOString()) + ' — ' + fmtDate(to.toISOString()); }
+
+/* ============================================================
+   ДАТЫ ПО ДУШАНБЕ
+   1С закрывает день по местному времени. Если считать «сегодня» по
+   часам устройства, продавец в поездке увидит чужой день, поэтому
+   границы дня, недели и месяца для 1С берём в зоне Душанбе.
+   Дни тут — строки 'ГГГГ-ММ-ДД': ровно то, что ждут параметры date.
+   ============================================================ */
+const TZ_DUSHANBE = 'Asia/Dushanbe';
+const TZ_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ_DUSHANBE, year:'numeric', month:'2-digit', day:'2-digit'
+});
+function tzYmd(d){
+  const p = {};
+  TZ_PARTS.formatToParts(d || new Date()).forEach(x => p[x.type] = x.value);
+  return p.year + '-' + p.month + '-' + p.day;
+}
+/* сдвиг дня-строки: считаем в UTC, чтобы летнее время нигде не вмешалось */
+function tzShift(day, n){
+  const x = new Date(day + 'T00:00:00Z');
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+}
+function tzWeekStart(day){                     // понедельник той же недели
+  const base = day || tzYmd();
+  const wd = (new Date(base + 'T00:00:00Z').getUTCDay() + 6) % 7;
+  return tzShift(base, -wd);
+}
+function tzMonthStart(day){ return (day || tzYmd()).slice(0, 8) + '01'; }
 
 /* «сегодня 14:20» / «3 дня назад» / «—» */
 function agoText(iso){

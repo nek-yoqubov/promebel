@@ -155,7 +155,8 @@ function showPane(p){
 async function loadAll(){
   const [e, b, r] = await Promise.all([
     sb.from('employees')
-      .select('id, full_name, role, position, branch_id, manager_id, phone, telegram_chat_id, is_active')
+      .select('id, full_name, role, position, branch_id, manager_id, phone, erp_manager, ' +
+              'telegram_chat_id, is_active')
       .order('full_name'),
     sb.from('branches').select('id, name, region_id, address, is_active').order('name'),
     sb.from('regions').select('id, name').order('name')
@@ -299,6 +300,14 @@ function openEmpForm(e){
         (isNew || !e.phone ? '' : esc(e.phone)) + '">' +
       '<div class="hint">Telegram сотрудник подключает сам в своём профиле</div>' +
     '</div>' +
+    (isNew || ME.role !== 'admin' ? ''
+      : '<div class="field">' +
+          '<label class="field-label" for="fErp">Менеджер в 1С</label>' +
+          '<input id="fErp" maxlength="150" placeholder="как сотрудник записан в 1С" value="' +
+            (e.erp_manager ? esc(e.erp_manager) : '') + '">' +
+          '<div class="hint">По этому имени подтягиваются чеки и средний чек. ' +
+            'Пусто — сотрудника в отчётах 1С не будет</div>' +
+        '</div>') +
     (isNew
       ? '<div class="row2">' +
           '<div class="field">' +
@@ -354,9 +363,12 @@ async function saveEmp(e){
     return;
   }
 
+  const rec = { full_name, position, role, branch_id, manager_id, phone };
+  // имя в 1С правит только админ — у остальных поля в форме нет
+  if($('fErp')) rec.erp_manager = $('fErp').value.trim() || null;
+
   mBusy(true, 'Сохраняем…');
-  const { error } = await sb.from('employees')
-    .update({ full_name, position, role, branch_id, manager_id, phone }).eq('id', e.id);
+  const { error } = await sb.from('employees').update(rec).eq('id', e.id);
   if(error){ mBusy(false, 'Сохранить'); return mFail(errText(error, 'update')); }
 
   closeModal();

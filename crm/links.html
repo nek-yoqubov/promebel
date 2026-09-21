@@ -13,7 +13,8 @@
 </head>
 <body>
 <main class="main">
-  <div class="pagehead"><h1>Ссылки и планы</h1></div>
+  <div class="pagehead"><h1>Ссылки и планы</h1>
+    <button class="btn sm" id="addBtnPc" hidden>Добавить ссылку</button></div>
 
   <div id="list"><div class="loading">Загрузка…</div></div>
 </main>
@@ -46,7 +47,11 @@ let CAN_EDIT = false;
     tab:'links',
     actions: CAN_EDIT ? '<button class="ib" id="addLink" aria-label="Добавить ссылку">' + icon('plus') + '</button>' : ''
   });
-  if(CAN_EDIT) $('addLink').onclick = () => openForm(null);
+  if(CAN_EDIT){
+    $('addLink').onclick = () => openForm(null);
+    $('addBtnPc').hidden = false;
+    $('addBtnPc').onclick = () => openForm(null);
+  }
 
   $('mClose').innerHTML = icon('x');
   $('mClose').onclick = closeModal;

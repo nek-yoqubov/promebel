@@ -32,7 +32,8 @@
 </head>
 <body>
 <main class="main" id="main">
-  <div class="pagehead"><h1>Сегодня</h1></div>
+  <div class="pagehead"><h1>Сегодня</h1>
+    <a class="btn sm" id="addBtnPc" href="new-task.html" hidden>Новая задача</a></div>
   <div class="pad" style="padding-bottom:0"><div id="hello" class="sub"></div></div>
 
   <div class="stats" id="stats">
@@ -77,6 +78,7 @@ const ACT_RU = { call:'Звонок', meeting:'Встреча', visit:'Визи�
 (async () => {
   if(!await requireAuth()) return;
   await renderShell({ title:'Сегодня', tab:'home' });
+  if(canEdit()) $('addBtnPc').hidden = false;   // ревизор задач не ставит
 
   const h = new Date().getHours();
   const hi = h < 6 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';

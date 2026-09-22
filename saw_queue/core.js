@@ -7,21 +7,35 @@
 const SB_URL  = "https://yqspwkngntoklyggnosi.supabase.co";
 const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxc3B3a25nbnRva2x5Z2dub3NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0ODU5NDksImV4cCI6MjA5NDA2MTk0OX0.5fwVP5dMQ7gErGIAssFwHJakHgTDSvP3esekuiFPucA";
 
-// Клиент supabase-js, работает со схемой saw
-const sb = supabase.createClient(SB_URL, SB_ANON, { db: { schema: 'saw' } });
+// Клиент supabase-js, работает со схемой saw. Сессия — настоящая (Supabase Auth), права проверяет база.
+const SB_AUTH_KEY = 'sb-yqspwkngntoklyggnosi-auth-token';
+const sb = supabase.createClient(SB_URL, SB_ANON, {
+  db: { schema: 'saw' },
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: SB_AUTH_KEY }
+});
 
-/* ---------- Авторизация (простая, за saw.users) ---------- */
+/* ---------- Авторизация: вход через Supabase Auth, логин = saw.users ---------- */
 const Auth = {
-  token(){ return localStorage.getItem('saw_token'); },
-  role(){ return localStorage.getItem('saw_role') || 'user'; },
-  user(){ return localStorage.getItem('saw_login') || ''; },
+  session(){ try{ return JSON.parse(localStorage.getItem(SB_AUTH_KEY)); }catch(e){ return null; } },
+  token(){ const s=this.session(); return s && s.refresh_token ? s.access_token : null; },
+  meta(){ const s=this.session(); return (s && s.user && s.user.app_metadata) || {}; },
+  role(){ return this.meta().saw_role || 'user'; },
+  user(){ return this.meta().saw_login || ''; },
   require(roles){
     if(!this.token()){ location.href='login.html'; return false; }
     if(roles && !roles.includes(this.role())){ location.href='orders.html'; return false; }
     return true;
   },
-  logout(){ localStorage.clear(); location.href='login.html'; }
+  async logout(){
+    try{ await sb.auth.signOut(); }catch(e){}
+    ['saw_token','saw_login','saw_role',SB_AUTH_KEY].forEach(k=>localStorage.removeItem(k));
+    location.href='login.html';
+  }
 };
+sb.auth.onAuthStateChange(ev=>{
+  const p=location.pathname;
+  if(ev==='SIGNED_OUT' && !/(login|display)\.html$/.test(p)) location.href='login.html';
+});
 
 /* ---------- Настройки/нормативы (кэш на страницу) ---------- */
 let SETTINGS = null;

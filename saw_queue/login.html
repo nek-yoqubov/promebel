@@ -22,7 +22,7 @@
   </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
-<script src="core.js"></script>
+<script src="core.js?v=3"></script>
 <script>
 initTheme();
 document.getElementById('password').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
@@ -32,16 +32,13 @@ async function doLogin(){
   if(!login||!password){msg.textContent='Заполни логин и пароль';return;}
   btn.disabled=true;btn.textContent='Проверяем…';msg.textContent='';
   try{
-    // проверка на сервере (пароль не хранится в браузере, хеш не покидает БД)
-    const resp=await fetch('https://yqspwkngntoklyggnosi.supabase.co/functions/v1/auth-login',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({login,password})
-    });
-    const data=await resp.json();
-    if(!data.ok){msg.textContent='Неверный логин или пароль';btn.disabled=false;btn.textContent='Войти';return;}
-    localStorage.setItem('saw_token',data.token||'1');
-    localStorage.setItem('saw_login',data.login);
-    localStorage.setItem('saw_role',data.role);
+    const email=login.toLowerCase()+'@saw.promebel.tj';
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if(error){
+      msg.textContent=/invalid|credentials/i.test(error.message)?'Неверный логин или пароль':'Ошибка связи, попробуй ещё раз';
+      btn.disabled=false;btn.textContent='Войти';return;
+    }
+    ['saw_token','saw_login','saw_role'].forEach(k=>localStorage.removeItem(k));
     location.href='index.html';
   }catch(e){
     msg.textContent='Ошибка связи, попробуй ещё раз';btn.disabled=false;btn.textContent='Войти';

@@ -37,7 +37,7 @@
   <div class="sub" id="upd" style="margin-top:22px"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
-<script src="core.js"></script>
+<script src="core.js?v=3"></script>
 <script>
 initTheme();
 document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Управление';
@@ -65,7 +65,9 @@ function nMach2(key){
 }
 async function load(){
   await loadSettings();
-  const orders=(await fetchOrders()).filter(o=>o.status_ready!=='done');
+  const {data:rows0,error:e0}=await sb.rpc('display_orders');
+  if(e0){console.error(e0);return;}
+  const orders=(rows0||[]).filter(o=>o.status_ready!=='done');
   const plan=computeQueue(orders);
   const rows=orders.map(o=>({o,r:plan.get(o.id)})).filter(x=>x.r)
     .sort((a,b)=>{if(!!b.o.is_urgent-!!a.o.is_urgent)return(!!b.o.is_urgent)-(!!a.o.is_urgent);return(a.o.seq||0)-(b.o.seq||0)});

@@ -544,6 +544,12 @@ async function loadAvgCheck(){
   if(!box) return;
   const who = WHO;                       // пока считаем, сотрудника могли переключить
 
+  const issues = await sb.schema('crm').rpc('data_issues_active');
+  if(who !== WHO) return;
+  if(!issues.error && (issues.data || []).includes('avg_check')){
+    box.innerHTML = ''; if(all) all.innerHTML = ''; return;
+  }
+
   const today = tzYmd(), mStart = tzMonthStart(today), wStart = tzWeekStart(today);
   const { data, error } = await sb.schema('crm').rpc('avg_check', { p_from: mStart, p_to: today });
   if(who !== WHO) return;

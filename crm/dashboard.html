@@ -28,9 +28,6 @@
 .pcard .bigno{flex:none}
 .dashtbl td{white-space:nowrap}
 .dashtbl td.name{white-space:normal}
-.salesgrid{display:grid;grid-template-columns:1fr auto;gap:8px 16px;font-size:15px}
-.salesgrid .k{color:var(--muted);font-size:14px}
-.salesgrid .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
 </style>
 </head>
 <body>
@@ -216,8 +213,6 @@ function paint(){
 
   $('body').querySelectorAll('[data-emp]').forEach(el =>
     el.onclick = () => location.href = 'tasks.html?tab=all&assignee=' + encodeURIComponent(el.dataset.emp));
-  $('body').querySelectorAll('[data-sales]').forEach(el =>
-    el.onclick = e => { e.stopPropagation(); openSales(el.dataset.sales); });
   $('body').querySelectorAll('th.sortable').forEach(th =>
     th.onclick = () => {
       const k = th.dataset.k;
@@ -254,13 +249,11 @@ function activityHTML(iso){
   const txt = esc(agoText(iso));
   return days > 3 ? '<span class="stale">' + txt + ' · давно</span>' : txt;
 }
-const SALES_ROLES = ['sales','head','regional'];
-
 function tableHTML(rows){
   return '<div class="panel" style="padding:8px 0"><table class="tbl dashtbl"><thead><tr>' +
     COLS.map(c => '<th class="sortable" data-k="' + c.key + '">' + esc(c.label) +
       (SORT === c.key ? (DESC ? ' ↓' : ' ↑') : '') + '</th>').join('') +
-    '<th></th></tr></thead><tbody>' +
+    '</tr></thead><tbody>' +
     rows.map(r =>
       '<tr class="' + (Number(r.overdue_2d) > 0 ? 'alarm' : '') + '" data-emp="' + esc(r.employee_id) + '" style="cursor:pointer">' +
         '<td class="name"><span class="nm">' + esc(r.full_name) + '</span>' +
@@ -273,8 +266,6 @@ function tableHTML(rows){
         '<td class="num">' + (r.done || 0) + '</td>' +
         '<td>' + pctHTML(r.on_time_pct) + '</td>' +
         '<td>' + activityHTML(r.last_activity) + '</td>' +
-        '<td>' + (SALES_ROLES.includes(r.role)
-          ? '<button class="btn ghost sm" data-sales="' + esc(r.employee_id) + '">Продажи</button>' : '') + '</td>' +
       '</tr>').join('') +
     '</tbody></table></div>';
 }
@@ -291,41 +282,6 @@ function cardsHTML(rows){
       '</span>' +
       '<span class="bigno' + (Number(r.overdue) ? ' late' : '') + '">' + (r.overdue || 0) + '</span>' +
     '</button>').join('');
-}
-
-/* ============================================================
-   ПРОДАЖИ СОТРУДНИКА
-   ============================================================ */
-async function openSales(id){
-  const e = EMP_BY_ID[id];
-  openModal('Продажи — ' + (e ? e.full_name : ''), '<div class="loading">Считаем…</div>', null);
-  const { data, error } = await sb.schema('crm').rpc('sales_stats', {
-    p_emp: id, p_from: FROM.toISOString(), p_to: TO.toISOString()
-  });
-  if(error){ $('mBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
-  $('mBody').innerHTML = salesHTML(data) +
-    '<div class="hint" style="margin-top:12px">План/факт по деньгам появится после подключения 1С</div>' +
-    '<div class="btn-row" style="margin-top:14px"><button class="btn ghost" id="mCancel">Закрыть</button></div>';
-  $('mCancel').onclick = closeModal;
-}
-function salesHTML(d){
-  if(!d) return '<div class="empty">Показатели этого сотрудника вам не открыты</div>';
-  const rows = [
-    ['Открытых сделок', d.deals_open],
-    ['Новых сделок', d.deals_new],
-    ['Продано, штук', d.won],
-    ['Продано, сумма', d.won_amount === undefined ? null : fmtMoney(d.won_amount, 'TJS')],
-    ['Из них комплектом', d.complect],
-    ['С купоном', d.coupons],
-    ['Отказов', d.lost],
-    ['Звонков', d.calls_done],
-    ['Встреч и визитов', d.meetings_done],
-    ['Пропущено дел по плану', d.plan_missed],
-    ['Новых клиентов', d.new_clients]
-  ];
-  return '<div class="salesgrid">' + rows.map(r =>
-    '<div class="k">' + esc(r[0]) + '</div><div class="v">' +
-    (r[1] === null || r[1] === undefined ? '—' : esc(String(r[1]))) + '</div>').join('') + '</div>';
 }
 
 /* ============================================================

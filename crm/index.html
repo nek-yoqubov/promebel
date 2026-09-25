@@ -22,8 +22,9 @@
 .act{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
 .act .ic{color:var(--muted);flex:none;display:flex}
 .act .ab{flex:1;min-width:0}
-.act .at{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.act .as{font-size:13px;color:var(--muted);margin-top:2px}
+.act .at{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act .as{display:block;font-size:13px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .act .aw{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
 .act.over .aw{color:var(--late);font-weight:700}
 @media (min-width:1024px){ .tcard{margin-left:24px;margin-right:24px;width:calc(100% - 48px)}
@@ -72,8 +73,6 @@
 <script>
 initTheme();
 const $ = id => document.getElementById(id);
-const ACT_ICON = { call:'phone', meeting:'users', visit:'building', message:'message', other:'list' };
-const ACT_RU = { call:'Звонок', meeting:'Встреча', visit:'Визит', message:'Сообщение', other:'Дело' };
 
 (async () => {
   if(!await requireAuth()) return;
@@ -125,46 +124,46 @@ async function loadTasks(){
 }
 
 /* ---------- План на сегодня (activities) ---------- */
+/* Берём всё незакрытое по plan_date включительно: то, что не сделали
+   раньше, должно попадаться на глаза именно здесь. */
+let PLAN = [];
 async function loadPlan(){
+  const today = tzYmd();
   const { data, error } = await sb.from('activities')
-    .select('id, kind, title, note, due_at, client_id, deal_id')
+    .select('id, title, note, due_at, plan_date, target, progress')
     .eq('owner_id', ME.id).is('done_at', null)
-    .lte('due_at', endOfToday().toISOString())
-    .order('due_at').limit(20);
-  if(error || !data || !data.length) return;
+    .lte('plan_date', today)
+    .order('plan_date').order('due_at').limit(20);
+  if(error || !data || !data.length){ $('planBlock').hidden = true; return; }
 
+  PLAN = data;
   $('planBlock').hidden = false;
-  const now = new Date();
-  $('planList').innerHTML = data.map(a => {
-    const over = a.due_at && new Date(a.due_at) < startOfToday();
+  $('planList').innerHTML = PLAN.map(a => {
+    const over = String(a.plan_date).slice(0, 10) < today;
+    const sub = [over ? 'не сделано с ' + fmtDateOnly(a.plan_date) : '', a.note || '']
+      .filter(Boolean).join(' · ');
     return '<div class="act' + (over ? ' over' : '') + '">' +
-      '<span class="ic">' + icon(ACT_ICON[a.kind] || 'list') + '</span>' +
-      '<span class="ab"><span class="at">' + esc(a.title || ACT_RU[a.kind] || 'Дело') + '</span>' +
-        '<span class="as">' + esc(ACT_RU[a.kind] || '') + (a.note ? ' · ' + esc(a.note) : '') + '</span></span>' +
-      '<span class="aw">' + esc(over ? shortDue(a.due_at) : fmtTime(a.due_at)) + '</span>' +
-      '<button class="btn ghost sm" data-done="' + a.id + '">Готово</button>' +
+      '<button class="pck" data-done="' + a.id + '" aria-label="Отметить сделанным"></button>' +
+      '<span class="ab"><span class="at">' + esc(a.title || 'Пункт плана') + '</span>' +
+        (sub ? '<span class="as">' + esc(sub) + '</span>' : '') + '</span>' +
+      (a.target ? '<span class="aw">' + (a.progress || 0) + '/' + a.target + '</span>' : '') +
+      (a.due_at ? '<span class="aw">' + esc(tzTime(a.due_at)) + '</span>' : '') +
     '</div>';
   }).join('');
   $('planList').querySelectorAll('[data-done]').forEach(b =>
-    b.onclick = () => askResult(Number(b.dataset.done)));
+    b.onclick = () => markPlanDone(Number(b.dataset.done)));
 }
 
-function askResult(id){
-  openModal('Дело сделано', 
-    '<div class="field"><label class="field-label" for="res">Результат</label>' +
-    '<textarea id="res" rows="3" placeholder="Коротко: о чём договорились"></textarea></div>',
-    'Отметить', async () => {
-      mBusy(true, 'Сохраняем…');
-      const { error } = await sb.from('activities')
-        .update({ result: $('res').value.trim() || null, done_at: new Date().toISOString() })
-        .eq('id', id);
-      if(error){ mBusy(false, 'Отметить'); return mFail(errText(error, 'update')); }
-      closeModal();
-      $('planBlock').hidden = true;
-      $('planList').innerHTML = '';
-      await loadPlan();
-      toast('Отмечено');
-    });
+async function markPlanDone(id){
+  const a = PLAN.find(x => x.id === id);
+  const rec = { done_at: new Date().toISOString() };
+  // у пункта со счётчиком галочка значит «сделал всё», иначе триггер её снимет
+  if(a && a.target) rec.progress = a.target;
+  const { error } = await sb.from('activities').update(rec).eq('id', id);
+  if(error) return toast(errText(error, 'update'));
+  playDone();
+  await loadPlan();
+  toast('Отмечено');
 }
 
 /* ---------- Обзвон на сегодня (callbacks) ---------- */

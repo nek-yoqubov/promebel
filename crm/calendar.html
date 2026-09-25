@@ -236,12 +236,16 @@ async function load(){
   }else jobs.push(Promise.resolve([]));
 
   if(ON.plan){
-    jobs.push(sb.from('activities').select('id,kind,title,due_at,client_id,done_at')
-      .eq('owner_id', F_EMP || ME.id).not('due_at', 'is', null)
-      .gte('due_at', from).lte('due_at', to).limit(300)
+    // пункты плана живут по plan_date; время есть не у всех, без него ставим на 9 утра
+    jobs.push(sb.from('activities').select('id,title,due_at,plan_date,done_at,target,progress')
+      .eq('owner_id', F_EMP || ME.id)
+      .gte('plan_date', ymd(r.from)).lte('plan_date', ymd(r.to)).limit(300)
       .then(res => (res.data || []).map(a => ({
-        type:'plan', id:a.id, at:new Date(a.due_at), title:a.title || ACTIVITY_KIND_RU[a.kind],
-        sub:ACTIVITY_KIND_RU[a.kind] + (a.done_at ? ' · сделано' : ''),
+        type:'plan', id:a.id,
+        at: a.due_at ? new Date(a.due_at) : new Date(String(a.plan_date).slice(0, 10) + 'T09:00'),
+        title: a.title || 'Пункт плана',
+        sub: (a.done_at ? 'сделано' : 'в плане') +
+             (a.target ? ' · ' + (a.progress || 0) + '/' + a.target : ''),
         link:'plan.html?id=' + a.id
       }))));
   }else jobs.push(Promise.resolve([]));

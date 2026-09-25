@@ -19,19 +19,32 @@
 
   <div class="planday">
     <button class="ib" id="prev" aria-label="Предыдущий день"></button>
-    <span class="pd" id="dayTtl"></span>
+    <button class="pd" id="dayTtl" title="Вернуться к сегодня"></button>
     <button class="ib" id="next" aria-label="Следующий день"></button>
-    <button class="btn ghost sm" id="today">Сегодня</button>
   </div>
 
-  <div class="quick" id="quick" hidden></div>
+  <div class="pcols">
+    <div class="pmain">
+      <div class="addwrap" id="addWrap" hidden>
+        <div class="addline">
+          <input id="addTitle" placeholder="Добавить пункт…" autocomplete="off"
+                 enterkeyhint="done" maxlength="300">
+          <button class="ib" id="addGo" aria-label="Добавить"></button>
+        </div>
+        <div class="addchips" id="addChips"></div>
+      </div>
 
-  <details class="kpi" id="kpi">
-    <summary>Мои показатели<span class="kchev" id="kchev"></span></summary>
-    <div class="kbody" id="kbody"><div class="loading">Считаем…</div></div>
-  </details>
+      <div id="earlier"></div>
+      <div id="body"><div class="loading">Загрузка…</div></div>
+      <div id="doneBox"></div>
+    </div>
 
-  <div id="body"><div class="loading">Загрузка…</div></div>
+    <aside class="pside" id="pside" hidden>
+      <div id="teamBox"></div>
+      <div id="acBox"></div>
+      <div id="acAllBox"></div>
+    </aside>
+  </div>
 </main>
 
 <script src="supabase.min.js"></script>
@@ -41,22 +54,21 @@ initTheme();
 const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 
-let WHO = ME ? ME.id : '';       // чей план смотрим
-let DAY = startOfToday();
-let ITEMS = [], OVERDUE = [];
-let KPI_LOADED = '';             // для кого уже посчитали, чтобы не дёргать базу зря
+/* День плана — строка «ГГГГ-ММ-ДД» по Душанбе: plan_date в базе живёт
+   в той же зоне, и считать его по часам устройства нельзя. */
+let WHO = '';
+let DAY = tzYmd();
+let ITEMS = [], EARLIER = [];
+let SUGGEST = null;        // {id, num} — чип «Счётчик» под только что добавленным пунктом
+let NEW_CLIENT = null;     // клиент для следующего добавленного пункта (переход из карточки)
+let S_CLIENT = null;       // клиент, выбранный в открытой шторке
+let DONE_OPEN = false;     // «Выполнено» оставляем развёрнутым, если его открыли
+let AC_LOADED = '';        // для кого уже тянули средний чек
 
-const ACT_COLS = 'id,owner_id,client_id,deal_id,kind,direction,title,note,result,due_at,done_at,' +
-  'client:clients(id,full_name,phone),deal:deals(id,title)';
+const ACT_COLS = 'id,owner_id,client_id,title,note,due_at,done_at,plan_date,target,progress,' +
+  'sort_order,client:clients(id,full_name,phone)';
 
-const QUICK = [
-  { kind:'call',    label:'Звонок' },
-  { kind:'meeting', label:'Встреча' },
-  { kind:'visit',   label:'Визит' },
-  { kind:'other',   label:'Другое' }
-];
-const MONTHS_FULL = ['января','февраля','марта','апреля','мая','июня','июля',
-  'августа','сентября','октября','ноября','декабря'];
+const WD = ['вс','пн','вт','ср','чт','пт','сб'];
 
 (async () => {
   if(!await requireAuth()) return;
@@ -66,33 +78,56 @@ const MONTHS_FULL = ['января','февраля','марта','апреля'
   $('prev').innerHTML = icon('arrowLeft');
   $('next').innerHTML = icon('arrowLeft');
   $('next').style.transform = 'rotate(180deg)';
-  $('kchev').innerHTML = icon('down');
-  $('prev').onclick = () => { DAY = addDays(DAY, -1); load(); };
-  $('next').onclick = () => { DAY = addDays(DAY, 1); load(); };
-  $('today').onclick = () => { DAY = startOfToday(); load(); };
-  $('kpi').addEventListener('toggle', () => { if($('kpi').open) loadKpi(); });
+  $('addGo').innerHTML = icon('plus');
+  $('prev').onclick = () => go(tzShift(DAY, -1));
+  $('next').onclick = () => go(tzShift(DAY, 1));
+  $('dayTtl').onclick = () => go(tzYmd());
+  $('addGo').onclick = addFromInput;
+  $('addTitle').onkeydown = e => {
+    if(e.key === 'Enter'){ e.preventDefault(); addFromInput(); }
+  };
 
   paintWho();
-  paintQuick();
-  await load();
+  paintAdd();
 
-  if(qs.get('new') === '1' && canEdit()) openActForm('call', null, null, qs.get('client'));
-  else if(qs.get('id')) openActivity(Number(qs.get('id')));
+  // ?id=N из уведомления или из ленты клиента — открыть день этого пункта
+  const openId = qs.get('id') ? Number(qs.get('id')) : 0;
+  if(openId){
+    const { data } = await sb.from('activities')
+      .select('plan_date,owner_id').eq('id', openId).maybeSingle();
+    if(data){
+      if(data.plan_date) DAY = String(data.plan_date).slice(0, 10);
+      if(data.owner_id && data.owner_id !== WHO && whoList().some(e => e.id === data.owner_id)){
+        WHO = data.owner_id;
+        paintWho(); paintTitle(); paintAdd();
+      }
+    }
+  }
+
+  if(qs.get('new') === '1' && qs.get('client')) await presetClient(Number(qs.get('client')));
+
+  await load();
+  if(openId) openItem(openId);
+  else if(qs.get('new') === '1') $('addTitle').focus();
 })();
 
 /* ============================================================
    ЧЕЙ ПЛАН
-   Руководитель выбирает подчинённого и видит его план и показатели.
+   Руководитель смотрит подчинённого; менять может то же, что и база.
    ============================================================ */
-function myTeam(){
-  return EMPS.filter(e => e.manager_id === ME.id);
-}
+function myTeam(){ return EMPS.filter(e => e.manager_id === ME.id); }
 function mayPickWho(){
   return isBossRole() || ['head','regional','auditor'].includes(ME.role) || hasTeam();
 }
 function whoList(){
   if(isBossRole() || ['head','regional','auditor'].includes(ME.role)) return EMPS;
   return [EMP_BY_ID[ME.id]].filter(Boolean).concat(myTeam());
+}
+/* Ревизор всё видит и ничего не трогает. Остальным права держит RLS —
+   в интерфейсе показываем ровно то, что она пропустит. */
+function mayEdit(){
+  if(!canEdit()) return false;
+  return WHO === ME.id || isBossRole() || isManagerOf(WHO);
 }
 function paintWho(){
   if(!mayPickWho()){ $('whoBar').hidden = true; return; }
@@ -101,433 +136,523 @@ function paintWho(){
     '<select id="whoSel" class="grow">' + whoList().map(e =>
       '<option value="' + esc(e.id) + '"' + (WHO === e.id ? ' selected' : '') + '>' +
       esc(e.id === ME.id ? 'Мой план' : e.full_name) + '</option>').join('') + '</select>';
-  $('whoSel').onchange = () => {
-    WHO = $('whoSel').value;
-    KPI_LOADED = '';
-    $('pageTitle').textContent = WHO === ME.id ? 'Мой план' : 'План — ' + empName(WHO);
-    document.querySelector('#kpi summary').firstChild.textContent =
-      WHO === ME.id ? 'Мои показатели' : 'Показатели — ' + empName(WHO);
-    paintQuick();
-    if($('kpi').open) loadKpi();
-    load();
-  };
+  $('whoSel').onchange = () => switchWho($('whoSel').value);
 }
-/* добавлять дела можно себе и своим подчинённым */
-function mayAddFor(id){
-  if(!canEdit()) return false;
-  return id === ME.id || isBossRole() || isManagerOf(id);
+function switchWho(id){
+  if(!id || id === WHO) return;
+  WHO = id;
+  AC_LOADED = '';
+  NEW_CLIENT = null;
+  SUGGEST = null;
+  const sel = $('whoSel');
+  if(sel && sel.value !== id) sel.value = id;
+  paintTitle(); paintAdd();
+  load();
 }
-function paintQuick(){
-  $('quick').hidden = !mayAddFor(WHO);
-  if(!mayAddFor(WHO)) return;
-  $('quick').innerHTML = QUICK.map(q =>
-    '<button data-q="' + q.kind + '"><span class="qi">' + icon(ACTIVITY_ICON[q.kind]) + '</span>' +
-    esc(q.label) + '</button>').join('');
-  $('quick').querySelectorAll('[data-q]').forEach(b =>
-    b.onclick = () => openActForm(b.dataset.q));
+function paintTitle(){
+  $('pageTitle').textContent = WHO === ME.id ? 'Мой план' : 'План — ' + empName(WHO);
 }
 
 /* ============================================================
    ДЕНЬ
    ============================================================ */
-function dayLabel(d){
-  const dd = dayDiff(d, new Date());
-  const base = d.getDate() + ' ' + MONTHS_FULL[d.getMonth()];
-  if(dd === 0) return 'Сегодня, ' + base;
-  if(dd === 1) return 'Завтра, ' + base;
-  if(dd === -1) return 'Вчера, ' + base;
-  return base;
+function dayLabel(day){
+  const t = tzYmd();
+  if(day === t) return 'Сегодня';
+  if(day === tzShift(t, 1)) return 'Завтра';
+  if(day === tzShift(t, -1)) return 'Вчера';
+  const d = new Date(day + 'T00:00:00Z');
+  return WD[d.getUTCDay()] + ', ' + d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()];
 }
-const isToday = () => ymd(DAY) === ymd(new Date());
+function go(day){
+  DAY = day;
+  SUGGEST = null;
+  load();
+}
 
 async function load(){
   $('dayTtl').textContent = dayLabel(DAY);
   $('body').innerHTML = '<div class="loading">Загрузка…</div>';
-
-  const from = new Date(DAY); from.setHours(0, 0, 0, 0);
-  const to = endOfDay(DAY);
+  const today = tzYmd(), day = DAY, who = WHO;
 
   const jobs = [
-    sb.from('activities').select(ACT_COLS).eq('owner_id', WHO)
-      .gte('due_at', from.toISOString()).lte('due_at', to.toISOString())
-      .order('due_at').limit(200)
+    sb.from('activities').select(ACT_COLS)
+      .eq('owner_id', who).eq('plan_date', day)
+      .order('sort_order').order('id').limit(300)
   ];
-  // просроченное показываем только на сегодняшнем экране, иначе оно везде мозолит глаза
-  jobs.push(isToday()
-    ? sb.from('activities').select(ACT_COLS).eq('owner_id', WHO)
-        .is('done_at', null).lt('due_at', from.toISOString())
-        .order('due_at').limit(100)
+  // «Не сделано раньше» нужно только на экране «Сегодня»
+  jobs.push(day === today
+    ? sb.from('activities').select(ACT_COLS)
+        .eq('owner_id', who).is('done_at', null).lt('plan_date', today)
+        .order('plan_date', { ascending:false }).limit(100)
     : Promise.resolve({ data: [] }));
 
-  const [day, late] = await Promise.all(jobs);
-  if(day.error){ $('body').innerHTML = '<div class="empty">' + esc(errText(day.error)) + '</div>'; return; }
-  ITEMS = day.data || [];
-  OVERDUE = (late && late.data) || [];
+  const [res, past] = await Promise.all(jobs);
+  if(day !== DAY || who !== WHO) return;      // пока грузили, переключили день или человека
+  if(res.error){
+    $('body').innerHTML = '<div class="empty">' + esc(errText(res.error)) + '</div>';
+    return;
+  }
+  ITEMS = res.data || [];
+  EARLIER = (past && past.data) || [];
   paint();
+  loadTeam();
+  loadAvg();
+}
+
+/* ============================================================
+   СПИСОК
+   Сверху невыполненные: сначала со временем, потом по своему порядку.
+   ============================================================ */
+function cmpItems(a, b){
+  const at = a.due_at ? 0 : 1, bt = b.due_at ? 0 : 1;
+  if(at !== bt) return at - bt;
+  if(a.due_at && b.due_at) return new Date(a.due_at) - new Date(b.due_at);
+  return (a.sort_order || 0) - (b.sort_order || 0) || a.id - b.id;
 }
 
 function paint(){
-  let html = '';
-  if(OVERDUE.length){
-    html += '<div class="sec" style="color:var(--late)">Просрочено · ' + OVERDUE.length + '</div>' +
-      OVERDUE.map(a => actRowHTML(a, true)).join('');
-  }
-  html += '<div class="sec">' + esc(dayLabel(DAY)) + '</div>';
-  html += ITEMS.length
-    ? ITEMS.map(a => actRowHTML(a, false)).join('')
-    : '<div class="empty">На этот день дел нет</div>';
+  paintEarlier();
 
-  $('body').innerHTML = html;
-  $('body').querySelectorAll('[data-act]').forEach(b =>
-    b.onclick = () => openActivity(Number(b.dataset.act)));
-  $('body').querySelectorAll('[data-done]').forEach(b =>
-    b.onclick = e => { e.stopPropagation(); askDone(Number(b.dataset.done)); });
-  $('body').querySelectorAll('[data-move]').forEach(b =>
-    b.onclick = e => { e.stopPropagation(); askMove(Number(b.dataset.move)); });
+  const open = ITEMS.filter(a => !a.done_at).sort(cmpItems);
+  const done = ITEMS.filter(a => a.done_at).sort(cmpItems);
+
+  $('body').innerHTML = open.length
+    ? open.map(a => itemHTML(a)).join('')
+    : '<div class="empty">' + (mayEdit()
+        ? 'На этот день пунктов нет — добавьте первый'
+        : 'На этот день пунктов нет') + '</div>';
+
+  $('doneBox').innerHTML = done.length
+    ? '<details class="donebox"' + (DONE_OPEN ? ' open' : '') + '>' +
+        '<summary>Выполнено (' + done.length + ')<span class="dch">' + icon('down') + '</span></summary>' +
+        done.map(a => itemHTML(a)).join('') +
+      '</details>'
+    : '';
+
+  wire($('body'));
+  wire($('doneBox'));
+  const d = $('doneBox').querySelector('details');
+  if(d) d.addEventListener('toggle', () => { DONE_OPEN = d.open; });
 }
 
-function actRowHTML(a, late){
+function paintEarlier(){
+  const box = $('earlier');
+  if(DAY !== tzYmd() || !EARLIER.length){ box.innerHTML = ''; return; }
+  box.innerHTML =
+    '<div class="sec earl">Не сделано раньше (' + EARLIER.length + ')' +
+      (mayEdit() ? '<button class="btn ghost sm" id="allToday">Всё на сегодня</button>' : '') +
+    '</div>' +
+    EARLIER.map(a => itemHTML(a, true)).join('');
+  wire(box);
+  if($('allToday')) $('allToday').onclick = allToday;
+}
+
+function itemHTML(a, earlier){
   const done = !!a.done_at;
-  const sub = [
-    ACTIVITY_KIND_RU[a.kind] || a.kind,
-    a.client ? a.client.full_name : '',
-    a.deal ? a.deal.title : '',
-    a.result || ''
-  ].filter(Boolean).join(' · ');
-  const when = a.due_at ? (late ? fmtDate(a.due_at) + ' ' + fmtTime(a.due_at) : fmtTime(a.due_at)) : '';
-  const acts = (!done && mayAddFor(a.owner_id))
-    ? '<span class="aa">' +
-        '<button class="btn ok sm" data-done="' + a.id + '">Готово</button>' +
-        '<button class="btn ghost sm" data-move="' + a.id + '">' + icon('clock') + '</button>' +
+  const may = mayEdit();
+  const time = a.due_at ? tzTime(a.due_at) : '';
+  const late = !!a.due_at && !done && new Date(a.due_at) < new Date();
+
+  const meta = [];
+  if(earlier) meta.push('<span class="pw late">' + esc(dayLabel(String(a.plan_date).slice(0, 10))) + '</span>');
+  if(time) meta.push('<span class="pw' + (late ? ' late' : '') + '">' + esc(time) + '</span>');
+  if(a.client) meta.push('<span class="pc">' + esc(a.client.full_name) + '</span>');
+
+  // счётчик: у просроченных пунктов справа место занимает «На сегодня»
+  const counter = (a.target && !earlier)
+    ? '<span class="cnt2">' +
+        (may && !done ? '<button class="cb" data-dec="' + a.id + '" aria-label="Меньше">−</button>' : '') +
+        '<b>' + (a.progress || 0) + '/' + a.target + '</b>' +
+        (may && !done ? '<button class="cb" data-inc="' + a.id + '" aria-label="Больше">+</button>' : '') +
       '</span>'
-    : (done ? '<span class="aa">' + icon('checkCircle') + '</span>' : '');
+    : '';
 
-  return '<div class="actrow' + (done ? ' done' : '') + '">' +
-    '<span class="ai">' + icon(ACTIVITY_ICON[a.kind] || 'list') + '</span>' +
-    '<span class="ab" data-act="' + a.id + '" style="cursor:pointer">' +
-      '<span class="a1"><span class="at">' + esc(a.title) + '</span>' +
-        (when ? '<span class="aw' + (late ? ' late' : '') + '">' + esc(when) + '</span>' : '') + '</span>' +
-      '<span class="a2">' + esc(sub) + '</span>' +
-    '</span>' + acts + '</div>';
+  const tick = may
+    ? '<button class="pck' + (done ? ' on' : '') + '" data-tog="' + a.id + '" aria-label="' +
+      (done ? 'Снять отметку' : 'Отметить сделанным') + '">' + (done ? icon('check') : '') + '</button>'
+    : '<span class="pck' + (done ? ' on' : '') + '">' + (done ? icon('check') : '') + '</span>';
+
+  const body = '<span class="pt">' + esc(a.title) + '</span>' +
+    (meta.length ? '<span class="pm">' + meta.join('') + '</span>' : '');
+
+  const sug = (SUGGEST && SUGGEST.id === a.id && !a.target && may && !done)
+    ? '<div class="sugrow"><button class="chip sm" data-sug="' + a.id + '">' +
+      'Счётчик 0/' + SUGGEST.num + '</button></div>'
+    : '';
+
+  return '<div class="pitem' + (done ? ' done' : '') + '">' + tick +
+      (may
+        ? '<button class="pb" data-open="' + a.id + '">' + body + '</button>'
+        : '<span class="pb ro">' + body + '</span>') +
+      (earlier && may
+        ? '<button class="btn ghost sm" data-today="' + a.id + '">На сегодня</button>'
+        : counter) +
+    '</div>' + sug;
 }
 
-/* ============================================================
-   ГОТОВО И ПЕРЕНОС
-   ============================================================ */
-function findAct(id){ return ITEMS.concat(OVERDUE).find(a => a.id === id); }
-
-function askDone(id){
-  const a = findAct(id);
-  modalOpen({
-    title:'Дело сделано',
-    bodyHTML:
-      '<div class="text-block" style="margin-bottom:12px">' + esc(a ? a.title : '') + '</div>' +
-      '<div class="field"><label class="field-label" for="dnRes">Результат</label>' +
-        '<textarea id="dnRes" rows="3" placeholder="О чём договорились"></textarea></div>',
-    saveLabel:'Отметить',
-    onSave: async () => {
-      modalBusy(true, 'Сохраняем…');
-      const { error } = await sb.from('activities').update({
-        done_at: new Date().toISOString(),
-        result: document.getElementById('dnRes').value.trim() || null
-      }).eq('id', id);
-      if(error){ modalBusy(false, 'Отметить'); return modalMsg(errText(error, 'update')); }
-      modalClose(); playDone(); toast('Отмечено'); KPI_LOADED = ''; await load();
-      if($('kpi').open) loadKpi();
-    }
-  });
+function wire(box){
+  if(!box) return;
+  box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openItem(Number(b.dataset.open)));
+  box.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => toggleDone(Number(b.dataset.tog)));
+  box.querySelectorAll('[data-inc]').forEach(b => b.onclick = () => bump(Number(b.dataset.inc), 1));
+  box.querySelectorAll('[data-dec]').forEach(b => b.onclick = () => bump(Number(b.dataset.dec), -1));
+  box.querySelectorAll('[data-sug]').forEach(b => b.onclick = () => applySuggest(Number(b.dataset.sug)));
+  box.querySelectorAll('[data-today]').forEach(b => b.onclick = () => moveOne(Number(b.dataset.today)));
 }
 
-function askMove(id){
-  const a = findAct(id);
-  const cur = a && a.due_at ? isoToLocalInput(new Date(a.due_at)) : '';
-  modalOpen({
-    title:'Перенести',
-    bodyHTML:
-      '<div class="text-block" style="margin-bottom:12px">' + esc(a ? a.title : '') + '</div>' +
-      '<div class="field"><label class="field-label" for="mvAt">Новая дата и время</label>' +
-        '<input id="mvAt" type="datetime-local" value="' + esc(cur) + '"></div>',
-    saveLabel:'Перенести',
-    onSave: async () => {
-      const v = document.getElementById('mvAt').value;
-      if(!v) return modalMsg('Укажите дату и время');
-      modalBusy(true, 'Переносим…');
-      const { error } = await sb.from('activities').update({ due_at: localToISO(v) }).eq('id', id);
-      if(error){ modalBusy(false, 'Перенести'); return modalMsg(errText(error, 'update')); }
-      modalClose(); toast('Перенесено'); await load();
-    }
-  });
+function findItem(id){
+  return ITEMS.find(a => a.id === id) || EARLIER.find(a => a.id === id) || null;
 }
-
-/* ============================================================
-   КАРТОЧКА ДЕЛА
-   ============================================================ */
-async function openActivity(id){
-  modalOpen({ title:'Дело', bodyHTML:'<div class="loading">Загрузка…</div>' });
-  const { data:a, error } = await sb.from('activities').select(ACT_COLS).eq('id', id).maybeSingle();
-  if(error){ modalBody().innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
-  if(!a){ modalBody().innerHTML = '<div class="empty">Дело не найдено или закрыто для вас</div>'; return; }
-
-  const kv = [
-    ['Вид', esc(ACTIVITY_KIND_RU[a.kind] || a.kind)],
-    ['Когда', a.due_at ? '<span class="num">' + esc(fmtDateTime(a.due_at)) + '</span>' : '<span class="sub">без времени</span>'],
-    ['Клиент', a.client
-      ? '<a href="clients.html?id=' + a.client.id + '" style="color:var(--brand);font-weight:700">' +
-        esc(a.client.full_name) + '</a>' + (a.client.phone ? ' · ' + phoneHTML(a.client.phone) : '')
-      : '<span class="sub">не указан</span>'],
-    ['Сделка', a.deal
-      ? '<a href="deals.html?id=' + a.deal.id + '" style="color:var(--brand);font-weight:700">' +
-        esc(a.deal.title) + '</a>'
-      : '<span class="sub">не привязано</span>'],
-    ['Исполнитель', esc(empName(a.owner_id))],
-    ['Статус', a.done_at
-      ? '<span class="tag-ok">сделано ' + esc(fmtDateTime(a.done_at)) + '</span>'
-      : '<span class="tag-off">запланировано</span>']
-  ];
-
-  const may = mayAddFor(a.owner_id);
-  modalBody().innerHTML =
-    '<div class="chead" style="padding:0 0 12px"><h2>' + esc(a.title) + '</h2></div>' +
-    '<dl class="kv" style="padding:0">' +
-      kv.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
-    (a.note ? '<div class="field-label" style="margin-top:12px">Заметка</div>' +
-      '<div class="text-block">' + esc(a.note) + '</div>' : '') +
-    (a.result ? '<div class="field-label" style="margin-top:12px">Результат</div>' +
-      '<div class="text-block">' + esc(a.result) + '</div>' : '') +
-    (may ? '<div class="btn-row" style="margin-top:16px">' +
-      (a.done_at ? '' : '<button class="btn ok" id="aDone" style="flex:1">Готово</button>' +
-        '<button class="btn ghost" id="aMove">Перенести</button>') +
-      '<button class="btn ghost" id="aEdit">Изменить</button></div>' : '');
-
-  if(may){
-    if($('aDone')) $('aDone').onclick = () => askDone(a.id);
-    if($('aMove')) $('aMove').onclick = () => askMove(a.id);
-    $('aEdit').onclick = () => openActForm(a.kind, a);
+/* Строку после правки заменяем на то, что вернула база: там уже сработали
+   триггеры (plan_date из due_at, done_at из счётчика). */
+function putItem(row){
+  if(!row) return;
+  const day = String(row.plan_date || '').slice(0, 10);
+  EARLIER = EARLIER.filter(a => a.id !== row.id);
+  const i = ITEMS.findIndex(a => a.id === row.id);
+  if(day === DAY){
+    if(i >= 0) ITEMS[i] = row; else ITEMS.push(row);
+  }else{
+    if(i >= 0) ITEMS.splice(i, 1);
+    if(!row.done_at && day && day < tzYmd() && DAY === tzYmd()) EARLIER.push(row);
   }
 }
 
 /* ============================================================
-   БЫСТРОЕ ДОБАВЛЕНИЕ
+   ГАЛОЧКА И СЧЁТЧИК
    ============================================================ */
-let A_CLIENT = null, A_DEALS = [];
+async function toggleDone(id){
+  const a = findItem(id);
+  if(!a || !mayEdit()) return;
+  const on = !a.done_at;
+  const rec = { done_at: on ? new Date().toISOString() : null };
+  // у пункта со счётчиком галочка значит «сделал всё»: иначе триггер,
+  // который ведёт done_at от progress, тут же вернёт отметку обратно
+  if(a.target) rec.progress = on ? a.target : 0;
 
-function actDraft(){
-  if(!document.getElementById('aTitle')) return null;
+  const { data, error } = await sb.from('activities').update(rec)
+    .eq('id', id).select(ACT_COLS).maybeSingle();
+  if(error) return toast(errText(error, 'update'));
+  putItem(data);
+  if(on) playDone();
+  paint();
+  loadTeam();
+}
+
+async function bump(id, d){
+  const a = findItem(id);
+  if(!a || !a.target || !mayEdit()) return;
+  const was = a.progress || 0;
+  const n = Math.max(0, Math.min(was + d, a.target));
+  if(n === was) return;
+
+  const { data, error } = await sb.from('activities').update({ progress: n })
+    .eq('id', id).select(ACT_COLS).maybeSingle();
+  if(error) return toast(errText(error, 'update'));
+  const wasDone = !!a.done_at;
+  putItem(data);
+  if(data && data.done_at && !wasDone) playDone();
+  paint();
+  loadTeam();
+}
+
+async function applySuggest(id){
+  const a = findItem(id);
+  if(!a || !SUGGEST || SUGGEST.id !== id) return;
+  const { data, error } = await sb.from('activities').update({ target: SUGGEST.num })
+    .eq('id', id).select(ACT_COLS).maybeSingle();
+  if(error) return toast(errText(error, 'update'));
+  SUGGEST = null;
+  putItem(data);
+  paint();
+}
+
+/* ============================================================
+   ДОБАВЛЕНИЕ
+   Строка ввода — главный способ завести пункт. Список, вставленный
+   целиком («1. … 2. …» или с переносами), разбираем на пункты.
+   ============================================================ */
+function splitItems(text){
+  let parts = String(text || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if(parts.length === 1 && /(^|\s)\d{1,2}[.)]\s/.test(parts[0])){
+    parts = parts[0].split(/(?:^|\s)\d{1,2}[.)]\s+/);
+  }
+  return parts
+    .map(s => s.replace(/^\s*(?:\d{1,2}[.)]|[-–—•*])\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 50);
+}
+/* «обзвонить 50 мастеров» → 50. Само по себе ничего не включает,
+   только предлагает счётчик. Время вида 14:00 за число не считаем. */
+function guessTarget(title){
+  const m = String(title || '').match(/(?:^|[^\d:])(\d{1,4})(?![\d:])/);
+  const n = m ? Number(m[1]) : 0;
+  return n >= 2 && n <= 9999 ? n : 0;
+}
+
+async function addFromInput(){
+  if(!mayEdit()) return;
+  const parts = splitItems($('addTitle').value);
+  if(!parts.length){ $('addTitle').focus(); return; }
+
+  $('addTitle').value = '';
+  $('addTitle').focus();
+  $('addGo').disabled = true;
+
+  const base = { owner_id: WHO, plan_date: DAY };
+  if(NEW_CLIENT) base.client_id = NEW_CLIENT.id;
+  const top = ITEMS.reduce((m, a) => Math.max(m, a.sort_order || 0), 0);
+  const recs = parts.map((t, i) =>
+    Object.assign({}, base, { title: t, sort_order: top + i + 1 }));
+
+  const { data, error } = await sb.from('activities').insert(recs).select(ACT_COLS);
+  $('addGo').disabled = false;
+  if(error) return toast(errText(error, 'insert'));
+
+  NEW_CLIENT = null;
+  paintAdd();
+  const rows = data || [];
+  ITEMS = ITEMS.concat(rows);
+  // счётчик предлагаем, только когда добавили ровно один пункт
+  SUGGEST = null;
+  if(rows.length === 1){
+    const n = guessTarget(rows[0].title);
+    if(n) SUGGEST = { id: rows[0].id, num: n };
+  }
+  paint();
+  $('addTitle').focus();
+  loadTeam();
+}
+
+function paintAdd(){
+  $('addWrap').hidden = !mayEdit();
+  $('addChips').innerHTML = NEW_CLIENT
+    ? '<span class="tagbox">' + esc(NEW_CLIENT.full_name) +
+      '<button class="tx" id="clrClient" aria-label="Убрать клиента">' + icon('x') + '</button></span>'
+    : '';
+  if($('clrClient')) $('clrClient').onclick = () => { NEW_CLIENT = null; paintAdd(); };
+}
+async function presetClient(id){
+  if(!id) return;
+  const { data } = await sb.from('clients').select('id,full_name,phone').eq('id', id).maybeSingle();
+  if(data){ NEW_CLIENT = data; paintAdd(); }
+}
+
+/* ============================================================
+   ПЕРЕНОС НА ДРУГОЙ ДЕНЬ
+   У пункта со временем двигаем и время: plan_date база выводит
+   из due_at, иначе пункт вернётся на прежний день.
+   ============================================================ */
+function moveRec(a, day){
+  const rec = { plan_date: day };
+  if(a.due_at){
+    const t = tzHM(a.due_at);
+    rec.due_at = tzAt(day, t.h, t.m);
+  }
+  return rec;
+}
+async function moveOne(id){
+  const a = findItem(id);
+  if(!a || !mayEdit()) return;
+  const { data, error } = await sb.from('activities').update(moveRec(a, tzYmd()))
+    .eq('id', id).select(ACT_COLS).maybeSingle();
+  if(error) return toast(errText(error, 'update'));
+  putItem(data);
+  paint();
+  loadTeam();
+}
+async function allToday(){
+  if(!EARLIER.length || !mayEdit()) return;
+  const today = tzYmd();
+  const btn = $('allToday');
+  if(btn){ btn.disabled = true; btn.textContent = 'Переносим…'; }
+
+  const plain = EARLIER.filter(a => !a.due_at).map(a => a.id);
+  const jobs = EARLIER.filter(a => a.due_at)
+    .map(a => sb.from('activities').update(moveRec(a, today)).eq('id', a.id));
+  if(plain.length) jobs.push(sb.from('activities').update({ plan_date: today }).in('id', plain));
+
+  const res = await Promise.all(jobs);
+  const bad = res.find(r => r.error);
+  if(bad) toast(errText(bad.error, 'update'));
+  await load();
+}
+
+/* ============================================================
+   КАРТОЧКА ПУНКТА
+   Телефон — шторка снизу, ПК — обычная модалка.
+   ============================================================ */
+function sheetDraft(){
+  if(!document.getElementById('sTitle')) return null;
   const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
-  return {
-    draft:true, title:g('aTitle'), kind:g('aKind'), due_local:g('aAt'),
-    deal_id:g('aDeal'), note:g('aNote'), result:g('aResult'),
-    done: document.getElementById('aDone2') ? document.getElementById('aDone2').checked : false
-  };
+  return { title:g('sTitle'), time:g('sTime'), target:g('sTarget'), note:g('sNote') };
 }
 
-async function openActForm(kind, act, draft, clientId){
-  if(!draft){
-    A_CLIENT = act && act.client ? act.client : null;
-    if(!act && clientId){
-      const { data } = await sb.from('clients').select('id,full_name,phone')
-        .eq('id', Number(clientId)).maybeSingle();
-      if(data) A_CLIENT = data;
-    }
-  }
-  A_DEALS = A_CLIENT ? await clientDeals(A_CLIENT.id) : [];
+function openItem(id, draft){
+  const a = findItem(id);
+  if(!a || !mayEdit()) return;
+  if(!draft) S_CLIENT = a.client || null;
 
-  const v = draft || act || {};
-  const defAt = new Date(DAY);
-  defAt.setHours(new Date().getHours() + 1, 0, 0, 0);
-  const atLocal = draft ? draft.due_local
-    : (act && act.due_at ? isoToLocalInput(new Date(act.due_at)) : isoToLocalInput(defAt));
-  const curKind = v.kind || kind;
-  const curDeal = draft ? draft.deal_id : (act ? String(act.deal_id || '') : '');
+  const v = draft || {};
+  const t = a.due_at ? tzHM(a.due_at) : null;
+  const time = draft ? draft.time : (t ? p2(t.h) + ':' + p2(t.m) : '');
+  const target = draft ? draft.target : (a.target || '');
 
   modalOpen({
-    title: act ? 'Изменить дело' : 'Новое дело' + (WHO === ME.id ? '' : ' — ' + empName(WHO)),
+    sheet: true,
+    title: 'Пункт плана',
     bodyHTML:
+      '<div class="field"><label class="field-label" for="sTitle">Что сделать <span class="req">*</span></label>' +
+        '<input id="sTitle" maxlength="300" value="' + esc(draft ? v.title : a.title) + '"></div>' +
       '<div class="row2">' +
-        '<div class="field"><label class="field-label" for="aKind">Вид</label>' +
-          '<select id="aKind">' + optionsFrom(ACTIVITY_KIND_RU, curKind) + '</select></div>' +
-        '<div class="field"><label class="field-label" for="aAt">Когда</label>' +
-          '<input id="aAt" type="datetime-local" value="' + esc(atLocal) + '"></div>' +
+        '<div class="field"><label class="field-label" for="sTime">Время</label>' +
+          '<input id="sTime" type="time" value="' + esc(time) + '">' +
+          '<div class="hint">Пусто — пункт без времени</div></div>' +
+        '<div class="field"><label class="field-label" for="sTarget">Счётчик, цель</label>' +
+          '<input id="sTarget" type="number" min="0" max="9999" inputmode="numeric" ' +
+            'placeholder="нет" value="' + esc(target) + '"></div>' +
       '</div>' +
-      '<div class="field"><label class="field-label" for="aTitle">Что сделать <span class="req">*</span></label>' +
-        '<input id="aTitle" maxlength="200" value="' + esc(v.title || '') + '" ' +
-        'placeholder="Позвонить по расчёту"></div>' +
       '<div class="field"><label class="field-label">Клиент</label>' +
-        '<div class="inline-add"><input id="aClient" readonly value="' +
-          esc(A_CLIENT ? A_CLIENT.full_name : '') + '" placeholder="не выбран">' +
-          '<button class="btn ghost" id="aPick" type="button">Выбрать</button>' +
-          (A_CLIENT ? '<button class="btn ghost" id="aClear" type="button">' + icon('x') + '</button>' : '') +
+        '<div class="inline-add"><input id="sClient" readonly placeholder="не выбран" value="' +
+          esc(S_CLIENT ? S_CLIENT.full_name : '') + '">' +
+          '<button class="btn ghost" id="sPick" type="button">Выбрать</button>' +
+          (S_CLIENT ? '<button class="btn ghost" id="sClear" type="button">' + icon('x') + '</button>' : '') +
         '</div></div>' +
-      (A_DEALS.length
-        ? '<div class="field"><label class="field-label" for="aDeal">Сделка</label>' +
-          '<select id="aDeal"><option value="">Без сделки</option>' +
-          A_DEALS.map(d => '<option value="' + d.id + '"' + (curDeal === String(d.id) ? ' selected' : '') + '>' +
-            esc(d.title) + ' · ' + esc(DEAL_STAGE_RU[d.stage] || d.stage) + '</option>').join('') +
-          '</select></div>'
-        : '') +
-      '<div class="field"><label class="field-label" for="aNote">Заметка</label>' +
-        '<textarea id="aNote" rows="2">' + esc(v.note || '') + '</textarea></div>' +
-      '<label class="chk" style="margin-bottom:10px"><input type="checkbox" id="aDone2"' +
-        ((v.done || (act && act.done_at)) ? ' checked' : '') + '>Уже сделано</label>' +
-      '<div class="field"><label class="field-label" for="aResult">Результат</label>' +
-        '<textarea id="aResult" rows="2" placeholder="заполняется, когда дело сделано">' +
-        esc(v.result || '') + '</textarea></div>',
-    saveLabel: act ? 'Сохранить' : 'Добавить',
-    onSave: () => saveAct(act)
+      '<div class="field"><label class="field-label" for="sNote">Заметка</label>' +
+        '<textarea id="sNote" rows="2">' + esc(draft ? v.note : (a.note || '')) + '</textarea></div>' +
+      '<div class="btn-row">' +
+        '<button class="btn ghost" id="sTom">На завтра</button>' +
+        '<button class="btn danger" id="sDel">Удалить</button>' +
+      '</div>',
+    saveLabel: 'Сохранить',
+    onSave: () => saveItem(a)
   });
 
-  document.getElementById('aPick').onclick = () => {
-    const keep = actDraft();
-    pickClient(c => { A_CLIENT = c; openActForm(kind, act, keep); });
+  document.getElementById('sPick').onclick = () => {
+    const keep = sheetDraft();
+    pickClient(c => { S_CLIENT = c; openItem(id, keep); });
   };
-  if(document.getElementById('aClear')){
-    document.getElementById('aClear').onclick = () => {
-      const keep = actDraft();
-      A_CLIENT = null;
-      openActForm(kind, act, keep);
+  if(document.getElementById('sClear')){
+    document.getElementById('sClear').onclick = () => {
+      const keep = sheetDraft();
+      S_CLIENT = null;
+      openItem(id, keep);
     };
   }
-  document.getElementById('aTitle').focus();
+  document.getElementById('sTom').onclick = () => moveSheet(a);
+  document.getElementById('sDel').onclick = () => askDelete(a);
 }
 
-async function clientDeals(id){
-  const { data } = await sb.from('deals').select('id,title,stage')
-    .eq('client_id', id).in('stage', DEAL_OPEN_STAGES).order('updated_at', { ascending:false }).limit(20);
-  return data || [];
-}
-
-async function saveAct(act){
-  const title = document.getElementById('aTitle').value.trim();
+async function saveItem(a){
+  const title = document.getElementById('sTitle').value.trim();
   if(!title) return modalMsg('Впишите, что нужно сделать');
-  const at = document.getElementById('aAt').value;
-  const dealSel = document.getElementById('aDeal');
-  const done = document.getElementById('aDone2').checked;
-  const result = document.getElementById('aResult').value.trim();
+
+  const day = String(a.plan_date || DAY).slice(0, 10);
+  const time = document.getElementById('sTime').value;
+  const raw = document.getElementById('sTarget').value.trim();
+  const num = raw === '' ? 0 : Math.max(0, Math.min(9999, Math.round(Number(raw) || 0)));
 
   const rec = {
-    kind: document.getElementById('aKind').value,
     title,
-    due_at: at ? localToISO(at) : null,
-    client_id: A_CLIENT ? A_CLIENT.id : null,
-    deal_id: dealSel && dealSel.value ? Number(dealSel.value) : null,
-    note: document.getElementById('aNote').value.trim() || null,
-    result: result || null
+    note: document.getElementById('sNote').value.trim() || null,
+    client_id: S_CLIENT ? S_CLIENT.id : null,
+    target: num > 0 ? num : null,
+    due_at: time ? tzAt(day, Number(time.slice(0, 2)), Number(time.slice(3, 5))) : null
   };
-  if(done) rec.done_at = (act && act.done_at) || new Date().toISOString();
-  else rec.done_at = null;
-  if(!act) rec.owner_id = WHO;
+  // сняли счётчик — обнуляем и набранное, иначе оно всплывёт, когда цель вернут
+  if(!rec.target) rec.progress = 0;
 
   modalBusy(true, 'Сохраняем…');
-  const res = act
-    ? await sb.from('activities').update(rec).eq('id', act.id)
-    : await sb.from('activities').insert(rec);
-  if(res.error){
-    modalBusy(false, act ? 'Сохранить' : 'Добавить');
-    return modalMsg(errText(res.error, act ? 'update' : 'insert'));
-  }
+  const { data, error } = await sb.from('activities').update(rec)
+    .eq('id', a.id).select(ACT_COLS).maybeSingle();
+  if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error, 'update')); }
   modalClose();
-  if(done) playDone();
-  toast(act ? 'Сохранено' : 'Дело добавлено');
-  KPI_LOADED = '';
-  await load();
-  if($('kpi').open) loadKpi();
+  putItem(data);
+  paint();
+  loadTeam();
+}
+
+async function moveSheet(a){
+  const day = tzShift(String(a.plan_date || DAY).slice(0, 10), 1);
+  modalBusy(true, 'Переносим…');
+  const { data, error } = await sb.from('activities').update(moveRec(a, day))
+    .eq('id', a.id).select(ACT_COLS).maybeSingle();
+  if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error, 'update')); }
+  modalClose();
+  putItem(data);
+  paint();
+  toast('Перенесено на завтра');
+  loadTeam();
+}
+
+function askDelete(a){
+  confirmBox('Удалить пункт?', a.title, 'Удалить', async () => {
+    const { error } = await sb.from('activities').delete().eq('id', a.id);
+    if(error) return toast(errText(error, 'update'));
+    ITEMS = ITEMS.filter(x => x.id !== a.id);
+    EARLIER = EARLIER.filter(x => x.id !== a.id);
+    paint();
+    toast('Удалено');
+    loadTeam();
+  });
 }
 
 /* ============================================================
-   ПОКАЗАТЕЛИ И РЕЙТИНГ
-   crm.sales_stats(emp, from, to) за неделю и месяц.
-   Менеджер видит свои; руководитель — свои и команды.
+   ПЛАН КОМАНДЫ
+   Один запрос на всех, кого человеку видно, за выбранный день.
    ============================================================ */
-const KPI_ROWS = [
-  ['deals_open',    'Открытых сделок'],
-  ['deals_new',     'Новых сделок'],
-  ['won',           'Продано, штук'],
-  ['won_amount',    'Продано, сумма', 'money'],
-  ['complect',      'Из них комплектом'],
-  ['coupons',       'С купоном'],
-  ['lost',          'Отказов'],
-  ['calls_done',    'Звонков'],
-  ['meetings_done', 'Встреч и визитов'],
-  ['plan_missed',   'Пропущено дел по плану'],
-  ['new_clients',   'Новых клиентов']
-];
+async function loadTeam(){
+  const box = $('teamBox');
+  if(!box) return;
+  if(!mayPickWho()){ box.innerHTML = ''; return syncSide(); }
 
-async function loadKpi(){
-  if(KPI_LOADED === WHO) return;
-  KPI_LOADED = WHO;
-  $('kbody').innerHTML = '<div class="loading">Считаем…</div>';
+  const people = whoList().filter(Boolean);
+  if(people.length < 2){ box.innerHTML = ''; return syncSide(); }
 
-  const now = new Date(), to = endOfToday();
-  const [week, month] = await Promise.all([
-    stats(WHO, weekStart(now), to),
-    stats(WHO, monthStart(now), to)
-  ]);
+  const day = DAY;
+  const { data, error } = await sb.from('activities')
+    .select('owner_id,done_at').eq('plan_date', day)
+    .in('owner_id', people.map(e => e.id)).limit(3000);
+  if(day !== DAY) return;
+  if(error){ box.innerHTML = ''; return syncSide(); }
 
-  if(!week && !month){
-    $('kbody').innerHTML = '<div class="empty">Показатели этого сотрудника вам не открыты</div>';
-    return;
-  }
-  const cell = (d, key, fmt) => {
-    if(!d || d[key] === undefined || d[key] === null) return '—';
-    return fmt === 'money' ? fmtMoney(d[key], 'TJS') : String(d[key]);
-  };
-
-  let html =
-    '<div class="kgrid">' +
-      '<div></div><div class="kh2">Неделя</div><div class="kh2">Месяц</div>' +
-      KPI_ROWS.map(r =>
-        '<div class="kk">' + esc(r[1]) + '</div>' +
-        '<div class="kv2">' + esc(cell(week, r[0], r[2])) + '</div>' +
-        '<div class="kv2">' + esc(cell(month, r[0], r[2])) + '</div>').join('') +
-    '</div>' +
-    '<div class="hint">План/факт по деньгам появится после подключения 1С</div>';
-
-  $('kbody').innerHTML = html +
-    '<div id="acBox"></div><div id="acAllBox"></div><div id="rankBox"></div>';
-  loadRank();
-  loadAvgCheck();
-}
-
-async function stats(emp, from, to){
-  const { data, error } = await sb.schema('crm').rpc('sales_stats', {
-    p_emp: emp, p_from: from.toISOString(), p_to: to.toISOString()
+  const agg = {};
+  (data || []).forEach(r => {
+    const x = agg[r.owner_id] || (agg[r.owner_id] = { all:0, done:0 });
+    x.all++;
+    if(r.done_at) x.done++;
   });
-  return error ? null : data;
+
+  box.innerHTML =
+    '<div class="sec" style="margin-left:0">План команды · ' + esc(dayLabel(day).toLowerCase()) + '</div>' +
+    people.map(e => {
+      const x = agg[e.id];
+      const pct = x && x.all ? Math.round(x.done / x.all * 100) : 0;
+      return '<button class="tmrow' + (e.id === WHO ? ' me' : '') + '" data-who="' + esc(e.id) + '">' +
+        '<span class="t1"><span class="tn">' + esc(e.id === ME.id ? 'Я' : e.full_name) + '</span>' +
+          (x ? '<span class="tv">' + x.done + ' из ' + x.all + '</span>'
+             : '<span class="tv off">плана нет</span>') + '</span>' +
+        (x ? '<span class="tprog' + (pct >= 100 ? ' hit' : '') + '">' +
+             '<i style="width:' + pct + '%"></i></span>' : '') +
+      '</button>';
+    }).join('');
+  box.querySelectorAll('[data-who]').forEach(b => b.onclick = () => switchWho(b.dataset.who));
+  syncSide();
 }
 
-/* Рейтинг команды за месяц — руководителю видно, кто как продаёт */
-async function loadRank(){
-  const box = $('rankBox');
-  const boss = hasTeam() || isBossRole() || ['head','regional'].includes(ME.role);
-  if(!box || !boss) return;
-  const wide = isBossRole() || ['head','regional'].includes(ME.role);
-  const people = (wide ? EMPS : [EMP_BY_ID[ME.id]].concat(myTeam()))
-    .filter(Boolean)
-    .filter(e => ['sales','head','regional'].includes(e.role))
-    .slice(0, 20);
-  if(people.length < 2) return;
+/* Правая колонка пустая — прячем её вместе с разделителем */
+function syncSide(){
+  const side = $('pside');
+  if(!side) return;
+  side.hidden = !['teamBox','acBox','acAllBox']
+    .some(id => $(id) && $(id).innerHTML.trim());
+}
 
-  box.innerHTML = '<div class="sec" style="margin-left:0">Рейтинг за месяц</div>' +
-    '<div class="loading">Считаем…</div>';
-  const now = new Date(), from = monthStart(now), to = endOfToday();
-  const res = await Promise.all(people.map(e => stats(e.id, from, to)));
-
-  const rows = people.map((e, i) => ({ e, d: res[i] }))
-    .filter(r => r.d)
-    .sort((a, b) => (Number(b.d.won_amount) || 0) - (Number(a.d.won_amount) || 0));
-  if(!rows.length){ box.innerHTML = ''; return; }
-
-  box.innerHTML = '<div class="sec" style="margin-left:0">Рейтинг за месяц</div>' +
-    rows.map((r, i) =>
-      '<div class="rank' + (r.e.id === WHO ? ' me' : '') + '">' +
-        '<span class="rn">' + (i + 1) + '</span>' +
-        '<span class="rb2"><span class="rnm">' + esc(r.e.full_name) + '</span>' +
-          '<span class="rs">продано ' + (r.d.won || 0) +
-            ' · звонков ' + (r.d.calls_done || 0) +
-            ' · встреч ' + (r.d.meetings_done || 0) + '</span></span>' +
-        '<span class="rv">' + esc(fmtMoney(r.d.won_amount || 0, 'TJS')) + '</span>' +
-      '</div>').join('') +
-    '<div class="hint">Место — по сумме продаж за текущий месяц.</div>';
+function loadAvg(){
+  if(AC_LOADED === WHO) return;
+  AC_LOADED = WHO;
+  loadAvgCheck().then(syncSide, syncSide);
 }
 
 /* ============================================================

@@ -510,8 +510,6 @@ const SECTIONS = [
     roles:['sales','head','regional','brand','admin','director','auditor'] },
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
     notRoles:['production','cashier'] },
-  { key:'deals',   group:'sales',   label:'Сделки',         href:'deals.html',            icon:'deal',
-    roles:['sales','head','regional','admin','director','auditor'] },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star',
     soon:true },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
@@ -1119,6 +1117,38 @@ function tzWeekStart(day){                     // понедельник той 
 }
 function tzMonthStart(day){ return (day || tzYmd()).slice(0, 8) + '01'; }
 
+/* Часы и минуты по Душанбе — «Мой план» показывает время дня, к которому
+   пункт привязан, а не время на устройстве смотрящего. */
+const TZ_CLOCK = new Intl.DateTimeFormat('ru-RU', {
+  timeZone: TZ_DUSHANBE, hour:'2-digit', minute:'2-digit', hour12:false
+});
+function tzTime(iso){ return iso ? TZ_CLOCK.format(new Date(iso)) : ''; }
+
+/* Настенное время зоны, прочитанное как UTC-отметка — нужно для tzAt(). */
+const TZ_WALL = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ_DUSHANBE, hour12:false,
+  year:'numeric', month:'2-digit', day:'2-digit',
+  hour:'2-digit', minute:'2-digit', second:'2-digit'
+});
+function tzWallMs(d){
+  const p = {};
+  TZ_WALL.formatToParts(d).forEach(x => p[x.type] = x.value);
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+}
+/* Момент, который в Душанбе выглядит как day + чч:мм.
+   Смещение не зашиваем: берём наивную точку и правим её на то,
+   насколько зона разошлась с UTC в этот момент. */
+function tzAt(day, h, m){
+  const p = String(day).split('-');
+  const naive = Date.UTC(+p[0], +p[1] - 1, +p[2], h || 0, m || 0);
+  return new Date(naive - (tzWallMs(new Date(naive)) - naive)).toISOString();
+}
+/* Часы и минуты по Душанбе числами — чтобы перенести пункт, сохранив время */
+function tzHM(iso){
+  const w = new Date(tzWallMs(new Date(iso)));
+  return { h: w.getUTCHours(), m: w.getUTCMinutes() };
+}
+
 /* «сегодня 14:20» / «3 дня назад» / «—» */
 function agoText(iso){
   if(!iso) return '—';
@@ -1281,7 +1311,8 @@ function staleDays(iso){
 function modalOpen(o){
   modalClose();
   const el = document.createElement('div');
-  el.className = 'modal';
+  // sheet: на телефоне выезжает снизу, на ПК остаётся обычной модалкой
+  el.className = o.sheet ? 'modal sheet' : 'modal';
   el.id = 'crmModal';
   el.innerHTML =
     '<div class="modal-box"' + (o.wide ? ' style="max-width:720px"' : '') + '>' +

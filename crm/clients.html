@@ -257,8 +257,7 @@ function paintClient(c){
 
   const acts = [];
   if(canEdit()){
-    acts.push('<button class="btn" id="cDeal">' + icon('deal') + 'Сделка</button>');
-    acts.push('<button class="btn ghost" id="cAct">' + icon('phone') + 'Звонок/встреча</button>');
+    acts.push('<button class="btn" id="cAct">' + icon('plus') + 'В план</button>');
     if(canServiceOrder()) acts.push('<button class="btn ghost" id="cOrder">' + icon('list') + 'Заявка на распил</button>');
   }
 
@@ -277,7 +276,6 @@ function paintClient(c){
     '<div class="sec">История</div><div class="tl" id="feed"><div class="loading">Загрузка…</div></div>';
 
   if(canEdit()){
-    $('cDeal').onclick = () => location.href = 'deals.html?new=1&client=' + c.id;
     $('cAct').onclick = () => location.href = 'plan.html?new=1&client=' + c.id;
     if($('cOrder')) $('cOrder').onclick = () => location.href = 'callcenter.html?tab=orders&new=1&client=' + c.id;
   }
@@ -346,11 +344,9 @@ function askOwner(c){
    ============================================================ */
 async function loadFeed(id){
   const safe = p => p.then(r => r.error ? [] : (r.data || [])).catch(() => []);
-  const [acts, deals, orders, calls, fb] = await Promise.all([
-    safe(sb.from('activities').select('id,kind,title,result,due_at,done_at,deal_id')
-      .eq('client_id', id).order('due_at', { ascending:false }).limit(50)),
-    safe(sb.from('deals').select('id,title,stage,amount,currency,created_at,closed_at')
-      .eq('client_id', id).order('created_at', { ascending:false }).limit(50)),
+  const [acts, orders, calls, fb] = await Promise.all([
+    safe(sb.from('activities').select('id,title,note,plan_date,due_at,done_at')
+      .eq('client_id', id).order('plan_date', { ascending:false }).limit(50)),
     safe(sb.from('service_orders').select('id,status,material,sheets_count,due_date,created_at')
       .eq('client_id', id).order('created_at', { ascending:false }).limit(30)),
     safe(sb.from('callbacks').select('id,step,status,due_date,rating,result,done_at')
@@ -361,17 +357,10 @@ async function loadFeed(id){
 
   const items = [];
   acts.forEach(a => items.push({
-    at: a.done_at || a.due_at, ic: ACTIVITY_ICON[a.kind] || 'list',
-    title: a.title || ACTIVITY_KIND_RU[a.kind],
-    sub: ACTIVITY_KIND_RU[a.kind] + (a.done_at ? ' · сделано' : ' · запланировано') +
-         (a.result ? ' · ' + a.result : ''),
+    at: a.done_at || a.due_at || (a.plan_date ? a.plan_date + 'T12:00' : null), ic:'list',
+    title: a.title || 'Пункт плана',
+    sub: (a.done_at ? 'сделано' : 'в плане') + (a.note ? ' · ' + a.note : ''),
     link: 'plan.html?id=' + a.id
-  }));
-  deals.forEach(d => items.push({
-    at: d.closed_at || d.created_at, ic:'deal', title: d.title,
-    sub: (DEAL_STAGE_RU[d.stage] || d.stage) +
-         (d.amount ? ' · ' + fmtMoney(d.amount, d.currency) : ''),
-    link: 'deals.html?id=' + d.id
   }));
   orders.forEach(o => items.push({
     at: o.created_at, ic:'list', title:'Заявка на распил №' + o.id,

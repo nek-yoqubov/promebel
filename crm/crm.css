@@ -491,6 +491,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .modal-head h2{flex:1;min-width:0;font:800 17px 'Manrope';white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;padding-left:8px}
 .modal-body{padding:16px;overflow:auto;flex:1;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+/* Шторка: на телефоне выезжает снизу и занимает столько, сколько нужно */
+.modal.sheet{align-items:flex-end}
+.modal.sheet .modal-box{min-height:0;max-height:92dvh;border-radius:18px 18px 0 0;
+  animation:sheetUp .2s ease-out}
+.modal.sheet .modal-head{border-radius:18px 18px 0 0}
 .text-block{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.55}
 .icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
   width:var(--tap);height:var(--tap);border:none;background:none;color:var(--ink-2);
@@ -661,6 +666,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .modal-box{border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
     min-height:0;max-height:88vh}
   .modal-head{border-radius:var(--radius) var(--radius) 0 0;height:56px}
+  .modal.sheet{align-items:center}
+  .modal.sheet .modal-box{border-radius:var(--radius);animation:pop .16s ease-out}
+  .modal.sheet .modal-head{border-radius:var(--radius) var(--radius) 0 0}
 }
 
 /* ============================================================
@@ -824,60 +832,91 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 
 /* ---------- Мой план ---------- */
 .planday{display:flex;align-items:center;gap:8px;padding:6px 16px 10px}
-.planday .pd{flex:1;min-width:0;font:800 17px 'Manrope';text-align:center;
+.planday .pd{flex:1;min-width:0;height:var(--tap);border:none;background:none;color:inherit;
+  font:800 17px 'Manrope';text-align:center;cursor:pointer;border-radius:12px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.actrow{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;min-height:66px;
+.planday .pd:hover{background:var(--card-2)}
+
+/* строка ввода — главный способ завести пункт */
+.addwrap{padding:0 16px 12px}
+.addline{display:flex;gap:8px;align-items:center;background:var(--card);
+  border:1.5px solid var(--line);border-radius:12px;padding-right:4px;transition:border-color .15s}
+.addline:focus-within{border-color:var(--brand)}
+.addline input{flex:1;min-width:0;background:none;border:none;border-radius:12px}
+.addline input:focus{outline:none;border:none}
+.addline .ib{color:var(--brand)}
+.addchips{display:flex;flex-wrap:wrap;gap:8px}
+.addchips:not(:empty){margin-top:8px}
+.addchips .tagbox{padding-right:4px}
+.addchips .tx{display:inline-flex;align-items:center;border:none;background:none;
+  color:var(--muted);cursor:pointer;padding:2px}
+.addchips .tx:hover{color:var(--ink)}
+.addchips .tx svg{width:15px;height:15px}
+
+/* пункт плана */
+.pitem{display:flex;align-items:center;gap:10px;padding:8px 16px;min-height:56px;
   border-bottom:1px solid var(--line)}
-.actrow.done{opacity:.6}
-.actrow .ai{color:var(--brand);flex:none;display:flex;margin-top:3px}
-.actrow .ab{flex:1;min-width:0}
-.actrow .a1{display:flex;align-items:baseline;gap:10px}
-.actrow .a1 .at{flex:1;min-width:0;font:700 15.5px 'Manrope';
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.actrow .a1 .aw{flex:none;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.actrow .a1 .aw.late{color:var(--late);font-weight:700}
-.actrow .a2{display:block;font-size:13px;color:var(--muted);margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.actrow .aa{display:flex;gap:6px;flex:none;align-items:center}
-.actrow.done .a1 .at{text-decoration:line-through;font-weight:600;color:var(--muted)}
+.pitem.done{opacity:.55}
+.pck{flex:none;width:26px;height:26px;border-radius:50%;border:2px solid var(--line-2);
+  background:none;color:var(--brand-ink);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;padding:0;transition:background .15s,border-color .15s}
+.pck:hover{border-color:var(--brand)}
+.pck.on{background:var(--ok);border-color:var(--ok)}
+.pck svg{width:15px;height:15px;stroke-width:3}
+.pitem .pb{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;
+  background:none;border:none;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.pitem .pb.ro{cursor:default}
+.pitem .pt{flex:1 1 100%;min-width:0;font:600 15.5px 'Manrope';overflow-wrap:anywhere}
+.pitem.done .pt{text-decoration:line-through;color:var(--muted)}
+.pitem .pm{display:flex;align-items:baseline;gap:8px;min-width:0}
+.pitem .pw{flex:none;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pitem .pw.late{color:var(--late);font-weight:700}
+.pitem .pc{font-size:13px;color:var(--muted);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitem>.btn{flex:none}
 
-/* быстрое добавление дела */
-.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 14px}
-.quick button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
-  min-height:70px;border:1px solid var(--line);background:var(--card);border-radius:13px;
-  color:var(--ink-2);font:600 12.5px 'Manrope';cursor:pointer;transition:border-color .15s,transform .1s}
-.quick button:hover{border-color:var(--line-2);color:var(--ink)}
-.quick button:active{transform:scale(.96)}
-.quick button .qi{color:var(--brand);display:flex}
+/* счётчик «3/10» */
+.cnt2{flex:none;display:flex;align-items:center;gap:2px;background:var(--card);
+  border:1px solid var(--line);border-radius:10px;padding:2px}
+.cnt2 b{min-width:46px;text-align:center;font:700 13.5px 'Manrope';
+  font-variant-numeric:tabular-nums;padding:0 2px}
+.cnt2 .cb{width:28px;height:28px;border:none;background:none;border-radius:8px;cursor:pointer;
+  color:var(--ink-2);font:700 17px 'Manrope';line-height:1;padding:0}
+.cnt2 .cb:hover{background:var(--card-2);color:var(--ink)}
 
-/* показатели — сворачиваемый блок */
-.kpi{margin:0 16px 14px;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--radius);overflow:hidden}
-.kpi>summary{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;
-  cursor:pointer;font:700 15px 'Manrope';list-style:none}
-.kpi>summary::-webkit-details-marker{display:none}
-.kpi>summary .kchev{margin-left:auto;color:var(--muted);display:flex;transition:transform .15s}
-.kpi[open]>summary .kchev{transform:rotate(180deg)}
-.kpi .kbody{padding:4px 14px 14px;border-top:1px solid var(--line)}
-.kgrid{display:grid;grid-template-columns:1fr auto auto;gap:7px 14px;align-items:baseline;
-  font-size:14.5px}
-.kgrid .kh2{font:700 12px 'Manrope';color:var(--muted);text-transform:uppercase;
-  letter-spacing:.04em;text-align:right}
-.kgrid .kk{color:var(--muted);font-size:13.5px;min-width:0}
-.kgrid .kv2{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-/* рейтинг команды */
-.rank{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
-.rank:last-child{border-bottom:none}
-.rank .rn{width:22px;flex:none;font:800 14px 'Manrope';color:var(--muted);
-  font-variant-numeric:tabular-nums}
-.rank.me .rn{color:var(--brand)}
-.rank .rb2{flex:1;min-width:0}
-.rank .rnm{display:block;font-weight:700;font-size:14.5px;
+/* предложение включить счётчик под только что добавленным пунктом */
+.sugrow{padding:0 16px 10px;margin-top:-1px}
+.sugrow .chip{height:32px;padding:0 12px;font-size:13px;border-style:dashed;color:var(--brand)}
+
+/* «Не сделано раньше» и «Выполнено» */
+.sec.earl{display:flex;align-items:center;gap:10px;color:var(--late)}
+.sec.earl .btn{margin-left:auto;font-weight:700}
+.donebox{border-top:1px solid var(--line)}
+.donebox>summary{display:flex;align-items:center;gap:8px;min-height:48px;padding:0 16px;
+  cursor:pointer;font:700 14px 'Manrope';color:var(--muted);list-style:none}
+.donebox>summary::-webkit-details-marker{display:none}
+.donebox>summary .dch{display:flex;transition:transform .15s}
+.donebox[open]>summary .dch{transform:rotate(180deg)}
+
+/* правая колонка: на телефоне идёт под списком, поэтому свои отступы */
+.pside{padding:0 16px 8px}
+
+/* план команды */
+/* flex, а не block: у блочных детей внутри <button> ширина считается
+   не от кнопки, и полоса прогресса уезжает на всю страницу */
+.tmrow{display:flex;flex-direction:column;align-items:stretch;width:100%;text-align:left;
+  background:none;border:none;cursor:pointer;padding:9px 0;border-bottom:1px solid var(--line)}
+.tmrow:last-child{border-bottom:none}
+.tmrow .t1{display:flex;align-items:baseline;gap:10px}
+.tmrow .tn{flex:1;min-width:0;font:700 14.5px 'Manrope';color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rank.me .rnm{color:var(--brand)}
-.rank .rs{display:block;font-size:12.5px;color:var(--muted);margin-top:1px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rank .rv{flex:none;font:800 15px 'Manrope';font-variant-numeric:tabular-nums}
+.tmrow.me .tn{color:var(--brand)}
+.tmrow .tv{flex:none;font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.tmrow .tv.off{color:var(--muted)}
+.tmrow .tprog{display:block;height:5px;border-radius:999px;background:var(--card-2);
+  overflow:hidden;margin-top:6px}
+.tmrow .tprog i{display:block;height:100%;border-radius:999px;background:var(--brand)}
+.tmrow .tprog.hit i{background:var(--ok)}
 
 /* ---------- Средний чек из 1С ---------- */
 .ac .acs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
@@ -928,11 +967,23 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .callrow{padding-left:24px;padding-right:24px}
   .chead{padding-left:24px;padding-right:24px}
   .warnbox{margin-left:24px;margin-right:24px}
-  .kpi{margin-left:24px;margin-right:24px}
-  .quick{grid-template-columns:repeat(4,minmax(0,150px));padding-left:24px;padding-right:24px}
   .planday{padding-left:24px;padding-right:24px}
-  .tlrow,.actrow{padding-left:24px;padding-right:24px}
-}
-@media (max-width:380px){
-  .quick button{min-height:64px;font-size:11.5px}
+  .tlrow{padding-left:24px;padding-right:24px}
+
+  /* «Мой план»: слева день, справа команда и средний чек */
+  .pcols{display:grid;grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+  .pcols .pmain{min-width:0}
+  .pcols .pside{border-left:1px solid var(--line);padding:0 24px 24px;
+    min-height:calc(100vh - 120px)}
+  .pcols .pside .sec:first-child{margin-top:20px}
+  .addwrap{padding-left:24px;padding-right:24px}
+  .pitem,.sugrow,.donebox>summary{padding-left:24px;padding-right:24px}
+  /* на ПК строка помещается целиком: заголовок и время в один ряд */
+  .pitem .pt{flex:1 1 auto}
+  /* правая колонка узкая — средний чек в ней ужимаем */
+  .pside .ac .acs{gap:6px}
+  .pside .ac .acc{padding:8px}
+  .pside .ac .acc .acv{font-size:15px}
+  .pside .acrow .acch{display:none}
+  .pside .acrow .acav{min-width:88px}
 }

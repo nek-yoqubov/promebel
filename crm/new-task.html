@@ -156,6 +156,8 @@ let ASSIGNEE = null, PRIORITY = 'normal';
 
 (async () => {
   if(!await requireAuth()) return;
+  // ревизор сюда попадает только по прямой ссылке — задач он не ставит
+  if(isAuditor()){ location.replace('tasks.html'); return; }
   await renderShell({ title:'Новая задача', tab:'add', back:'tasks.html' });
 
   await Promise.all([loadEmployees(), loadBranches()]);

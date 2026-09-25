@@ -213,8 +213,8 @@ async function loadTemplates(){
   if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
   const rows = data || [];
   if(!rows.length){
-    $('list').innerHTML = '<div class="empty">Повторяющихся задач нет. ' +
-      'Включите «Повторять» при постановке задачи.</div>';
+    $('list').innerHTML = '<div class="empty">Повторяющихся задач нет.' +
+      (canEdit() ? ' Включите «Повторять» при постановке задачи.' : '') + '</div>';
     return;
   }
   $('list').innerHTML = rows.map(t =>
@@ -224,11 +224,14 @@ async function loadTemplates(){
         '<span class="tr">' + esc(empName(t.assignee_id)) + ' · ' + esc(templateRule(t)) + '</span>' +
         '<span class="tr">следующая — ' + esc(t.next_run_at ? fmtDate(t.next_run_at) : '—') + '</span>' +
       '</span>' +
-      '<span class="acts">' +
-        '<button class="btn ghost sm" data-tgl="' + t.id + '">' + (t.is_active ? 'Выключить' : 'Включить') + '</button>' +
-        '<a class="btn ghost sm" href="new-task.html?tpl=' + t.id + '">Изменить</a>' +
-        '<button class="btn danger sm" data-del="' + t.id + '">' + icon('trash') + '</button>' +
-      '</span>' +
+      (canEdit()
+        ? '<span class="acts">' +
+            '<button class="btn ghost sm" data-tgl="' + t.id + '">' +
+              (t.is_active ? 'Выключить' : 'Включить') + '</button>' +
+            '<a class="btn ghost sm" href="new-task.html?tpl=' + t.id + '">Изменить</a>' +
+            '<button class="btn danger sm" data-del="' + t.id + '">' + icon('trash') + '</button>' +
+          '</span>'
+        : '') +
     '</div>').join('');
 
   $('list').querySelectorAll('[data-tgl]').forEach(b => b.onclick = async () => {
@@ -350,8 +353,10 @@ function paintTask(t, subs, comments, events, files){
   html += subs.length
     ? '<div class="rows">' + subs.map(s => taskRowHTML(s)).join('') + '</div>'
     : '<div class="pad" style="padding-top:0"><span class="sub">Подзадач нет</span></div>';
-  html += '<div class="pad"><a class="btn ghost sm" href="new-task.html?parent=' + t.id + '">' +
-    icon('plus') + 'Подзадача</a></div>';
+  if(canEdit()){
+    html += '<div class="pad"><a class="btn ghost sm" href="new-task.html?parent=' + t.id + '">' +
+      icon('plus') + 'Подзадача</a></div>';
+  }
 
   // комментарии и события одной лентой, как в чате
   const feed = comments.map(c => ({ kind:'c', at:c.created_at, data:c }))
@@ -374,7 +379,8 @@ function paintTask(t, subs, comments, events, files){
   wireFiles();
 
   paintActions(t);
-  const readonly = !!t.archived_at;
+  // архив закрыт для всех, ревизор не пишет и в живых задачах
+  const readonly = !!t.archived_at || !canEdit();
   $('dActs').hidden = readonly;
   document.querySelector('.composer').hidden = readonly;
   $('dBody').scrollTop = 0;
@@ -418,6 +424,7 @@ function eventText(e){
 /* Кнопки зависят от того, кто смотрит. Решает всё равно база:
    триггер crm.tasks_guard() не даст исполнителю закрыть задачу самому. */
 function statusActions(t){
+  if(!canEdit()) return [];        // ревизор смотрит, статус не меняет
   const out = [];
   const push = (to, label, cls, ic) => { if(!out.some(a => a.to === to)) out.push({ to, label, cls, icon:ic }); };
   const s = t.status;

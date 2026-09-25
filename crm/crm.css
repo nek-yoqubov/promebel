@@ -422,8 +422,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .wdays button.on{background:var(--brand);color:var(--brand-ink);border-color:transparent}
 .tplrow{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .tplrow .tb2{flex:1;min-width:0}
-.tplrow .tn{font-weight:700}
-.tplrow .tr{font-size:13px;color:var(--muted);margin-top:3px}
+.tplrow .tn{display:block;font-weight:700}
+.tplrow .tr{display:block;font-size:13px;color:var(--muted);margin-top:3px}
 .tplrow.off{opacity:.55}
 
 /* ---------- Глобальный поиск ---------- */

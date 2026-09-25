@@ -148,6 +148,7 @@ const EMP_ID = new URLSearchParams(location.search).get('id');
 let TARGET = null;      // сотрудник, чьё дело смотрим
 let CAN_HR = false;     // кадровые данные и документы
 let CAN_REVIEW = false; // компетенции и оценка
+let MAY_EDIT = false;   // ревизор личное дело читает, но ничего в нём не правит
 
 (async () => {
   if(!await requireAuth()) return;
@@ -166,6 +167,7 @@ let CAN_REVIEW = false; // компетенции и оценка
   CAN_REVIEW = CAN_HR || isManagerOf(TARGET.id);
   // ни кадровик, ни руководитель — смотреть нечего
   if(!CAN_REVIEW){ location.replace('index.html'); return; }
+  MAY_EDIT = canEdit();
 
   await renderShell({ title:'Личное дело', tab:'admin', back:'admin.html' });
   $('mClose').innerHTML = icon('x');
@@ -182,17 +184,28 @@ let CAN_REVIEW = false; // компетенции и оценка
   if(CAN_HR){
     $('hrPanel').hidden = false;
     $('docPanel').hidden = false;
-    $('hrSave').onclick = saveHr;
-    $('docUpload').onclick = uploadDoc;
-    $('salary').oninput = paintSalaryHint;
+    if(MAY_EDIT){
+      $('hrSave').onclick = saveHr;
+      $('docUpload').onclick = uploadDoc;
+      $('salary').oninput = paintSalaryHint;
+    }
     await Promise.all([loadHr(), loadDocs()]);
   }
   if(CAN_REVIEW){
     $('skillPanel').hidden = false;
     $('reviewPanel').hidden = false;
-    $('skillAdd').onclick = () => openSkillForm(null);
-    $('revSave').onclick = saveReview;
+    if(MAY_EDIT){
+      $('skillAdd').onclick = () => openSkillForm(null);
+      $('revSave').onclick = saveReview;
+    }
     await Promise.all([loadSkills(), loadReview(), loadSubjects()]);
+  }
+  // ревизору поля без кнопки «Сохранить» — ловушка, поэтому гасим и их
+  if(!MAY_EDIT){
+    ['hrSave','docUpload','skillAdd','revSave'].forEach(id => { if($(id)) $(id).hidden = true; });
+    document.querySelectorAll('#hrPanel input, #hrPanel select, #hrPanel textarea, ' +
+      '#reviewPanel input, #reviewPanel select, #reviewPanel textarea')
+      .forEach(el => el.disabled = true);
   }
 })();
 
@@ -294,7 +307,9 @@ async function loadDocs(){
           '</div>' +
           '<div class="da">' +
             '<button class="btn ghost sm" data-open="' + d.id + '">Открыть</button>' +
-            '<button class="btn danger sm" data-del="' + d.id + '">' + icon('trash') + '</button>' +
+            (MAY_EDIT
+              ? '<button class="btn danger sm" data-del="' + d.id + '">' + icon('trash') + '</button>'
+              : '') +
           '</div>' +
         '</div>').join('')
     : '<div class="empty">Документов пока нет</div>';
@@ -397,8 +412,10 @@ async function loadSkills(){
         '<div class="skillrow">' +
           '<span class="sn">' + esc(s.subject) + '</span>' +
           dotsHTML(s.level) +
-          '<button class="btn ghost sm" data-edit="' + s.id + '">' + icon('edit') + '</button>' +
-          '<button class="btn danger sm" data-del="' + s.id + '">' + icon('trash') + '</button>' +
+          (MAY_EDIT
+            ? '<button class="btn ghost sm" data-edit="' + s.id + '">' + icon('edit') + '</button>' +
+              '<button class="btn danger sm" data-del="' + s.id + '">' + icon('trash') + '</button>'
+            : '') +
           (s.note ? '<span class="sd">' + esc(s.note) + '</span>' : '') +
         '</div>').join('')
     : '<div class="empty">Компетенции не заполнены</div>';

@@ -116,11 +116,14 @@ const WD = ['вс','пн','вт','ср','чт','пт','сб'];
    Руководитель смотрит подчинённого; менять может то же, что и база.
    ============================================================ */
 function myTeam(){ return EMPS.filter(e => e.manager_id === ME.id); }
-function mayPickWho(){
-  return isBossRole() || ['head','regional','auditor'].includes(ME.role) || hasTeam();
+/* Всех подряд смотрят только директор, админ, главный менеджер и ревизор.
+   Региональному, как и остальным, открыты свой план и подчинённые. */
+function seesEveryone(){
+  return isBossRole() || ['head','auditor'].includes(ME.role);
 }
+function mayPickWho(){ return seesEveryone() || hasTeam(); }
 function whoList(){
-  if(isBossRole() || ['head','regional','auditor'].includes(ME.role)) return EMPS;
+  if(seesEveryone()) return EMPS;
   return [EMP_BY_ID[ME.id]].filter(Boolean).concat(myTeam());
 }
 /* Ревизор всё видит и ничего не трогает. Остальным права держит RLS —
@@ -523,7 +526,8 @@ function openItem(id, draft){
         '<textarea id="sNote" rows="2">' + esc(draft ? v.note : (a.note || '')) + '</textarea></div>' +
       '<div class="btn-row">' +
         '<button class="btn ghost" id="sTom">На завтра</button>' +
-        '<button class="btn danger" id="sDel">Удалить</button>' +
+        // удалить пункт может только его хозяин, руководитель в чужом плане — нет
+        (WHO === ME.id ? '<button class="btn danger" id="sDel">Удалить</button>' : '') +
       '</div>',
     saveLabel: 'Сохранить',
     onSave: () => saveItem(a)
@@ -541,7 +545,9 @@ function openItem(id, draft){
     };
   }
   document.getElementById('sTom').onclick = () => moveSheet(a);
-  document.getElementById('sDel').onclick = () => askDelete(a);
+  if(document.getElementById('sDel')){
+    document.getElementById('sDel').onclick = () => askDelete(a);
+  }
 }
 
 async function saveItem(a){

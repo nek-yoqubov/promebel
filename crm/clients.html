@@ -57,6 +57,7 @@ const CHIPS = [
   { key:'all',      label:'Все' },
   { key:'client',   label:'Клиенты' },
   { key:'master',   label:'Мастера' },
+  { key:'designer', label:'Дизайнеры' },
   { key:'dealer',   label:'Дилеры' },
   { key:'company',  label:'Компании' },
   { key:'sleeping', label:'Спящие' }
@@ -225,6 +226,7 @@ function paintClient(c){
 
   const kv = [
     ['Вид', esc(CLIENT_KIND_RU[c.kind] || c.kind)],
+    ['Авторский надзор', c.author_supervision ? 'да' : 'нет'],
     ['Телефон', c.phone ? phoneHTML(c.phone) : '<span class="sub">не указан</span>'],
     ['Второй телефон', c.phone2 ? phoneHTML(c.phone2) : '<span class="sub">нет</span>'],
     ['Город', c.city ? esc(c.city) : '<span class="sub">не указан</span>'],
@@ -447,6 +449,9 @@ function openForm(c){
       '</div>' +
       '<div class="field"><label class="field-label" for="fAddr">Адрес</label>' +
         '<input id="fAddr" value="' + esc(v.address || '') + '"></div>' +
+      '<div class="field"><label class="switch"><input type="checkbox" id="fSupervision"' +
+        (v.author_supervision ? ' checked' : '') + '>' +
+        '<span class="sl">Авторский надзор</span></label></div>' +
       ownerField(c) +
       '<div class="field"><label class="field-label" for="fTags">Теги</label>' +
         '<input id="fTags" value="' + esc((v.tags || []).join(', ')) + '" placeholder="через запятую"></div>' +
@@ -508,7 +513,8 @@ async function save(c){
     company: document.getElementById('fCompany').value.trim() || null,
     source: document.getElementById('fSource').value || null,
     notes: document.getElementById('fNotes').value.trim() || null,
-    tags: document.getElementById('fTags').value.split(',').map(s => s.trim()).filter(Boolean)
+    tags: document.getElementById('fTags').value.split(',').map(s => s.trim()).filter(Boolean),
+    author_supervision: document.getElementById('fSupervision').checked
   };
   if(owner) rec.owner_id = owner.value || null;
 

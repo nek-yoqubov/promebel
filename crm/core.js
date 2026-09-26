@@ -51,8 +51,8 @@ const LINK_CAT_RU = { kpi:'KPI', plan:'Планы', doc:'Документы', ot
 const LINK_CAT_ORDER = ['kpi','plan','doc','other'];
 
 /* --- продажи --- */
-const CLIENT_KIND_RU = { client:'Клиент', master:'Мастер', dealer:'Дилер', company:'Компания' };
-const CLIENT_KIND_ORDER = ['client','master','dealer','company'];
+const CLIENT_KIND_RU = { client:'Клиент', master:'Мастер', dealer:'Дилер', company:'Компания', designer:'Дизайнер' };
+const CLIENT_KIND_ORDER = ['client','master','dealer','company','designer'];
 const CLIENT_SOURCES = ['Шоурум','Звонок','Instagram','Рекомендация','Мастер привёл','Другое'];
 const DEAL_STAGE_RU = {
   new:'Новая', consult:'Консультация', measure:'Замер', proposal:'Расчёт отправлен',

@@ -753,6 +753,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .dot.k-master{background:var(--brand)}
 .dot.k-dealer{background:var(--plan)}
 .dot.k-company{background:var(--ok)}
+.dot.k-designer{background:var(--warn)}
 
 /* телефон ссылкой */
 .phone{color:var(--brand);font-weight:700;font-variant-numeric:tabular-nums}

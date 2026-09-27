@@ -34,7 +34,7 @@ const Auth = {
 };
 sb.auth.onAuthStateChange(ev=>{
   const p=location.pathname;
-  if(ev==='SIGNED_OUT' && !/(login|display)\.html$/.test(p)) location.href='login.html';
+  if(ev==='SIGNED_OUT' && !/(login|board)\.html$/.test(p)) location.href='login.html';
 });
 
 /* ---------- Настройки/нормативы (кэш на страницу) ---------- */

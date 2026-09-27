@@ -55,6 +55,7 @@ const PARA_RU="Выбранные мною декор и кромка соотв
 const PARA_TJ="Декор ва кромкаи интихобкардаам ба параметрҳо ва ранги муқарраршуда мувофиқат мекунанд. Андозаи қисмҳо тафтиш ва тасдиқ карда шуданд. Ман ё намояндаи ваколатдори ман ӯҳдадор мешавам, ки фармоишро тафтиш кунам ва дар давоми 3 рӯз аз рӯзи омодагӣ бигирам.";
 
 async function build(){
+  if(!Auth.require())return;
   const id=new URLSearchParams(location.search).get('id');
   if(!id){document.getElementById('sheet').innerHTML='<div style="padding:60px;text-align:center">Заказ не указан</div>';return;}
   if(typeof supabase==='undefined' || typeof sb==='undefined'){

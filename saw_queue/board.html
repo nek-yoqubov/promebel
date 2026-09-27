@@ -27,11 +27,10 @@
 <body>
 <div class="page">
   <div class="topbar">
-    <a href="index.html" title="В меню" style="display:inline-flex"><img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL" style="height:36px"></a>
+    <img class="logo" src="logo-dark.png" data-dark="logo-dark.png" data-light="logo-light.png" alt="PRO MEBEL" style="height:36px">
     <span class="sep">ОЧЕРЕДЬ РАСПИЛА</span>
     <div class="spacer"></div>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()"></button>
-    <a class="navlink" href="orders.html" id="lnkBack"></a>
   </div>
   <div id="grid"></div>
   <div class="sub" id="upd" style="margin-top:22px"></div>
@@ -39,9 +38,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"></script>
 <script src="core.js?v=3"></script>
 <script>
-if(!Auth.require())throw'r';
 initTheme();
-document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Управление';
 // текущий этап заказа словами (что сейчас происходит / чего ждёт)
 function stageLabel(o,r){
   const nS=nMach2('s'), nE=nMach2('e');
@@ -65,13 +62,13 @@ function nMach2(key){
   return 1;
 }
 async function load(){
-  await loadSettings();
-  const {data:rows0,error:e0}=await sb.rpc('display_orders');
+  const {data,error:e0}=await sb.rpc('public_board');
   if(e0){console.error(e0);return;}
-  const orders=(rows0||[]).filter(o=>o.status_ready!=='done');
+  SETTINGS=data.settings;
+  const orders=(data.orders||[]);
   const plan=computeQueue(orders);
   const rows=orders.map(o=>({o,r:plan.get(o.id)})).filter(x=>x.r)
-    .sort((a,b)=>{if(!!b.o.is_urgent-!!a.o.is_urgent)return(!!b.o.is_urgent)-(!!a.o.is_urgent);return(a.o.seq||0)-(b.o.seq||0)});
+    .sort((a,b)=>{if(!!b.o.is_urgent-!!a.o.is_urgent)return(!!b.o.is_urgent)-(!!a.o.is_urgent);return(a.o.seq||0)-(b.o.seq||0);});
   const g=document.getElementById('grid');
   if(!rows.length){g.innerHTML='<div class="empty">Очередь пуста</div>';}
   else g.innerHTML=rows.map(({o,r})=>{
@@ -81,7 +78,8 @@ async function load(){
     const d=Math.floor((r.ready||0)/1440);const dw=d===0?'сегодня':(d===1?'завтра':'+'+d+' дн');
     const time=byClient?`<div class="time wait">ждём кромку</div>`:`<div class="time">${fmtHM(r.ready)}<span class="dw">${dw}</span></div>`;
     const stage=stageLabel(o,r);
-    return `<div class="d ${cls}"><div><div class="who">${esc(o.customer)}</div><div class="stg">${stage}</div><div class="sub">${sh} лист.${o.is_urgent?' · срочно':''}</div></div>${time}</div>`;
+    const who=o.realization?('№ '+esc(o.realization)):('Заказ '+esc(o.seq));
+    return `<div class="d ${cls}"><div><div class="who">${who}</div><div class="stg">${stage}</div><div class="sub">${sh} лист.${o.is_urgent?' · срочно':''}</div></div>${time}</div>`;
   }).join('');
   document.getElementById('upd').textContent='Обновлено '+new Date().toLocaleTimeString('ru-RU');
 }

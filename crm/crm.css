@@ -13,7 +13,7 @@
   --ok:#26b673; --warn:#f5b301; --late:#f0546a; --info:#3b9eff; --plan:#a96bff;
   --radius:14px; --tap:44px;
   --shadow:0 10px 30px #0008;
-  --side:240px; --tbar:56px; --tabbar:62px;
+  --side:240px; --tbar:56px; --tabbar:62px; --pvh:34px;
 }
 body.light{
   --bg:#f5f6f8; --panel:#ffffff; --card:#ffffff; --card-2:#eef0f4;
@@ -314,6 +314,22 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
 .gi .gv{color:var(--muted);font-size:14px;font-weight:600;flex:none;display:flex;align-items:center;gap:6px}
 .gi.static{cursor:default}
 .gi.static:hover{background:none}
+
+/* ---------- Плашка «Смотреть как» ---------- */
+.pvbar{
+  position:fixed;top:0;left:0;right:0;height:var(--pvh);z-index:50;
+  display:flex;align-items:center;gap:10px;padding:0 12px 0 14px;
+  background:var(--warn);color:#1a1400;font:700 12.5px 'Manrope';
+}
+.pvbar .pvt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvbar button{flex:none;height:24px;padding:0 10px;border:none;border-radius:8px;
+  background:#1a1400;color:#fff;font:700 12px 'Manrope';cursor:pointer}
+body.preview.shell{padding-top:calc(var(--tbar) + var(--pvh))}
+body.preview .tbar{top:var(--pvh)}
+@media (min-width:1024px){
+  body.preview.shell{padding-top:var(--pvh)}
+  body.preview .side{top:var(--pvh)}
+}
 
 /* ---------- Полоски-подсказки и тост ---------- */
 .strip{
@@ -987,4 +1003,34 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
   .pside .ac .acc .acv{font-size:15px}
   .pside .acrow .acch{display:none}
   .pside .acrow .acav{min-width:88px}
+}
+
+/* ============================================================
+   СОБЫТИЯ И АКЦИИ
+   ============================================================ */
+.dot.ev-planned{background:var(--muted)}
+.dot.ev-prep{background:var(--info)}
+.dot.ev-live{background:var(--ok)}
+.dot.ev-done{background:var(--line-2)}
+.dot.ev-canceled{background:var(--late)}
+.dot.ck-pending{background:var(--muted)}
+.dot.ck-done{background:var(--ok)}
+.dot.ck-failed{background:var(--late)}
+.evk{flex:none;color:var(--brand);display:inline-flex}
+.evk svg{width:15px;height:15px}
+.progress{display:block;height:6px;border-radius:999px;background:var(--card-2);overflow:hidden;margin:6px 16px 2px}
+.progress i{display:block;height:100%;border-radius:999px;background:var(--brand)}
+.progress.hit i{background:var(--ok)}
+.checkrow{display:flex;align-items:center;gap:10px;padding:10px 16px;min-height:52px;
+  border-bottom:1px solid var(--line);width:100%;text-align:left;background:none;border-left:none;
+  border-right:none;border-top:none;color:inherit;font:inherit;cursor:pointer}
+.checkrow:hover{background:var(--card)}
+.checkrow.ro{cursor:default}
+.checkrow.ro:hover{background:none}
+.checkrow .ckb{flex:1;min-width:0}
+.checkrow .ckn{font-weight:700;font-size:14.5px}
+.checkrow .ckd{font-size:13px;color:var(--muted);margin-top:2px}
+@media (min-width:1024px){
+  .progress{margin-left:24px;margin-right:24px}
+  .checkrow{padding-left:24px;padding-right:24px}
 }

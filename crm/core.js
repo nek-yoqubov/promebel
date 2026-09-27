@@ -7,7 +7,16 @@
 
 const SUPABASE_URL = 'https://mtvjnkklzyplbxaxwszm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_rM3r9_o443Ij_8ISr-nE7Q_BxKWNnnO';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: 'crm' } });
+
+/* Окно/вкладка «Смотреть как»: window.name = 'pv:<employeeId>'.
+   Такое имя переживает переходы внутри окна и внутри iframe, поэтому
+   режим просмотра держится на всех страницах без доп. параметров в URL. */
+const PREVIEW_ID = /^pv:/.test(window.name || '') ? window.name.slice(3) : null;
+const IS_PREVIEW = !!PREVIEW_ID;
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, Object.assign(
+  { db: { schema: 'crm' } },
+  IS_PREVIEW ? { auth: { storageKey: 'sb-pv-' + PREVIEW_ID } } : null
+));
 
 const BOT_USERNAME = 'pro_organaizer_bot';
 
@@ -68,10 +77,14 @@ const EVENT_KIND_RU = {
   visit:'Визит', presentation:'Презентация', masterclass:'Мастер-класс',
   promo:'Акция', meeting:'Встреча', training:'Обучение', other:'Другое'
 };
+const EVENT_ICON = {
+  visit:'building', presentation:'image', masterclass:'star',
+  promo:'flag', meeting:'users', training:'target', other:'list'
+};
 const EVENT_STATUS_RU = {
   planned:'Запланировано', prep:'Подготовка', live:'Идёт', done:'Проведено', canceled:'Отменено'
 };
-const EVENT_BRANDS = ['EGGER','ULTRADECOR','Blum','GTV','Starax'];
+const EVENT_BRANDS = ['EGGER','ULTRADECOR','AGT','Blum','GTV','Starax'];
 
 /* --- колл-центр --- */
 const CALLBACK_STATUS_RU = { pending:'Ждёт звонка', done:'Дозвонились', no_answer:'Не ответил', skipped:'Пропущен' };
@@ -258,6 +271,12 @@ function initials(name){
 function errText(e, ctx){
   if(!e) return 'Неизвестная ошибка';
   const m = e.message || e.error_description || e.msg || String(e);
+  /* Режим просмотра: база отклоняет запись 42501 с этим текстом.
+     Показываем тост и не выводим саму ошибку в форме — один общий обработчик на всё приложение. */
+  if(/Режим просмотра/i.test(m)){
+    toast('В режиме просмотра изменения недоступны');
+    return '';
+  }
   if(/row-level security/i.test(m)){
     if(ctx === 'task-add') return 'База отказала: задачу можно поставить только себе или своему подчинённому.';
     if(ctx === 'task-edit') return 'База отказала: у вас нет прав менять эту задачу.';
@@ -286,13 +305,29 @@ function errText(e, ctx){
 let ME = null;
 
 async function requireAuth(){
+  /* Токены из окна «Смотреть как» лежат во временном ключе — забираем один раз и стираем. */
+  if(IS_PREVIEW){
+    const raw = localStorage.getItem('pv-handoff-' + PREVIEW_ID);
+    if(raw){
+      localStorage.removeItem('pv-handoff-' + PREVIEW_ID);
+      try{
+        const h = JSON.parse(raw);
+        await sb.auth.setSession({ access_token: h.access_token, refresh_token: h.refresh_token });
+      }catch(e){}
+    }
+  }
   const { data:{ session } } = await sb.auth.getSession();
-  if(!session){ location.replace('login.html'); return null; }
+  if(!session){
+    if(IS_PREVIEW){ showPreviewEnded(); return null; }
+    location.replace('login.html');
+    return null;
+  }
   const { data, error } = await sb.from('employees')
     .select('id, full_name, role, position, branch_id, manager_id, telegram_chat_id')
     .eq('id', session.user.id).maybeSingle();
   if(error){ fatal('Не удалось загрузить профиль', errText(error)); return null; }
   if(!data){
+    if(IS_PREVIEW){ showPreviewEnded(); return null; }
     await sb.auth.signOut();
     location.replace('login.html?nouser=1');
     return null;
@@ -301,7 +336,20 @@ async function requireAuth(){
   ME.email = session.user.email || '';
   return ME;
 }
+/* Сессии не оказалось (истекла/не передалась) — окно просмотра, а не логин админа. */
+function showPreviewEnded(){
+  document.body.innerHTML =
+    '<div class="fatal">' + logoMark(44) +
+    '<div class="t">Сессия просмотра закончилась</div>' +
+    (window.top === window
+      ? '<button class="btn ghost" onclick="window.close()">Закрыть</button>'
+      : '<div class="d">Можно закрыть эту вкладку.</div>') +
+    '</div>';
+}
 async function logout(){
+  /* В режиме просмотра обычный logout() нельзя вызывать: он трогает пуш-подписку
+     этого браузера, а браузер — админский. Выходим из просмотра, а не из своего аккаунта. */
+  if(IS_PREVIEW) return exitPreview();
   try{
     if('serviceWorker' in navigator){
       const reg = await navigator.serviceWorker.getRegistration();
@@ -314,6 +362,21 @@ async function logout(){
   }catch(e){}
   await sb.auth.signOut();
   location.replace('login.html');
+}
+/* «Выйти из просмотра»: чужой сессии и пушей не трогаем — только свой временный ключ. */
+async function exitPreview(){
+  if(!IS_PREVIEW) return;
+  try{ await sb.auth.signOut({ scope:'local' }); }catch(e){}
+  try{ localStorage.removeItem('sb-pv-' + PREVIEW_ID); }catch(e){}
+  if(window.top === window){
+    window.close();
+    setTimeout(() => {
+      document.body.innerHTML = '<div class="fatal">' + logoMark(44) +
+        '<div class="t">Просмотр закрыт</div><div class="d">Можно закрыть эту вкладку.</div></div>';
+    }, 300);
+  }else{
+    document.body.innerHTML = '<div class="fatal">' + logoMark(44) + '<div class="t">Просмотр закрыт</div></div>';
+  }
 }
 function isBossRole(){ return ME && (ME.role === 'admin' || ME.role === 'director'); }
 function isHrRole(){ return ME && (ME.role === 'admin' || ME.role === 'director' || ME.role === 'hr'); }
@@ -510,8 +573,7 @@ const SECTIONS = [
     roles:['sales','head','regional','brand','admin','director','auditor'] },
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
     notRoles:['production','cashier'] },
-  { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star',
-    soon:true },
+  { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star' },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
     roles:['callcenter','head','admin','director','auditor'], soon:true },
   { key:'hr',      group:'company', label:'Подбор и адаптация', href:'hr.html',           icon:'idcard',
@@ -522,7 +584,9 @@ const SECTIONS = [
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
     roles:['admin','director','auditor','head','regional'], orBoss:true },
   { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',
-    roles:['admin','director'], soon:true }
+    roles:['admin','director'] },
+  { key:'preview', group:'control', label:'Проверка ролей', href:'preview.html',          icon:'layers',
+    roles:['admin'] }
 ];
 /* есть ли у меня подчинённые */
 function hasTeam(){ return !!(ME && EMPS.some(e => e.manager_id === ME.id)); }
@@ -590,7 +654,14 @@ async function renderShell(opts){
       return '<div class="sgt">' + esc(g.label) + '</div>' + rows.map(item).join('');
     }).join('');
 
+  const pvbar = IS_PREVIEW
+    ? '<div class="pvbar"><span class="pvt">Просмотр: ' + esc(ME.full_name) + ' · ' +
+        esc(ROLE_RU[ME.role] || ME.role) + '</span>' +
+        '<button id="pvExit" type="button">Выйти из просмотра</button></div>'
+    : '';
+
   const shell =
+    pvbar +
     '<header class="tbar">' +
       (o.back
         ? '<button class="ib" id="shellBack" aria-label="Назад">' + icon('arrowLeft') + '</button>'
@@ -619,6 +690,10 @@ async function renderShell(opts){
 
   document.body.insertAdjacentHTML('afterbegin', shell);
   document.body.classList.add('shell');
+  if(IS_PREVIEW){
+    document.body.classList.add('preview');
+    document.getElementById('pvExit').onclick = exitPreview;
+  }
   if(o.back){
     document.getElementById('shellBack').onclick = () => {
       if(typeof o.back === 'function') o.back();
@@ -730,7 +805,7 @@ function setAppBadge(n){
   }catch(e){}
 }
 async function markRead(ids){
-  if(!ids || !ids.length) return;
+  if(IS_PREVIEW || !ids || !ids.length) return;
   const now = new Date().toISOString();
   const { error } = await sb.from('notifications').update({ read_at: now }).in('id', ids);
   if(error){ console.error('markRead', error); return; }
@@ -738,6 +813,7 @@ async function markRead(ids){
   paintUnread(NOTIFS.filter(n => !n.read_at).length);
 }
 async function markAllRead(){
+  if(IS_PREVIEW) return;
   const { error } = await sb.from('notifications')
     .update({ read_at: new Date().toISOString() }).is('read_at', null);
   if(error){ console.error('markAllRead', error); return; }
@@ -770,6 +846,7 @@ function urlB64ToUint8(base64){
 }
 /* Вызывать только по нажатию кнопки — иначе iPhone не спросит разрешение */
 async function enablePush(){
+  if(IS_PREVIEW) return { error:'В режиме просмотра уведомления не подключаются' };
   if(!pushSupported()) return { error:'Этот браузер не умеет уведомления' };
   if(isIOS() && !isStandalone())
     return { error:'Сначала установите приложение на экран «Домой» — на iPhone уведомления работают только так' };
@@ -841,6 +918,7 @@ async function pushTest(){
    TELEGRAM
    ============================================================ */
 async function tgLinkStart(){
+  if(IS_PREVIEW) return { error:'В режиме просмотра Telegram не подключается' };
   const { data, error } = await sb.schema('crm').rpc('tg_link_start');
   if(error) return { error: errText(error) };
   return { code: data, url: 'https://t.me/' + BOT_USERNAME + '?start=' + encodeURIComponent(data) };
@@ -874,7 +952,9 @@ function waitForTelegram(onDone){
    ============================================================ */
 let installPrompt = null;
 
-if('serviceWorker' in navigator){
+/* В окне просмотра свой сервис-воркер не регистрируем — это браузер админа,
+   а не устройство сотрудника, за которым смотрим. */
+if('serviceWorker' in navigator && !IS_PREVIEW){
   addEventListener('load', async () => {
     try{
       const reg = await navigator.serviceWorker.register('sw.js');
@@ -923,7 +1003,7 @@ function snooze(key, days){
   localStorage.setItem('crm_snooze_' + key, String(Date.now() + days * 86400000));
 }
 function maybeShowInstallStrip(){
-  if(!installPrompt || isStandalone() || snoozed('install')) return;
+  if(IS_PREVIEW || !installPrompt || isStandalone() || snoozed('install')) return;
   if(document.getElementById('installStrip')) return;
   const el = document.createElement('div');
   el.className = 'strip';
@@ -942,7 +1022,7 @@ function hideInstallStrip(){
 }
 /* Мягкое приглашение включить уведомления */
 function maybeInviteNotifications(){
-  if(!pushSupported() || pushPermission() !== 'default' || snoozed('notif')) return;
+  if(IS_PREVIEW || !pushSupported() || pushPermission() !== 'default' || snoozed('notif')) return;
   if(isIOS() && !isStandalone()) return;
   if(document.getElementById('notifInvite')) return;
   const el = document.createElement('div');
@@ -965,6 +1045,7 @@ function maybeInviteNotifications(){
    ТОСТ И АНИМАЦИЯ «ГОТОВО»
    ============================================================ */
 function toast(text){
+  if(!text) return;
   const old = document.querySelector('.toast');
   if(old) old.remove();
   const el = document.createElement('div');

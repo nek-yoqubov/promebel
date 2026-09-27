@@ -211,7 +211,32 @@ function paintEmployees(){
     if(b.dataset.act === 'edit') b.onclick = () => openEmpForm(e);
     if(b.dataset.act === 'pwd') b.onclick = () => openPwdForm(e);
     if(b.dataset.act === 'active') b.onclick = () => toggleActive(e);
+    if(b.dataset.act === 'viewas') b.onclick = () => viewAs(e);
   });
+}
+
+/* ============================================================
+   «СМОТРЕТЬ КАК» — открываем сотрудника в отдельной вкладке
+   Токены передаются через временный ключ localStorage, окно
+   получает имя pv:<id>, по которому core.js узнаёт режим просмотра.
+   ============================================================ */
+async function viewAs(e){
+  // открываем вкладку сразу по клику — если ждать ответ функции, Chrome
+  // на холодном старте функции посчитает открытие всплывающим и заблокирует
+  const w = window.open('', 'pv:' + e.id);
+  const r = await sb.functions.invoke('crm-view-as', { body: { employee_id: e.id } });
+  if(r.error || !r.data || !r.data.ok){
+    if(w) w.close();
+    toast(r.error ? errText(r.error) : ((r.data && r.data.error) || 'Не удалось открыть просмотр'));
+    return;
+  }
+  const emp = r.data.employee;
+  localStorage.setItem('pv-handoff-' + emp.id, JSON.stringify({
+    access_token: r.data.access_token,
+    refresh_token: r.data.refresh_token
+  }));
+  if(w) w.location = 'index.html';
+  else window.open('index.html', 'pv:' + emp.id);
 }
 
 function empRow(e){
@@ -231,6 +256,9 @@ function empRow(e){
         : '<span class="tag-off">Отключён</span>') + '</td>' +
     '<td class="acts-cell"><div class="acts">' +
       '<a class="btn ghost sm" href="employee.html?id=' + encodeURIComponent(e.id) + '">Личное дело</a>' +
+      (ME.role === 'admin' && e.id !== ME.id && e.is_active
+        ? '<button class="btn ghost sm" data-act="viewas" data-id="' + esc(e.id) + '">Смотреть как</button>'
+        : '') +
       (CAN_MANAGE
         ? '<button class="btn ghost sm" data-act="edit" data-id="' + esc(e.id) + '">Изменить</button>' +
           '<button class="btn ghost sm" data-act="pwd" data-id="' + esc(e.id) + '">Пароль</button>' +

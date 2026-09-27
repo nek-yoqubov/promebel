@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — События и акции</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="split">
+    <div class="col-list">
+      <div class="pagehead"><h1 id="pageTitle">События и акции</h1>
+        <button class="btn sm" id="addBtnPc" hidden>Событие</button></div>
+
+      <div class="seg" id="tabs">
+        <button class="on" data-t="upcoming">Ближайшие</button>
+        <button data-t="past">Прошедшие</button>
+        <button data-t="promo">Акции сейчас</button>
+      </div>
+      <div class="toolbar">
+        <select id="fKind" class="grow"><option value="">Любой вид</option></select>
+        <input id="fBrand" class="grow" list="brandList" placeholder="Бренд" autocomplete="off">
+        <datalist id="brandList"></datalist>
+      </div>
+
+      <div class="rows" id="list"><div class="loading">Загрузка…</div></div>
+    </div>
+
+    <div class="col-detail" id="colDetail">
+      <div class="empty" id="dPlaceholder">Выберите событие из списка</div>
+
+      <div class="layer" id="detail" hidden>
+        <div class="lhead">
+          <button class="ib" id="dBack" aria-label="Назад"></button>
+          <span class="tt" id="dHeadTitle"></span>
+          <button class="ib" id="dMore" aria-label="Ещё" hidden></button>
+        </div>
+        <div class="lbody" id="dBody"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+
+let TAB = 'upcoming', F_KIND = '', F_BRAND = '';
+let ROWS = [], CUR = null, CAN_EVENTS = false;
+let PREP = [], CHECKS = [];
+
+(async () => {
+  if(!await requireAuth()) return;
+  const { data } = await sb.schema('crm').rpc('can_plan_events');
+  CAN_EVENTS = !!data;
+
+  await renderShell({
+    title:'События и акции',
+    tab:'events',
+    actions: CAN_EVENTS ? '<button class="ib" id="addBtn" aria-label="Событие">' + icon('plus') + '</button>' : ''
+  });
+  if(CAN_EVENTS){
+    $('addBtn').onclick = () => openForm(null);
+    $('addBtnPc').hidden = false;
+    $('addBtnPc').onclick = () => openForm(null);
+  }
+
+  $('dBack').innerHTML = icon('arrowLeft');
+  $('dMore').innerHTML = icon('dots');
+  $('dBack').onclick = () => history.length > 1 ? history.back() : closeDetail();
+
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+    TAB = b.dataset.t;
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    $('fKind').style.display = TAB === 'promo' ? 'none' : '';
+    load();
+  });
+  $('fKind').innerHTML = '<option value="">Любой вид</option>' + optionsFrom(EVENT_KIND_RU, '');
+  $('fKind').onchange = () => { F_KIND = $('fKind').value; load(); };
+  $('brandList').innerHTML = EVENT_BRANDS.map(b => '<option value="' + esc(b) + '">').join('');
+  let t = null;
+  $('fBrand').oninput = () => { clearTimeout(t); t = setTimeout(() => { F_BRAND = $('fBrand').value.trim(); load(); }, 250); };
+
+  await Promise.all([loadEmployees(), loadBranches()]);
+
+  addEventListener('popstate', e => {
+    const id = e.state && e.state.event;
+    if(id) openEvent(id, false); else closeDetail();
+  });
+
+  await load();
+  const openId = qs.get('id');
+  if(openId) openEvent(Number(openId), false);
+  else if(qs.get('new') === '1' && CAN_EVENTS) openForm(null, qs.get('date'));
+})();
+
+function branchName(id){ const b = BRANCH_BY_ID[id]; return b ? b.name : null; }
+
+/* ============================================================
+   СПИСОК
+   ============================================================ */
+async function load(){
+  $('list').innerHTML = '<div class="loading">Загрузка…</div>';
+  const now = new Date().toISOString();
+  let q = sb.from('events').select('id,kind,title,brand,starts_at,ends_at,status');
+
+  /* «Ближайшие» — то, что ещё не закончилось: у многодневной акции/выставки
+     это ends_at >= now, а если конца нет — как раньше, по starts_at. */
+  if(TAB === 'upcoming'){
+    q = q.or('ends_at.gte.' + now + ',and(ends_at.is.null,starts_at.gte.' + now + ')')
+      .order('starts_at', { ascending:true });
+  }else if(TAB === 'past'){
+    q = q.or('ends_at.lt.' + now + ',and(ends_at.is.null,starts_at.lt.' + now + ')')
+      .order('starts_at', { ascending:false });
+  }else{
+    q = q.eq('kind', 'promo').lte('starts_at', now).gte('ends_at', now).order('starts_at', { ascending:false });
+  }
+
+  if(TAB !== 'promo' && F_KIND) q = q.eq('kind', F_KIND);
+  if(F_BRAND) q = q.ilike('brand', '%' + F_BRAND.replace(/[%_]/g, ' ') + '%');
+
+  const { data, error } = await q.limit(300);
+  if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  ROWS = data || [];
+  paintList();
+}
+
+function eventRowHTML(e){
+  const l2 = [EVENT_KIND_RU[e.kind] || e.kind, e.brand, EVENT_STATUS_RU[e.status] || e.status]
+    .filter(Boolean).join(' · ');
+  return '<button class="row' + (CUR && CUR.id === e.id ? ' on' : '') + '" data-ev="' + e.id + '">' +
+    '<span class="dot ev-' + esc(e.status) + '"></span>' +
+    '<span class="rb">' +
+      '<span class="l1"><span class="evk">' + icon(EVENT_ICON[e.kind] || 'star') + '</span>' +
+        '<span class="t">' + esc(e.title) + '</span>' +
+        '<span class="when">' + esc(shortDue(e.starts_at)) + '</span></span>' +
+      '<span class="l2">' + esc(l2) + '</span>' +
+    '</span></button>';
+}
+function paintList(){
+  if(!ROWS.length){
+    $('list').innerHTML = '<div class="empty">' +
+      (TAB === 'past' ? 'Прошедших событий нет' : TAB === 'promo' ? 'Сейчас акций нет' : 'Ближайших событий нет') +
+      '</div>';
+    return;
+  }
+  $('list').innerHTML = ROWS.map(eventRowHTML).join('');
+  $('list').querySelectorAll('[data-ev]').forEach(b =>
+    b.onclick = () => openEvent(Number(b.dataset.ev)));
+}
+
+/* ============================================================
+   КАРТОЧКА
+   ============================================================ */
+async function openEvent(id, push){
+  if(!id) return;
+  $('dPlaceholder').hidden = true;
+  $('detail').hidden = false;
+  $('dHeadTitle').textContent = 'Событие';
+  $('dBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  $('dMore').hidden = true;
+
+  if(push !== false && (!history.state || history.state.event !== id)){
+    history.pushState({ event:id }, '', 'events.html?id=' + id);
+  }
+
+  const { data:e, error } = await sb.from('events').select('*').eq('id', id).maybeSingle();
+  if(error){ $('dBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!e){ $('dBody').innerHTML = '<div class="empty">Событие не найдено или закрыто для вас</div>'; return; }
+  CUR = e;
+  paintList();
+  await Promise.all([loadPrep(e.id), e.kind === 'promo' ? loadChecks(e.id) : Promise.resolve()]);
+  paintEvent(e);
+}
+function closeDetail(){
+  $('detail').hidden = true;
+  $('dPlaceholder').hidden = false;
+  CUR = null;
+  paintList();
+}
+
+function canEditEvent(e){ return !isAuditor() && (CAN_EVENTS || (e && e.owner_id === ME.id)); }
+function canDeleteEvent(e){ return !isAuditor() && !!e && (isBossRole() || e.created_by === ME.id); }
+function visibleWhoText(e){
+  const roles = e.visible_roles || [], people = e.visible_to || [];
+  if(!roles.length && !people.length) return 'Все';
+  return roles.map(r => ROLE_RU[r] || r).concat(people.map(empName)).join(', ');
+}
+
+function paintEvent(e){
+  $('dHeadTitle').textContent = e.title;
+  $('dMore').hidden = !canEditEvent(e) && !canDeleteEvent(e);
+  $('dMore').onclick = () => eventMenu(e);
+
+  const kv = [
+    ['Вид', esc(EVENT_KIND_RU[e.kind] || e.kind)],
+    ['Статус', '<span class="dot ev-' + esc(e.status) + '" style="margin-right:6px"></span>' + esc(EVENT_STATUS_RU[e.status] || e.status)],
+    ['Начало', esc(fmtDateTime(e.starts_at))],
+    ['Окончание', e.ends_at ? esc(fmtDateTime(e.ends_at)) : '<span class="sub">не указано</span>'],
+    ['Место', e.location ? esc(e.location) : '<span class="sub">не указано</span>'],
+    ['Бренд', e.brand ? esc(e.brand) : '<span class="sub">не указан</span>'],
+    ['Филиалы', (e.branch_ids || []).map(branchName).filter(Boolean).map(esc).join(', ') || '<span class="sub">не указаны</span>'],
+    ['Ответственный', e.owner_id ? esc(empName(e.owner_id)) : '<span class="sub">не назначен</span>'],
+    ['Участники', (e.participants || []).length ? esc(e.participants.map(empName).join(', ')) : '<span class="sub">нет</span>'],
+    ['Кто видит', esc(visibleWhoText(e))]
+  ];
+  if(e.goal) kv.push(['Цель', esc(e.goal)]);
+  if(e.budget !== null && e.budget !== undefined) kv.push(['Бюджет', som(e.budget)]);
+  if(e.kind === 'promo' && e.promo_terms) kv.push(['Условия акции', esc(e.promo_terms)]);
+  if(e.kind === 'masterclass'){
+    if(e.mc_topic) kv.push(['Тема', esc(e.mc_topic)]);
+    if(e.mc_host) kv.push(['Кто ведёт', esc(e.mc_host)]);
+  }
+
+  const started = new Date(e.starts_at) <= new Date();
+
+  $('dBody').innerHTML =
+    '<div class="chead"><h2>' + esc(e.title) + '</h2>' +
+      '<div class="cmeta"><span class="evk">' + icon(EVENT_ICON[e.kind] || 'star') + '</span>' +
+      esc(EVENT_KIND_RU[e.kind] || e.kind) +
+      (e.brand ? ' · ' + esc(e.brand) : '') +
+      (e.location ? ' · ' + esc(e.location) : '') + '</div></div>' +
+    (e.description ? '<div class="text-block" style="padding:0 16px 14px">' + esc(e.description) + '</div>' : '') +
+    '<dl class="kv">' + kv.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
+
+    '<div class="sec" id="prepSec">Подготовка</div><div id="prepBody"></div>' +
+    (e.kind === 'promo' ? '<div class="sec">Контроль точек</div><div id="checkBody"></div>' : '') +
+
+    '<div class="sec">Отчёт</div><div id="reportBody"></div>' +
+    '<div class="sec">Оборот бренда</div><div class="hint" style="padding:0 16px 14px">' +
+      'После подключения 1С здесь появится сравнение оборота.</div>';
+
+  paintPrep(e);
+  if(e.kind === 'promo') paintChecks(e);
+  paintReport(e, started);
+}
+
+/* ---------- подготовка ---------- */
+async function loadPrep(id){
+  const { data, error } = await sb.from('v_tasks').select(TASK_COLS)
+    .eq('event_id', id).order('created_at', { ascending:true }).limit(200);
+  PREP = error ? [] : (data || []);
+}
+function paintPrep(e){
+  const done = PREP.filter(t => t.status === 'done').length;
+  $('prepSec').textContent = 'Подготовка' + (PREP.length ? ' · ' + done + ' из ' + PREP.length + ' готово' : '');
+  const addBtn = canEditEvent(e)
+    ? '<div class="callrow"><button class="btn ghost" id="prepAdd">' + icon('plus') + 'Добавить задачу подготовки</button></div>'
+    : '';
+  $('prepBody').innerHTML = addBtn +
+    (PREP.length ? '<div class="rows">' + PREP.map(t => taskRowHTML(t)).join('') + '</div>'
+      : '<div class="empty">Задач подготовки пока нет</div>');
+  if(canEditEvent(e)) $('prepAdd').onclick = () => location.href = 'new-task.html?event=' + e.id;
+  $('prepBody').querySelectorAll('[data-task]').forEach(b =>
+    b.onclick = () => location.href = 'tasks.html?task=' + b.dataset.task);
+}
+
+/* ---------- контроль точек ---------- */
+async function loadChecks(id){
+  const { data, error } = await sb.from('event_checks')
+    .select('id,event_id,branch_id,employee_id,status,note,checked_by,checked_at')
+    .eq('event_id', id).order('branch_id');
+  CHECKS = error ? [] : (data || []);
+}
+function canCheckRow(e, row){
+  if(isAuditor()) return false;
+  return canEditEvent(e) || row.employee_id === ME.id || (ME.branch_id && ME.branch_id === row.branch_id);
+}
+function paintChecks(e){
+  if(!CHECKS.length){
+    $('checkBody').innerHTML = canEditEvent(e)
+      ? '<div class="callrow"><button class="btn ghost" id="chkCreate">Создать проверки</button></div>'
+      : '<div class="empty">Проверок пока нет</div>';
+    if(canEditEvent(e)) $('chkCreate').onclick = () => createChecks(e);
+    return;
+  }
+  $('checkBody').innerHTML = CHECKS.map(row => {
+    const ro = !canCheckRow(e, row);
+    const who = row.checked_by ? empName(row.checked_by) + ' · ' + fmtDateTime(row.checked_at) : '';
+    return '<button class="checkrow' + (ro ? ' ro' : '') + '"' +
+      (ro ? '' : ' data-chk="' + row.id + '"') + '>' +
+      '<span class="dot ck-' + esc(row.status) + '"></span>' +
+      '<span class="ckb"><span class="ckn">' + esc(branchName(row.branch_id) || ('Филиал #' + row.branch_id)) +
+        '</span><span class="ckd">' + esc([who, row.note].filter(Boolean).join(' · ')) + '</span></span>' +
+    '</button>';
+  }).join('');
+  $('checkBody').querySelectorAll('[data-chk]').forEach(b =>
+    b.onclick = () => markCheck(CHECKS.find(r => r.id === Number(b.dataset.chk))));
+}
+async function createChecks(e){
+  const rows = (e.branch_ids || []).map(bid => ({ event_id:e.id, branch_id:bid, status:'pending' }));
+  if(!rows.length) return toast('У события не выбраны филиалы');
+  const { error } = await sb.from('event_checks').insert(rows);
+  if(error) return toast(errText(error, 'insert'));
+  await loadChecks(e.id);
+  paintChecks(e);
+}
+function markCheck(row){
+  modalOpen({
+    title: 'Проверка — ' + (branchName(row.branch_id) || ('филиал #' + row.branch_id)),
+    bodyHTML:
+      '<div class="field"><label class="field-label" for="chNote">Комментарий</label>' +
+        '<textarea id="chNote" rows="3">' + esc(row.note || '') + '</textarea></div>' +
+      '<div class="btn-row">' +
+        '<button class="btn ok" id="chDone" style="flex:1">Выполнено</button>' +
+        '<button class="btn danger" id="chFail" style="flex:1">Не выполнено</button>' +
+      '</div>'
+  });
+  $('chDone').onclick = () => saveCheck(row, 'done');
+  $('chFail').onclick = () => saveCheck(row, 'failed');
+}
+async function saveCheck(row, status){
+  const note = $('chNote').value.trim() || null;
+  const { error } = await sb.from('event_checks').update({
+    status, note, checked_by: ME.id, checked_at: new Date().toISOString()
+  }).eq('id', row.id);
+  if(error){ toast(errText(error, 'update')); return; }
+  modalClose();
+  toast('Отмечено');
+  await loadChecks(CUR.id);
+  paintChecks(CUR);
+}
+
+/* ---------- отчёт ---------- */
+function paintReport(e, started){
+  const canEdit_ = canEditEvent(e);
+  const attLabel = e.kind === 'masterclass' ? 'Сколько мастеров пришло' : 'Сколько пришло';
+  if(!started && !e.report && !e.result && (e.attendees_count === null || e.attendees_count === undefined)){
+    $('reportBody').innerHTML = '<div class="hint" style="padding:0 16px 14px">Отчёт можно заполнить после начала события</div>';
+    return;
+  }
+  const kv = [];
+  if(e.attendees_count !== null && e.attendees_count !== undefined) kv.push([attLabel, e.attendees_count]);
+  if(e.report) kv.push(['Как прошло', esc(e.report)]);
+  if(e.result) kv.push(['Результат', esc(e.result)]);
+
+  const btns = [];
+  if(canEdit_) btns.push('<button class="btn ghost sm" id="repFill">Заполнить отчёт</button>');
+  if(canEdit_ && !['done','canceled'].includes(e.status))
+    btns.push('<button class="btn ok sm" id="repDone">Проведено</button>');
+
+  $('reportBody').innerHTML =
+    (kv.length ? '<dl class="kv">' + kv.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>'
+      : '<div class="hint" style="padding:0 16px 14px">Отчёт пока не заполнен</div>') +
+    (btns.length ? '<div class="callrow">' + btns.join('') + '</div>' : '');
+
+  if($('repFill')) $('repFill').onclick = () => openReportForm(e);
+  if($('repDone')) $('repDone').onclick = () => markDone(e);
+}
+function openReportForm(e){
+  const attLabel = e.kind === 'masterclass' ? 'Сколько мастеров пришло' : 'Сколько пришло';
+  modalOpen({
+    title:'Отчёт по событию',
+    bodyHTML:
+      '<div class="field"><label class="field-label" for="rAtt">' + esc(attLabel) + '</label>' +
+        '<input id="rAtt" class="num" type="number" min="0" value="' +
+          (e.attendees_count === null || e.attendees_count === undefined ? '' : e.attendees_count) + '"></div>' +
+      '<div class="field"><label class="field-label" for="rRep">Как прошло</label>' +
+        '<textarea id="rRep" rows="3">' + esc(e.report || '') + '</textarea></div>' +
+      '<div class="field"><label class="field-label" for="rRes">Результат</label>' +
+        '<textarea id="rRes" rows="3">' + esc(e.result || '') + '</textarea></div>',
+    saveLabel:'Сохранить',
+    onSave: async () => {
+      modalBusy(true, 'Сохраняем…');
+      const rec = {
+        attendees_count: $('rAtt').value === '' ? null : Number($('rAtt').value),
+        report: $('rRep').value.trim() || null,
+        result: $('rRes').value.trim() || null
+      };
+      const { error } = await sb.from('events').update(rec).eq('id', e.id);
+      if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error, 'update')); }
+      modalClose(); toast('Сохранено'); openEvent(e.id, false);
+    }
+  });
+}
+async function markDone(e){
+  const { error } = await sb.from('events').update({ status:'done' }).eq('id', e.id);
+  if(error) return toast(errText(error, 'update'));
+  toast('Событие отмечено проведённым');
+  openEvent(e.id, false);
+}
+
+/* ---------- меню карточки ---------- */
+function eventMenu(e){
+  const back = document.createElement('div');
+  back.className = 'backdrop clear';
+  const menu = document.createElement('div');
+  menu.className = 'menu';
+  menu.innerHTML =
+    (canEditEvent(e) ? '<button id="mEdit">' + icon('edit') + 'Изменить</button>' : '') +
+    (canEditEvent(e) && e.status !== 'canceled'
+      ? '<button id="mCancel">' + icon('ban') + 'Отменить событие</button>' : '') +
+    (canDeleteEvent(e) ? '<button id="mDel" class="danger">' + icon('trash') + 'Удалить</button>' : '');
+  document.body.append(back, menu);
+  const r = $('dMore').getBoundingClientRect();
+  menu.style.top = Math.min(innerHeight - 180, r.bottom + 6) + 'px';
+  menu.style.right = Math.max(8, innerWidth - r.right) + 'px';
+  const close = () => { back.remove(); menu.remove(); };
+  back.onclick = close;
+  if($('mEdit')) $('mEdit').onclick = () => { close(); openForm(e); };
+  if($('mCancel')) $('mCancel').onclick = () => { close(); cancelEvent(e); };
+  if($('mDel')) $('mDel').onclick = () => { close(); removeEvent(e); };
+}
+function cancelEvent(e){
+  confirmBox('Отменить событие?', '«' + e.title + '» пометится отменённым — участники получат уведомление.',
+    'Отменить', async () => {
+      const { error } = await sb.from('events').update({ status:'canceled' }).eq('id', e.id);
+      if(error) return toast(errText(error, 'update'));
+      toast('Событие отменено');
+      openEvent(e.id, false);
+    });
+}
+function removeEvent(e){
+  confirmBox('Удалить событие?', '«' + e.title + '» пропадёт из календаря и списков без возможности восстановить.',
+    'Удалить', async () => {
+      const { error } = await sb.from('events').delete().eq('id', e.id);
+      if(error) return toast(errText(error));
+      toast('Событие удалено');
+      closeDetail();
+      history.replaceState(null, '', 'events.html');
+      await load();
+    });
+}
+
+/* ============================================================
+   ФОРМА
+   ============================================================ */
+function openForm(e, prefillDate){
+  const v = e || {};
+  const roles = (v.visible_roles || []), people = (v.visible_to || []);
+
+  const roleBoxes = Object.keys(ROLE_RU).map(k =>
+    '<label class="chk"><input type="checkbox" class="r-chk" value="' + k + '"' +
+    (roles.indexOf(k) !== -1 ? ' checked' : '') + '>' + esc(ROLE_RU[k]) + '</label>').join('');
+  const peopleBoxes = EMPS.map(emp =>
+    '<label class="chk p-row" data-name="' + esc((emp.full_name || '').toLowerCase()) + '">' +
+    '<input type="checkbox" class="p-chk" value="' + esc(emp.id) + '"' +
+    (people.indexOf(emp.id) !== -1 ? ' checked' : '') + '>' + esc(emp.full_name) + '</label>').join('');
+  const branchBoxes = BRANCHES.map(b =>
+    '<label class="chk"><input type="checkbox" class="br-chk" value="' + b.id + '"' +
+    ((v.branch_ids || []).indexOf(b.id) !== -1 ? ' checked' : '') + '>' + esc(b.name) + '</label>').join('');
+  const partBoxes = EMPS.map(emp =>
+    '<label class="chk pt-row" data-name="' + esc((emp.full_name || '').toLowerCase()) + '">' +
+    '<input type="checkbox" class="pt-chk" value="' + esc(emp.id) + '"' +
+    ((v.participants || []).indexOf(emp.id) !== -1 ? ' checked' : '') + '>' + esc(emp.full_name) + '</label>').join('');
+
+  const starts = v.starts_at ? isoToLocalInput(new Date(v.starts_at))
+    : prefillDate ? prefillDate + 'T10:00' : '';
+  const ends = v.ends_at ? isoToLocalInput(new Date(v.ends_at)) : '';
+
+  modalOpen({
+    title: e ? 'Изменить событие' : 'Новое событие',
+    wide:true,
+    bodyHTML:
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fKindSel">Вид</label>' +
+          '<select id="fKindSel">' + optionsFrom(EVENT_KIND_RU, v.kind || 'visit') + '</select></div>' +
+        '<div class="field"><label class="field-label" for="fBrandSel">Бренд</label>' +
+          '<input id="fBrandSel" list="brandList" value="' + esc(v.brand || '') + '"></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label" for="fTitle">Название <span class="req">*</span></label>' +
+        '<input id="fTitle" maxlength="200" value="' + esc(v.title || '') + '"></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="fStarts">Начало <span class="req">*</span></label>' +
+          '<input id="fStarts" type="datetime-local" value="' + esc(starts) + '"></div>' +
+        '<div class="field"><label class="field-label" for="fEnds">Конец</label>' +
+          '<input id="fEnds" type="datetime-local" value="' + esc(ends) + '"></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label" for="fLoc">Место</label>' +
+        '<input id="fLoc" value="' + esc(v.location || '') + '"></div>' +
+      '<div class="field"><label class="field-label">Филиалы</label>' +
+        '<div class="pickbox">' + (branchBoxes || '<span class="sub">Филиалов нет</span>') + '</div></div>' +
+      '<div class="field"><label class="field-label" for="fOwner">Ответственный</label>' +
+        '<select id="fOwner"><option value="">Не назначен</option>' +
+        EMPS.map(emp => '<option value="' + esc(emp.id) + '"' +
+          ((v.owner_id || ME.id) === emp.id ? ' selected' : '') + '>' + esc(emp.full_name) + '</option>').join('') +
+        '</select></div>' +
+      '<div class="field"><label class="field-label" for="fPtSearch">Участники</label>' +
+        '<input id="fPtSearch" type="search" placeholder="Поиск по имени" autocomplete="off" style="margin-bottom:8px">' +
+        '<div class="pickbox" id="ptBox">' + (partBoxes || '<span class="sub">Сотрудников нет</span>') + '</div></div>' +
+      '<div class="field"><label class="field-label" for="fGoal">Цель / ожидаемый результат</label>' +
+        '<textarea id="fGoal" rows="2">' + esc(v.goal || '') + '</textarea></div>' +
+      '<div class="field"><label class="field-label" for="fBudget">Бюджет</label>' +
+        '<input id="fBudget" class="num" type="number" min="0" value="' +
+          (v.budget === null || v.budget === undefined ? '' : v.budget) + '"></div>' +
+      '<div id="promoBox" hidden><div class="field"><label class="field-label" for="fPromo">Условия акции</label>' +
+        '<textarea id="fPromo" rows="2">' + esc(v.promo_terms || '') + '</textarea></div></div>' +
+      '<div id="mcBox" hidden>' +
+        '<div class="row2">' +
+          '<div class="field"><label class="field-label" for="fMcTopic">Тема</label>' +
+            '<input id="fMcTopic" value="' + esc(v.mc_topic || '') + '"></div>' +
+          '<div class="field"><label class="field-label" for="fMcHost">Кто ведёт</label>' +
+            '<input id="fMcHost" value="' + esc(v.mc_host || '') + '"></div>' +
+        '</div></div>' +
+      '<div class="field"><label class="field-label" for="fDesc">Описание</label>' +
+        '<textarea id="fDesc" rows="2">' + esc(v.description || '') + '</textarea></div>' +
+      '<div class="field"><label class="field-label">Кто видит событие</label>' +
+        '<div class="hint" style="margin:0 0 8px">Пусто и там, и там — видят все</div>' +
+        '<div class="pickbox"><div class="rolegrid">' + roleBoxes + '</div></div></div>' +
+      '<div class="field"><label class="field-label" for="fVisSearch">Отдельные сотрудники</label>' +
+        '<input id="fVisSearch" type="search" placeholder="Поиск по имени" autocomplete="off" style="margin-bottom:8px">' +
+        '<div class="pickbox" id="visBox">' + (peopleBoxes || '<span class="sub">Сотрудников нет</span>') + '</div></div>',
+    saveLabel: e ? 'Сохранить' : 'Создать',
+    onSave: () => saveEvent(e)
+  });
+
+  const toggleKindBoxes = () => {
+    $('promoBox').hidden = $('fKindSel').value !== 'promo';
+    $('mcBox').hidden = $('fKindSel').value !== 'masterclass';
+  };
+  $('fKindSel').onchange = toggleKindBoxes;
+  toggleKindBoxes();
+
+  $('fPtSearch').oninput = () => {
+    const q = $('fPtSearch').value.trim().toLowerCase();
+    $('ptBox').querySelectorAll('.pt-row').forEach(r => { r.style.display = (!q || r.dataset.name.indexOf(q) !== -1) ? '' : 'none'; });
+  };
+  $('fVisSearch').oninput = () => {
+    const q = $('fVisSearch').value.trim().toLowerCase();
+    $('visBox').querySelectorAll('.p-row').forEach(r => { r.style.display = (!q || r.dataset.name.indexOf(q) !== -1) ? '' : 'none'; });
+  };
+  $('fTitle').focus();
+}
+
+async function saveEvent(e){
+  const title = $('fTitle').value.trim();
+  if(!title) return modalMsg('Впишите название');
+  const starts_at = localToISO($('fStarts').value);
+  if(!starts_at) return modalMsg('Укажите начало события');
+  const ends_at = $('fEnds').value ? localToISO($('fEnds').value) : null;
+
+  const rec = {
+    kind: $('fKindSel').value,
+    title,
+    brand: $('fBrandSel').value.trim() || null,
+    starts_at, ends_at,
+    location: $('fLoc').value.trim() || null,
+    branch_ids: [...document.querySelectorAll('.br-chk')].filter(c => c.checked).map(c => Number(c.value)),
+    owner_id: $('fOwner').value || null,
+    participants: [...document.querySelectorAll('.pt-chk')].filter(c => c.checked).map(c => c.value),
+    goal: $('fGoal').value.trim() || null,
+    budget: $('fBudget').value === '' ? null : Number($('fBudget').value),
+    promo_terms: $('fKindSel').value === 'promo' ? ($('fPromo').value.trim() || null) : null,
+    mc_topic: $('fKindSel').value === 'masterclass' ? ($('fMcTopic').value.trim() || null) : null,
+    mc_host: $('fKindSel').value === 'masterclass' ? ($('fMcHost').value.trim() || null) : null,
+    description: $('fDesc').value.trim() || null,
+    visible_roles: [...document.querySelectorAll('.r-chk')].filter(c => c.checked).map(c => c.value),
+    visible_to: [...document.querySelectorAll('.p-chk')].filter(c => c.checked).map(c => c.value)
+  };
+
+  modalBusy(true, 'Сохраняем…');
+  let res;
+  if(e){
+    res = await sb.from('events').update(rec).eq('id', e.id).select('id').maybeSingle();
+  }else{
+    rec.status = 'planned';
+    rec.created_by = ME.id;
+    res = await sb.from('events').insert(rec).select('id').maybeSingle();
+  }
+  if(res.error){
+    modalBusy(false, e ? 'Сохранить' : 'Создать');
+    return modalMsg(errText(res.error, e ? 'update' : 'insert'));
+  }
+  modalClose();
+  toast(e ? 'Сохранено' : 'Событие создано');
+  await load();
+  openEvent(res.data ? res.data.id : e.id, false);
+}
+</script>
+</body>
+</html>

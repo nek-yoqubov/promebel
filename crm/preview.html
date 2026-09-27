@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Проверка ролей</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.pvgrid{display:flex;gap:16px;overflow-x:auto;padding:4px 16px 28px;align-items:flex-start}
+.pvcard{flex:none;display:flex;flex-direction:column;gap:8px}
+.pvhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pvhead b{font:700 14.5px 'Manrope';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.pvhead .pvr{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.pvhead .btn{margin-left:auto}
+.pvframe{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--line)}
+.pvframe.phone{width:390px;height:844px;border-radius:34px;border-width:8px}
+.pvframe.pc{width:390px;height:844px;border-radius:14px}
+.pvframe iframe{position:absolute;top:0;left:0;border:none;background:var(--bg)}
+.pvempty{color:var(--muted);padding:40px 16px;text-align:center}
+@media (max-width:1024px){ .pvgrid{padding-left:16px;padding-right:16px} }
+/* строка сотрудника в поиске — как в new-task.html, а не пункт «Моего плана» из crm.css */
+#pvList .pitem{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:6px 10px;
+  background:none;border:none;border-bottom:1px solid var(--line);color:var(--ink);
+  font:600 14.5px 'Manrope';text-align:left;cursor:pointer}
+#pvList .pitem:last-child{border-bottom:none}
+#pvList .pitem:disabled{opacity:.5;cursor:default}
+#pvList .pitem i{font-style:normal;color:var(--muted);font-size:12.5px;font-weight:600;flex:none}
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Проверка ролей</h1></div>
+
+  <div class="pad" style="padding-bottom:0">
+    <div class="field">
+      <label class="field-label" for="pvSearch">Сотрудники — до 4 одновременно</label>
+      <input id="pvSearch" type="search" placeholder="Имя сотрудника" autocomplete="off">
+      <div class="pickbox" id="pvList" style="margin-top:8px"></div>
+    </div>
+    <div class="chips-plain" id="pvChips"></div>
+    <div class="seg" id="pvMode" style="margin:0 0 4px;max-width:260px">
+      <button class="on" data-m="phone">Телефон</button>
+      <button data-m="pc">ПК</button>
+    </div>
+  </div>
+
+  <div class="pvgrid" id="pvGrid"><div class="pvempty">Выберите хотя бы одного сотрудника</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+let SELECTED = [];       // employees {id, full_name, role}
+let MODE = 'phone';
+
+(async () => {
+  if(!await requireAuth()) return;
+  if(IS_PREVIEW || ME.role !== 'admin'){ location.replace('index.html'); return; }
+  await renderShell({ title:'Проверка ролей', tab:'preview' });
+
+  await loadEmployees();
+  $('pvSearch').oninput = paintPicker;
+  document.querySelectorAll('#pvMode button').forEach(b => b.onclick = () => {
+    MODE = b.dataset.m;
+    document.querySelectorAll('#pvMode button').forEach(x => x.classList.toggle('on', x === b));
+    resizeGrid();
+  });
+
+  paintPicker();
+})();
+
+function paintPicker(){
+  const q = $('pvSearch').value.trim().toLowerCase();
+  const rows = EMPS.filter(e => !SELECTED.some(s => s.id === e.id))
+    .filter(e => !q || (e.full_name || '').toLowerCase().includes(q))
+    .slice(0, 40);
+  const full = SELECTED.length >= 4;
+  $('pvList').innerHTML = rows.length
+    ? rows.map(e =>
+        '<button class="pitem" style="width:100%" ' + (full ? 'disabled' : '') + ' data-add="' + esc(e.id) + '">' +
+        '<span class="ava" style="width:28px;height:28px;font-size:11px;border-radius:9px">' +
+          esc(initials(e.full_name)) + '</span>' +
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' + esc(e.full_name) + '</span>' +
+        '<i>' + esc(ROLE_RU[e.role] || e.role) + '</i></button>').join('')
+    : '<div class="empty" style="padding:14px">' + (full ? 'Уже выбрано четверо — снимите кого-то' : 'Никого не нашлось') + '</div>';
+  $('pvList').querySelectorAll('[data-add]').forEach(b =>
+    b.onclick = () => addEmployee(b.dataset.add));
+}
+
+function paintChips(){
+  $('pvChips').innerHTML = SELECTED.map(e =>
+    '<span class="tagbox">' + esc(e.full_name) +
+      '<button data-rm="' + esc(e.id) + '" style="border:none;background:none;color:inherit;' +
+      'cursor:pointer;font:inherit;padding:0 0 0 2px;line-height:1">×</button></span>').join('');
+  $('pvChips').querySelectorAll('[data-rm]').forEach(b =>
+    b.onclick = () => removeEmployee(b.dataset.rm));
+}
+
+async function addEmployee(id){
+  if(SELECTED.length >= 4 || SELECTED.some(s => s.id === id)) return;
+  const emp = EMP_BY_ID[id];
+  if(!emp) return;
+  SELECTED.push(emp);
+  paintPicker(); paintChips();
+  addCard(emp);
+  await startFrame(emp);
+}
+/* «Закрыть» карточку — не просто убрать рамку: сессия сотрудника внутри нее
+   должна сама отозваться, иначе она останется висеть в localStorage. */
+async function removeEmployee(id){
+  const card = document.querySelector('[data-card="' + id + '"]');
+  const ifr = card && card.querySelector('iframe');
+  if(ifr){
+    try{ await ifr.contentWindow.exitPreview(); }catch(e){}
+  }else{
+    try{ localStorage.removeItem('sb-pv-' + id); }catch(e){}
+  }
+  SELECTED = SELECTED.filter(s => s.id !== id);
+  paintPicker(); paintChips();
+  if(card) card.remove();
+  if(!SELECTED.length) $('pvGrid').innerHTML = '<div class="pvempty">Выберите хотя бы одного сотрудника</div>';
+}
+
+/* ============================================================
+   КАДРЫ — тот же обмен токенами, что и «Смотреть как» в Сотрудниках
+   ============================================================ */
+async function startFrame(emp){
+  const card = document.querySelector('[data-card="' + emp.id + '"]');
+  const box = card && card.querySelector('.pvframe');
+  if(!box) return;
+  const r = await sb.functions.invoke('crm-view-as', { body: { employee_id: emp.id } });
+  if(r.error || !r.data || !r.data.ok){
+    box.innerHTML = '<div class="empty" style="padding:16px">' +
+      esc(r.error ? errText(r.error) : ((r.data && r.data.error) || 'Не удалось открыть просмотр')) + '</div>';
+    return;
+  }
+  localStorage.setItem('pv-handoff-' + emp.id, JSON.stringify({
+    access_token: r.data.access_token,
+    refresh_token: r.data.refresh_token
+  }));
+  const ifr = document.createElement('iframe');
+  ifr.name = 'pv:' + emp.id;
+  ifr.src = 'index.html';
+  box.innerHTML = '';
+  box.appendChild(ifr);
+  sizeFrame(box, ifr);
+}
+
+function sizeFrame(box, ifr){
+  if(MODE === 'phone'){
+    box.style.width = '390px'; box.style.height = '844px';
+    ifr.style.width = '390px'; ifr.style.height = '844px'; ifr.style.transform = 'none';
+  }else{
+    const k = 390 / 1280;
+    box.style.width = '390px'; box.style.height = '844px';
+    ifr.style.width = '1280px'; ifr.style.height = Math.round(844 / k) + 'px';
+    ifr.style.transform = 'scale(' + k + ')'; ifr.style.transformOrigin = '0 0';
+  }
+}
+
+/* Рисуем только что добавленную карточку — остальные уже открытые кадры не трогаем. */
+function addCard(e){
+  const grid = $('pvGrid');
+  if(grid.querySelector('.pvempty')) grid.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'pvcard';
+  card.dataset.card = e.id;
+  card.innerHTML =
+    '<div class="pvhead"><b>' + esc(e.full_name) + '</b><span class="pvr">' +
+      esc(ROLE_RU[e.role] || e.role) + '</span>' +
+      '<button class="btn ghost sm" data-act="reload">Обновить</button>' +
+      '<button class="btn ghost sm" data-act="tab">Открыть в вкладке</button>' +
+      '<button class="btn ghost sm" data-act="close">Закрыть</button></div>' +
+    '<div class="pvframe ' + (MODE === 'phone' ? 'phone' : 'pc') + '">' +
+      '<div class="loading">Открываем…</div></div>';
+  grid.appendChild(card);
+  card.querySelector('[data-act="reload"]').onclick = () => reloadFrame(e.id);
+  card.querySelector('[data-act="tab"]').onclick = () => openInTab(e.id);
+  card.querySelector('[data-act="close"]').onclick = () => removeEmployee(e.id);
+}
+
+/* Переключатель «Телефон/ПК» только меняет масштаб — кадры не пересоздаём,
+   иначе каждый раз новый обмен токенами и сброс на index.html внутри рамки. */
+function resizeGrid(){
+  document.querySelectorAll('.pvcard').forEach(card => {
+    const box = card.querySelector('.pvframe');
+    const ifr = box && box.querySelector('iframe');
+    box.className = 'pvframe ' + (MODE === 'phone' ? 'phone' : 'pc');
+    if(ifr) sizeFrame(box, ifr);
+  });
+}
+
+function reloadFrame(id){
+  const card = document.querySelector('[data-card="' + id + '"]');
+  const ifr = card && card.querySelector('iframe');
+  if(!ifr) return;
+  try{ ifr.contentWindow.location.reload(); }
+  catch(e){ ifr.src = 'index.html?_=' + Date.now(); }
+}
+/* window.open с тем же именем нашёл бы этот же iframe вместо новой вкладки —
+   на миг снимаем имя, чтобы браузер честно открыл отдельное окно. */
+function openInTab(id){
+  const card = document.querySelector('[data-card="' + id + '"]');
+  const ifr = card && card.querySelector('iframe');
+  if(ifr) ifr.name = '';
+  window.open('index.html', 'pv:' + id);
+  if(ifr) ifr.name = 'pv:' + id;
+}
+</script>
+</body>
+</html>

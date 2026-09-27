@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Журнал действий</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Журнал действий</h1></div>
+
+  <div class="seg" id="seg">
+    <button class="on" data-pane="log">Журнал</button>
+    <button data-pane="set">Настройки</button>
+  </div>
+
+  <!-- ---------- Журнал ---------- -->
+  <section id="paneLog">
+    <div class="filterbar">
+      <button class="btn ghost sm" id="fOpen">Фильтры<span class="fc" id="fCnt" hidden></span></button>
+    </div>
+    <div class="fsheet" id="fsheet">
+      <div class="fsh"><span class="t">Фильтры</span>
+        <button class="ib" id="fClose" aria-label="Закрыть"></button></div>
+      <div class="fsb"><div class="toolbar" id="filters"></div></div>
+      <div class="fsf">
+        <button class="btn ghost" id="fReset">Сбросить</button>
+        <button class="btn" id="fDone">Готово</button></div>
+    </div>
+
+    <div class="tl" id="list"><div class="loading">Загрузка…</div></div>
+    <div class="loading" id="loadingRow" hidden>Загрузка…</div>
+    <div class="btn-row" style="padding:0 16px 20px">
+      <button class="btn ghost block" id="more" hidden>Показать ещё</button>
+    </div>
+  </section>
+
+  <!-- ---------- Настройки ---------- -->
+  <section id="paneSet" hidden>
+    <div class="panel" id="setBody"><div class="loading">Загрузка…</div></div>
+  </section>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+const AUDIT_ACTION_RU = { insert:'Создание', update:'Изменение', delete:'Удаление', view:'Просмотр' };
+const SECTION_RU = Object.assign({ view_as:'Смотреть как' }, AUDIT_TABLE_RU);
+const SKIP_FIELDS = new Set(['id','created_at','updated_at','remind_sent_at']);
+const AUDIT_FIELD_RU = {
+  status:'статус', priority:'приоритет', title:'название', due_at:'срок', assignee_id:'исполнитель',
+  author_id:'постановщик', owner_id:'владелец', branch_id:'филиал', description:'описание',
+  done_criteria:'критерий выполнения', report_required:'фотоотчёт', full_name:'имя', role:'роль',
+  position:'должность', manager_id:'руководитель', phone:'телефон', kind:'вид', brand:'бренд',
+  starts_at:'начало', ends_at:'конец', started_at:'начало работы', location:'место', plan_date:'дата плана', done_at:'сделано',
+  target:'план по счётчику', progress:'прогресс', url:'адрес', category:'категория',
+  is_active:'доступ', employee_id:'сотрудник', checked_by:'проверил', note:'комментарий',
+  budget:'бюджет', goal:'цель', notes:'заметка', address:'адрес', company:'компания',
+  next_contact_at:'следующий контакт', last_contact_at:'последний контакт', source:'источник',
+  city:'город', tags:'теги', email:'почта'
+};
+const EMP_FIELDS = new Set(['assignee_id','author_id','owner_id','manager_id','employee_id',
+  'checked_by','created_by','actor_id']);
+const DATE_FIELDS = new Set(['due_at','starts_at','ends_at','started_at','plan_date','done_at',
+  'next_contact_at','last_contact_at']);
+
+const AUDIT_VERB = {
+  tasks: { insert:'поставил задачу', update:'изменил задачу', delete:'удалил задачу', f:'title' },
+  task_templates: { insert:'создал повтор', update:'изменил повтор', delete:'удалил повтор', f:'title' },
+  clients: { insert:'завёл клиента', update:'изменил клиента', delete:'удалил клиента', f:'full_name' },
+  employees: { insert:'завёл сотрудника', update:'изменил сотрудника', delete:'удалил сотрудника', f:'full_name' },
+  links: { insert:'добавил ссылку', update:'изменил ссылку', delete:'удалил ссылку', f:'title' },
+  events: { insert:'создал событие', update:'изменил событие', delete:'удалил событие', f:'title' },
+  activities: { insert:'добавил в план', update:'изменил в плане', delete:'убрал из плана', f:'title' }
+};
+/* где искать название записи, если её нет прямо в changes (только update) */
+const TITLE_TABLE_MAP = {
+  tasks: { table:'v_tasks', field:'title' },
+  activities: { table:'activities', field:'title' },
+  clients: { table:'clients', field:'full_name' },
+  events: { table:'events', field:'title' },
+  task_templates: { table:'task_templates', field:'title' },
+  links: { table:'links', field:'title' },
+  employees: { table:'employees', field:'full_name' }
+};
+let TITLES = {};   // TITLES[table_name][row_id] = название
+
+let PERIOD = '7d', F_EMP = '', F_TABLE = '', F_ACTION = '';
+let ROWS = [], OFFSET = 0, LOADING = false, DONE = false;
+const PAGE = 50;
+let ALL_EMPS = [], ALL_EMP_BY_ID = {};
+let SLEEP = {};
+
+(async () => {
+  if(!await requireAuth()) return;
+  if(!isBossRole()){ location.replace('index.html'); return; }
+  await renderShell({ title:'Журнал действий', tab:'audit' });
+
+  $('fClose').innerHTML = icon('x');
+  $('fOpen').onclick = openFilters;
+  $('fClose').onclick = closeFilters;
+  $('fDone').onclick = closeFilters;
+  $('fReset').onclick = () => {
+    PERIOD = '7d'; F_EMP = ''; F_TABLE = ''; F_ACTION = '';
+    paintFilters(); closeFilters(); load(true);
+  };
+  document.querySelectorAll('#seg button').forEach(b => b.onclick = () => showPane(b.dataset.pane));
+  $('more').onclick = () => load(false);
+
+  await loadAllEmps();
+  paintFilters();
+  load(true);
+  loadSettings();
+})();
+
+function showPane(p){
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.pane === p));
+  $('paneLog').hidden = p !== 'log';
+  $('paneSet').hidden = p !== 'set';
+}
+
+async function loadAllEmps(){
+  const { data, error } = await sb.from('employees').select('id,full_name,role').order('full_name');
+  if(error){ console.warn('employees', error); return; }
+  ALL_EMPS = data || [];
+  ALL_EMP_BY_ID = {};
+  ALL_EMPS.forEach(e => ALL_EMP_BY_ID[e.id] = e);
+}
+function nameOf(id){
+  if(!id) return '—';
+  const e = ALL_EMP_BY_ID[id];
+  return e ? e.full_name : 'сотрудник удалён';
+}
+
+/* ============================================================
+   ФИЛЬТРЫ
+   ============================================================ */
+function paintFilters(){
+  $('filters').innerHTML =
+    '<select id="fPeriod" class="grow">' +
+      '<option value="today">Сегодня</option>' +
+      '<option value="7d">7 дней</option>' +
+      '<option value="30d">30 дней</option>' +
+      '<option value="custom">Свои даты</option>' +
+    '</select>' +
+    '<input id="pFrom" type="date" hidden>' +
+    '<input id="pTo" type="date" hidden>' +
+    '<select id="fEmp" class="grow"><option value="">Все сотрудники</option>' +
+      ALL_EMPS.map(e => '<option value="' + esc(e.id) + '"' + (F_EMP === e.id ? ' selected' : '') + '>' +
+        esc(e.full_name) + '</option>').join('') + '</select>' +
+    '<select id="fTable" class="grow"><option value="">Любой раздел</option>' +
+      Object.keys(SECTION_RU).map(k => '<option value="' + k + '"' + (F_TABLE === k ? ' selected' : '') + '>' +
+        esc(SECTION_RU[k]) + '</option>').join('') + '</select>' +
+    '<select id="fAction" class="grow"><option value="">Любое действие</option>' +
+      Object.keys(AUDIT_ACTION_RU).map(k => '<option value="' + k + '"' + (F_ACTION === k ? ' selected' : '') + '>' +
+        esc(AUDIT_ACTION_RU[k]) + '</option>').join('') + '</select>';
+
+  $('fPeriod').value = PERIOD;
+  $('fPeriod').onchange = () => {
+    PERIOD = $('fPeriod').value;
+    $('pFrom').hidden = $('pTo').hidden = PERIOD !== 'custom';
+    paintFilterCount(); load(true);
+  };
+  $('pFrom').hidden = $('pTo').hidden = PERIOD !== 'custom';
+  $('pFrom').onchange = () => load(true);
+  $('pTo').onchange = () => load(true);
+  $('fEmp').onchange = () => { F_EMP = $('fEmp').value; paintFilterCount(); load(true); };
+  $('fTable').onchange = () => { F_TABLE = $('fTable').value; paintFilterCount(); load(true); };
+  $('fAction').onchange = () => { F_ACTION = $('fAction').value; paintFilterCount(); load(true); };
+  paintFilterCount();
+}
+function paintFilterCount(){
+  const n = [F_EMP, F_TABLE, F_ACTION, PERIOD !== '7d' ? 'p' : ''].filter(Boolean).length;
+  $('fCnt').textContent = n;
+  $('fCnt').hidden = !n;
+}
+function openFilters(){
+  $('fsheet').classList.add('open');
+  if(!$('fBack')){
+    const b = document.createElement('div');
+    b.className = 'backdrop'; b.id = 'fBack';
+    b.onclick = closeFilters;
+    document.body.append(b);
+  }
+}
+function closeFilters(){
+  $('fsheet').classList.remove('open');
+  const b = $('fBack'); if(b) b.remove();
+}
+function periodRange(){
+  if(PERIOD === 'today') return { from: startOfToday().toISOString(), to: null };
+  if(PERIOD === '7d') return { from: addDays(startOfToday(), -6).toISOString(), to: null };
+  if(PERIOD === '30d') return { from: addDays(startOfToday(), -29).toISOString(), to: null };
+  const f = $('pFrom') && $('pFrom').value, t = $('pTo') && $('pTo').value;
+  // без пояса база сочтёт дату UTC и сдвинет на местное смещение — переводим сама через Date
+  return {
+    from: f ? new Date(f + 'T00:00').toISOString() : null,
+    to: t ? new Date(t + 'T23:59:59').toISOString() : null
+  };
+}
+
+/* ============================================================
+   ЗАГРУЗКА
+   ============================================================ */
+async function load(reset){
+  if(reset){ OFFSET = 0; ROWS = []; DONE = false; $('list').innerHTML = ''; }
+  if(DONE || LOADING) return;
+  LOADING = true;
+  $('loadingRow').hidden = false;
+  $('more').hidden = true;
+
+  let q = sb.from('audit_log').select('id,table_name,row_id,action,actor_id,changes,created_at')
+    .order('created_at', { ascending:false }).range(OFFSET, OFFSET + PAGE - 1);
+  const r = periodRange();
+  if(r.from) q = q.gte('created_at', r.from);
+  if(r.to) q = q.lte('created_at', r.to);
+  if(F_EMP) q = q.eq('actor_id', F_EMP);
+  if(F_TABLE) q = q.eq('table_name', F_TABLE);
+  if(F_ACTION) q = q.eq('action', F_ACTION);
+
+  const { data, error } = await q;
+  LOADING = false;
+  $('loadingRow').hidden = true;
+  if(error){
+    if(reset) $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>';
+    return;
+  }
+  const rows = data || [];
+  ROWS = ROWS.concat(rows);
+  OFFSET += rows.length;
+  if(rows.length < PAGE) DONE = true;
+  await loadTitles(rows);
+  paintList();
+  $('more').hidden = DONE;
+}
+
+/* Одним запросом на таблицу подтягиваем текущие названия записей этой страницы —
+   в update чаще всего нет title, если его не меняли. */
+async function loadTitles(rows){
+  const byTable = {};
+  rows.forEach(r => {
+    const cfg = TITLE_TABLE_MAP[r.table_name];
+    if(!cfg || r.row_id == null) return;
+    (byTable[r.table_name] = byTable[r.table_name] || new Set()).add(r.row_id);
+  });
+  await Promise.all(Object.keys(byTable).map(async tn => {
+    const cfg = TITLE_TABLE_MAP[tn];
+    const ids = [...byTable[tn]];
+    if(!ids.length) return;
+    const { data, error } = await sb.from(cfg.table).select('id,' + cfg.field).in('id', ids);
+    if(error || !data) return;
+    TITLES[tn] = TITLES[tn] || {};
+    data.forEach(row => { TITLES[tn][row.id] = row[cfg.field]; });
+  }));
+}
+
+function paintList(){
+  if(!ROWS.length){
+    $('list').innerHTML = '<div class="empty">Записей за этот период не нашлось</div>';
+    return;
+  }
+  $('list').innerHTML = ROWS.map(rowHTML).join('');
+  $('list').querySelectorAll('[data-link]').forEach(b => b.onclick = () => location.href = b.dataset.link);
+}
+
+/* ============================================================
+   ЧЕЛОВЕЧЕСКАЯ СТРОКА
+   ============================================================ */
+function rowHTML(r){
+  const sentence = describe(r);
+  const clickable = r.table_name === 'tasks' && r.row_id;
+  const tag = clickable ? 'button' : 'div';
+  return '<' + tag + ' class="tlrow flat"' +
+      (clickable ? ' data-link="tasks.html?task=' + esc(r.row_id) + '"' : '') + '>' +
+    '<span class="ti">' + icon(iconFor(r.table_name)) + '</span>' +
+    '<span class="tb3">' +
+      '<span class="t1"><span class="tt2">' + esc(sentence) + '</span>' +
+        '<span class="tw">' + esc(fmtWhen(r.created_at)) + '</span></span>' +
+      '<span class="t2">' + esc(nameOf(r.actor_id)) + '</span>' +
+    '</span></' + tag + '>';
+}
+function iconFor(table){
+  return { tasks:'list', task_templates:'repeat', clients:'users', employees:'idcard',
+    links:'link', events:'star', activities:'checkCircle', view_as:'user' }[table] || 'file';
+}
+function describe(r){
+  if(r.table_name === 'view_as'){
+    const ch = r.changes || {};
+    const full = ch.full_name || nameOf(r.row_id);
+    const role = ch.role ? (ROLE_RU[ch.role] || ch.role) : '';
+    return 'смотрел как ' + full + (role ? ' (' + role + ')' : '');
+  }
+
+  const cfg = AUDIT_VERB[r.table_name];
+  const verb = cfg ? cfg[r.action] : null;
+  const title = titleFor(r);
+
+  const base = verb || (
+    (AUDIT_ACTION_RU[r.action] ? AUDIT_ACTION_RU[r.action].toLowerCase() : (r.action || '')) +
+    ' — ' + (SECTION_RU[r.table_name] || r.table_name).toLowerCase()
+  );
+  let s = base + (title ? ' «' + title + '»' : '');
+  if(r.action === 'update'){
+    const diffs = auditDiffs(r.changes);
+    if(diffs.length){
+      s += ': ' + diffs.map(([k, a, b]) =>
+        (AUDIT_FIELD_RU[k] || k) + ' ' + fmtVal(k, a) + ' → ' + fmtVal(k, b)).join(', ');
+    }
+  }
+  return s;
+}
+/* Название записи: сперва текущее (подтянули пачкой в loadTitles), для insert/delete —
+   прямо из полного снимка строки в changes, а если строки уже нет — из чужого insert/delete
+   той же записи среди уже загруженных строк журнала. */
+function titleFor(r){
+  const cfg = TITLE_TABLE_MAP[r.table_name];
+  if(!cfg || r.row_id == null) return null;
+  const live = TITLES[r.table_name] && TITLES[r.table_name][r.row_id];
+  if(live !== undefined && live !== null) return live;
+  if((r.action === 'insert' || r.action === 'delete') && r.changes) return r.changes[cfg.field] || null;
+  const alt = ROWS.find(x => x.table_name === r.table_name && x.row_id === r.row_id &&
+    (x.action === 'insert' || x.action === 'delete') && x.changes);
+  return alt ? (alt.changes[cfg.field] || null) : null;
+}
+/* update пишет только изменённые поля, каждое как [было, стало] */
+function auditDiffs(changes){
+  if(!changes || typeof changes !== 'object') return [];
+  return Object.keys(changes)
+    .filter(k => !SKIP_FIELDS.has(k) && Array.isArray(changes[k]) && changes[k].length === 2)
+    .map(k => [k, changes[k][0], changes[k][1]]);
+}
+function fmtVal(key, v){
+  if(v === null || v === undefined || v === '') return '—';
+  if(EMP_FIELDS.has(key)) return nameOf(v);
+  if(DATE_FIELDS.has(key)) return fmtDateTime(String(v).length <= 10 ? v + 'T00:00' : v);
+  if(key === 'status') return STATUS_RU[v] || EVENT_STATUS_RU[v] || DEAL_STAGE_RU[v] || v;
+  if(key === 'priority') return PRIORITY_RU[v] || v;
+  if(key === 'role') return ROLE_RU[v] || v;
+  if(key === 'kind') return CLIENT_KIND_RU[v] || EVENT_KIND_RU[v] || ACTIVITY_KIND_RU[v] || v;
+  if(key === 'report_required' || key === 'is_active' || typeof v === 'boolean') return v ? 'да' : 'нет';
+  if(Array.isArray(v)) return v.length ? v.join(', ') : '—';
+  return String(v);
+}
+
+/* ============================================================
+   НАСТРОЙКИ
+   ============================================================ */
+async function loadSettings(){
+  const { data, error } = await sb.from('settings').select('key,value').eq('key', 'sleeping_days').maybeSingle();
+  if(error){ $('setBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  SLEEP = (data && data.value) || {};
+  paintSettings();
+}
+function paintSettings(){
+  $('setBody').innerHTML =
+    '<div class="sec" style="margin:0 0 6px">Спящие клиенты</div>' +
+    '<p class="sub" style="margin:0 0 14px">Через сколько дней без контакта клиент считается спящим — по каждому виду.</p>' +
+    CLIENT_KIND_ORDER.map(k =>
+      '<div class="field"><label class="field-label" for="sd-' + k + '">' + esc(CLIENT_KIND_RU[k]) + '</label>' +
+        '<input id="sd-' + k + '" class="num" type="number" min="1" max="365" value="' +
+          (SLEEP[k] != null ? SLEEP[k] : '') + '"></div>').join('') +
+    '<button class="btn" id="setSave">Сохранить</button>' +
+    '<div class="msg err" id="setMsg"></div>';
+  $('setSave').onclick = saveSettings;
+}
+async function saveSettings(){
+  const val = {};
+  let bad = false;
+  CLIENT_KIND_ORDER.forEach(k => {
+    const n = Number($('sd-' + k).value);
+    if(!n || n < 1) bad = true;
+    val[k] = n;
+  });
+  const msg = $('setMsg');
+  if(bad){ msg.className = 'msg err'; msg.textContent = 'Впишите число дней для каждого вида'; return; }
+
+  $('setSave').disabled = true; $('setSave').textContent = 'Сохраняем…';
+  const { error } = await sb.from('settings').update({ value: val }).eq('key', 'sleeping_days');
+  $('setSave').disabled = false; $('setSave').textContent = 'Сохранить';
+  if(error){ msg.className = 'msg err'; msg.textContent = errText(error, 'update'); return; }
+  msg.className = 'msg ok'; msg.textContent = 'Сохранено';
+  SLEEP = val;
+}
+</script>
+</body>
+</html>

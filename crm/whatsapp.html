@@ -24,7 +24,7 @@
 
   <!-- ---------- Ждут ответа ---------- -->
   <section id="paneWaiting">
-    <div class="rows" id="waitList"><div class="loading">Загрузка…</div></div>
+    <div id="waitList"><div class="loading">Загрузка…</div></div>
   </section>
 
   <!-- ---------- Статистика ---------- -->
@@ -139,20 +139,32 @@ async function loadWaiting(){
   paintWaiting();
 }
 function paintWaiting(){
-  if(!WAITING.length){
-    $('waitList').innerHTML = '<div class="empty">Все обращения отвечены 👍</div>';
-    return;
+  const news = WAITING.filter(w => w.kind !== 'after');
+  const afters = WAITING.filter(w => w.kind === 'after');
+
+  let html = '<div class="sec">Новые обращения</div>' +
+    (news.length
+      ? '<div class="rows">' + news.map(w => waitRowHTML(w)).join('') + '</div>'
+      : '<div class="empty">Новых обращений без ответа нет 👍</div>');
+
+  if(afters.length){
+    html += '<div class="sec">Дописали после ответа</div>' +
+      '<div class="hint" style="padding:0 16px 10px">Если это «спасибо» — поставьте 🤝 на сообщение ' +
+        'клиента, и он пропадёт отсюда. Иначе исчезнет сам в конце дня.</div>' +
+      '<div class="rows">' + afters.map(w => waitRowHTML(w, true)).join('') + '</div>';
   }
-  $('waitList').innerHTML = WAITING.map(waitRowHTML).join('');
+  $('waitList').innerHTML = html;
 }
-function waitRowHTML(w){
+function waitRowHTML(w, after){
   const name = w.client_name || waPhoneDisplay(w.phone);
   const badge = !w.client_id ? ' <span class="tagbox">нет в CRM</span>' : '';
-  return '<a class="row" href="' + esc(waHref(w.phone)) + '" target="_blank" rel="noopener">' +
-    '<span class="dot' + (w.late ? ' late' : '') + '"></span>' +
+  const late = !after && w.late;
+  const whenText = after ? 'в ' + fmtTime(w.started_at) : waitLabel(w.wait_min);
+  return '<a class="row' + (after ? ' muted' : '') + '" href="' + esc(waHref(w.phone)) + '" target="_blank" rel="noopener">' +
+    '<span class="dot' + (late ? ' late' : '') + '"></span>' +
     '<span class="rb">' +
       '<span class="l1"><span class="t">' + esc(name) + '</span>' +
-        '<span class="when' + (w.late ? ' late' : '') + '">' + esc(waitLabel(w.wait_min)) + '</span></span>' +
+        '<span class="when' + (late ? ' late' : '') + '">' + esc(whenText) + '</span></span>' +
       '<span class="l2">' + esc(waPhoneDisplay(w.phone)) + badge + '</span>' +
     '</span></a>';
 }
@@ -458,13 +470,13 @@ async function saveSettings(){
   if(!late || late < 1){ msg.className = 'msg err'; msg.textContent = 'Укажите порог опоздания в минутах'; return; }
   if(!gap || gap < 1){ msg.className = 'msg err'; msg.textContent = 'Укажите паузу для нового обращения в часах'; return; }
 
-  const value = {
+  const value = Object.assign({}, WA_SETTINGS, {
     work_start: $('setStart').value,
     work_end: $('setEnd').value,
     work_days: SET_DAYS.slice(),
     late_min: late,
     gap_hours: gap
-  };
+  });
 
   $('setSave').disabled = true; $('setSave').textContent = 'Сохраняем…';
   const { error } = await sb.from('settings').update({ value }).eq('key', 'wa');

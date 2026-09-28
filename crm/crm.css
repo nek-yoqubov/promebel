@@ -1034,3 +1034,38 @@ body.preview .tbar{top:var(--pvh)}
   .progress{margin-left:24px;margin-right:24px}
   .checkrow{padding-left:24px;padding-right:24px}
 }
+
+/* ============================================================
+   WHATSAPP — простые CSS-столбики, без библиотек
+   ============================================================ */
+.wabars{display:flex;align-items:flex-end;gap:6px;padding:4px 16px 10px;overflow-x:auto}
+.wabars.hours{gap:2px}
+.wabar{flex:1;min-width:24px;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-end}
+.wabar .col{width:100%;max-width:28px;display:flex;flex-direction:column-reverse;
+  border-radius:5px 5px 0 0;background:var(--card-2);overflow:hidden}
+.wabar .col i{display:block;width:100%;flex:none}
+.wabar .col i.fans{background:var(--ok)}
+.wabar .col i.fall{background:var(--brand)}
+.wabar .lbl{font-size:10.5px;color:var(--muted);margin-top:6px;white-space:nowrap}
+.wabar .avg{font-size:10px;color:var(--ink-2);margin-top:1px;white-space:nowrap}
+.wabar .lateno{font:800 11.5px 'Manrope';color:var(--late);margin-bottom:3px;
+  font-variant-numeric:tabular-nums}
+.walegend{display:flex;gap:14px;padding:0 16px 6px;font-size:12.5px;color:var(--muted)}
+.walegend span{display:inline-flex;align-items:center;gap:6px}
+.walegend i{width:9px;height:9px;border-radius:3px;display:block}
+.walegend i.fans{background:var(--ok)}
+
+/* строка дежурства */
+.dutyrow{display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line)}
+.dutyrow:last-child{border-bottom:none}
+.dutyrow .dd{flex:1 1 140px;min-width:0;font-weight:700;font-size:14.5px}
+.dutyrow .dd.past{color:var(--muted);font-weight:600}
+.dutyrow .dv{flex:1 1 140px;min-width:0;color:var(--ink-2)}
+.dutyrow select{flex:1 1 160px;min-width:0}
+.dutyrow .btn{flex:none}
+@media (min-width:1024px){
+  .wabars,.walegend{padding-left:24px;padding-right:24px}
+  .dutyrow{padding-left:24px;padding-right:24px}
+}

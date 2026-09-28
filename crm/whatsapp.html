@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — WhatsApp</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>WhatsApp</h1></div>
+
+  <div class="seg" id="seg">
+    <button class="on" data-t="waiting">Ждут ответа</button>
+    <button data-t="stats">Статистика</button>
+    <button data-t="duty">Дежурства</button>
+    <button data-t="settings" id="tabSettingsBtn" hidden>Настройки</button>
+  </div>
+
+  <!-- ---------- Ждут ответа ---------- -->
+  <section id="paneWaiting">
+    <div class="rows" id="waitList"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Статистика ---------- -->
+  <section id="paneStats" hidden>
+    <div class="period" id="statPeriod"></div>
+    <div class="tiles" id="waTiles"></div>
+
+    <div id="statsBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Дежурства ---------- -->
+  <section id="paneDuty" hidden>
+    <div class="panel" id="dutyBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Настройки ---------- -->
+  <section id="paneSettings" hidden>
+    <div class="panel" id="settingsBody"><div class="loading">Загрузка…</div></div>
+  </section>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+const WA_ROLES = ['admin','director','head','callcenter','auditor'];
+
+let TAB = 'waiting';
+let WAITING = [];
+let waitTimer = null;
+
+let STAT_PERIOD = 'week', STAT_FROM = '', STAT_TO = '';
+let STATS = null;
+
+let DUTY_UPCOMING = [], DUTY_PAST = [], DUTY_BY_DAY = {};
+let WA_SETTINGS = {};
+
+(async () => {
+  if(!await requireAuth()) return;
+  if(!WA_ROLES.includes(ME.role)){ location.replace('index.html'); return; }
+
+  await renderShell({ title:'WhatsApp', tab:'wa' });
+  await loadEmployees();
+
+  document.querySelectorAll('#seg button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+  if(canManageSettings()) $('tabSettingsBtn').hidden = false;
+
+  paintPeriod();
+  setPeriod('week');
+
+  await loadWaiting();
+  waitTimer = setInterval(loadWaiting, 60000);
+})();
+
+/* ============================================================
+   ПРАВА: ревизор и «Смотреть как» — только чтение
+   ============================================================ */
+function waReadOnly(){ return isAuditor() || IS_PREVIEW; }
+function canManageDuty(){ return !waReadOnly() && ['admin','director','head'].includes(ME.role); }
+function canManageSettings(){ return !waReadOnly() && ['admin','director'].includes(ME.role); }
+
+/* ============================================================
+   ВКЛАДКИ
+   ============================================================ */
+function showTab(t){
+  TAB = t;
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('paneWaiting').hidden = t !== 'waiting';
+  $('paneStats').hidden = t !== 'stats';
+  $('paneDuty').hidden = t !== 'duty';
+  $('paneSettings').hidden = t !== 'settings';
+
+  if(t === 'stats' && !STATS) loadStats();
+  if(t === 'duty' && !DUTY_UPCOMING.length) loadDuty();
+  if(t === 'settings' && !Object.keys(WA_SETTINGS).length) loadSettings();
+}
+
+/* ============================================================
+   ОБЩЕЕ — ВРЕМЯ ОТВЕТА В РАБОЧИХ МИНУТАХ
+   ============================================================ */
+function minLabel(v){
+  if(v === null || v === undefined) return '—';
+  const m = Math.round(Number(v));
+  if(!isFinite(m)) return '—';
+  if(m < 60) return m + ' мин';
+  const h = Math.floor(m / 60), mm = m % 60;
+  return h + ' ч' + (mm ? ' ' + mm + ' мин' : '');
+}
+function waitLabel(min){
+  const m = Math.max(0, Math.round(Number(min) || 0));
+  if(m < 60) return 'ждёт ' + m + ' ' + plural(m, 'минуту', 'минуты', 'минут');
+  const h = Math.floor(m / 60), mm = m % 60;
+  return 'ждёт ' + h + ' ' + plural(h, 'час', 'часа', 'часов') + (mm ? ' ' + mm + ' мин' : '');
+}
+function waPhoneDisplay(p){
+  const d = phoneDigits(p);
+  return d ? '+' + d : (p || '');
+}
+
+/* ============================================================
+   1. ЖДУТ ОТВЕТА
+   ============================================================ */
+async function loadWaiting(){
+  const { data, error } = await sb.schema('crm').rpc('wa_waiting');
+  if(error){
+    $('waitList').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>';
+    return;
+  }
+  WAITING = (data || []).slice().sort((a, b) => new Date(a.started_at) - new Date(b.started_at));
+  paintWaiting();
+}
+function paintWaiting(){
+  if(!WAITING.length){
+    $('waitList').innerHTML = '<div class="empty">Все обращения отвечены 👍</div>';
+    return;
+  }
+  $('waitList').innerHTML = WAITING.map(waitRowHTML).join('');
+}
+function waitRowHTML(w){
+  const name = w.client_name || waPhoneDisplay(w.phone);
+  const badge = !w.client_id ? ' <span class="tagbox">нет в CRM</span>' : '';
+  return '<a class="row" href="' + esc(waHref(w.phone)) + '" target="_blank" rel="noopener">' +
+    '<span class="dot' + (w.late ? ' late' : '') + '"></span>' +
+    '<span class="rb">' +
+      '<span class="l1"><span class="t">' + esc(name) + '</span>' +
+        '<span class="when' + (w.late ? ' late' : '') + '">' + esc(waitLabel(w.wait_min)) + '</span></span>' +
+      '<span class="l2">' + esc(waPhoneDisplay(w.phone)) + badge + '</span>' +
+    '</span></a>';
+}
+
+/* ============================================================
+   2. СТАТИСТИКА
+   ============================================================ */
+const STAT_PERIODS = [
+  { key:'today',  label:'Сегодня' },
+  { key:'week',   label:'7 дней' },
+  { key:'month',  label:'30 дней' },
+  { key:'custom', label:'Свои даты' }
+];
+function setPeriod(key, from, to){
+  STAT_PERIOD = key;
+  const today = new Date();
+  if(key === 'today'){ STAT_FROM = ymd(today); STAT_TO = ymd(today); }
+  else if(key === 'week'){ STAT_FROM = ymd(addDays(today, -6)); STAT_TO = ymd(today); }
+  else if(key === 'month'){ STAT_FROM = ymd(addDays(today, -29)); STAT_TO = ymd(today); }
+  else if(key === 'custom' && from && to){ STAT_FROM = from; STAT_TO = to; }
+}
+function paintPeriod(){
+  $('statPeriod').innerHTML = STAT_PERIODS.map(p =>
+    '<button class="chip' + (p.key === STAT_PERIOD ? ' on' : '') + '" data-p="' + p.key + '">' +
+    esc(p.label) + '</button>').join('');
+  $('statPeriod').querySelectorAll('[data-p]').forEach(b => b.onclick = () => {
+    if(b.dataset.p === 'custom') askCustomPeriod();
+    else { setPeriod(b.dataset.p); paintPeriod(); loadStats(); }
+  });
+}
+function askCustomPeriod(){
+  const f = STAT_FROM || ymd(addDays(new Date(), -6)), t = STAT_TO || ymd(new Date());
+  modalOpen({
+    title:'Свой период',
+    bodyHTML:
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="cFrom">С</label>' +
+          '<input id="cFrom" type="date" value="' + esc(f) + '"></div>' +
+        '<div class="field"><label class="field-label" for="cTo">По</label>' +
+          '<input id="cTo" type="date" value="' + esc(t) + '"></div>' +
+      '</div>',
+    saveLabel:'Показать',
+    onSave: () => {
+      const from = $('cFrom').value, to = $('cTo').value;
+      if(!from || !to) return modalMsg('Укажите обе даты');
+      if(from > to) return modalMsg('Начало позже конца');
+      setPeriod('custom', from, to);
+      modalClose();
+      paintPeriod();
+      loadStats();
+    }
+  });
+}
+
+async function loadStats(){
+  $('statsBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  $('waTiles').innerHTML = '';
+  const { data, error } = await sb.schema('crm').rpc('wa_stats', { p_from: STAT_FROM, p_to: STAT_TO });
+  if(error){
+    $('statsBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>';
+    return;
+  }
+  STATS = data || {};
+  paintStats();
+}
+
+function tile(n, c, cls){
+  return '<div class="tile ' + (cls || '') + '"><div class="n">' + esc(String(n)) + '</div>' +
+    '<div class="c">' + esc(c) + '</div></div>';
+}
+function paintStats(){
+  const t = STATS.totals || {};
+  const set = STATS.settings || {};
+  const lateMin = set.late_min != null ? set.late_min : 20;
+  const pct = t.threads ? Math.round((Number(t.answered) || 0) * 100 / t.threads) : null;
+
+  $('waTiles').innerHTML =
+    tile(t.threads || 0, 'Обращений') +
+    tile((t.answered || 0) + (pct === null ? '' : ' (' + pct + '%)'), 'Отвечено', 'ok') +
+    tile(t.unanswered || 0, 'Без ответа', t.unanswered ? 'warn' : '') +
+    tile(t.late || 0, 'Опоздали (>' + lateMin + ' мин)', t.late ? 'late' : '') +
+    tile(minLabel(t.avg_min), 'Среднее время ответа', 'info') +
+    tile(minLabel(t.median_min), 'Медиана времени ответа', 'info') +
+    tile(t.new_clients || 0, 'Новых клиентов') +
+    tile(t.not_in_crm || 0, 'Нет в CRM') +
+    tile(STATS.outbound_first || 0, 'Написали первыми') +
+    tile(STATS.api_sent || 0, 'Накладных из 1С');
+
+  $('statsBody').innerHTML =
+    '<div class="sec">По дням</div>' + dayBarsHTML(STATS.by_day || []) +
+    '<div class="sec">По часам</div>' + hourBarsHTML(STATS.by_hour || []) +
+    '<div class="sec">Кто отвечал</div>' + responderTableHTML(STATS.by_responder || []) +
+    '<div class="hint" style="padding:0 16px 16px">Данные с 28.09.2026. Время ответа — в рабочих минутах.</div>';
+}
+
+const BAR_PX = 90;
+function dayBarsHTML(byDay){
+  if(!byDay.length) return '<div class="empty">Нет данных за период</div>';
+  const max = Math.max(1, ...byDay.map(d => Number(d.threads) || 0));
+  return '<div class="walegend"><span><i class="fans"></i>отвечено</span>' +
+    '<span>опоздали — красным числом над столбиком</span></div>' +
+    '<div class="wabars">' + byDay.map(d => dayBarHTML(d, max)).join('') + '</div>';
+}
+function dayBarHTML(d, max){
+  const total = Number(d.threads) || 0;
+  const late = Number(d.late) || 0;
+  const colPx = total ? Math.max(6, Math.round(total / max * BAR_PX)) : 2;
+  const ansPct = total ? Math.min(100, Math.round((Number(d.answered) || 0) * 100 / total)) : 0;
+  const day = new Date(String(d.on_day) + 'T00:00:00Z');
+  const lbl = day.getUTCDate() + ' ' + MONTHS[day.getUTCMonth()];
+  return '<div class="wabar">' +
+    (late ? '<span class="lateno">' + late + '</span>' : '') +
+    '<div class="col" style="height:' + colPx + 'px">' +
+      (ansPct ? '<i class="fans" style="height:' + ansPct + '%"></i>' : '') +
+    '</div>' +
+    '<span class="lbl">' + esc(lbl) + '</span>' +
+    (total ? '<span class="avg">' + esc(minLabel(d.avg_min)) + '</span>' : '') +
+  '</div>';
+}
+function hourBarsHTML(byHour){
+  const arr = [];
+  for(let h = 0; h < 24; h++){
+    const row = (byHour || []).find(x => Number(x.at_hour) === h);
+    arr.push({ at_hour:h, threads: row ? Number(row.threads) || 0 : 0 });
+  }
+  const max = Math.max(1, ...arr.map(x => x.threads));
+  return '<div class="wabars hours">' + arr.map(x => hourBarHTML(x, max)).join('') + '</div>';
+}
+function hourBarHTML(x, max){
+  const colPx = x.threads ? Math.max(4, Math.round(x.threads / max * BAR_PX)) : 1;
+  return '<div class="wabar">' +
+    '<div class="col" style="height:' + colPx + 'px">' +
+      (x.threads ? '<i class="fall" style="height:100%"></i>' : '') +
+    '</div>' +
+    '<span class="lbl">' + x.at_hour + '</span>' +
+  '</div>';
+}
+function responderTableHTML(rows){
+  if(!rows.length) return '<div class="empty">Нет данных за период</div>';
+  return '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+    '<th>Сотрудник</th><th>Обращений</th><th>Отвечено</th><th>Опоздали</th><th>Среднее время</th>' +
+    '</tr></thead><tbody>' +
+    rows.map(r => {
+      const name = r.responder_id ? empName(r.responder_id) : 'дежурный не назначен';
+      return '<tr>' +
+        '<td data-label="Сотрудник" class="nm">' + esc(name) + '</td>' +
+        '<td data-label="Обращений" class="num">' + (r.threads || 0) + '</td>' +
+        '<td data-label="Отвечено" class="num">' + (r.answered || 0) + '</td>' +
+        '<td data-label="Опоздали" class="num">' +
+          (Number(r.late) ? '<b style="color:var(--late)">' + r.late + '</b>' : '0') + '</td>' +
+        '<td data-label="Среднее время">' + esc(minLabel(r.avg_min)) + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div>';
+}
+
+/* ============================================================
+   3. ДЕЖУРСТВА
+   ============================================================ */
+function upcomingSundays(n){
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const toSunday = (7 - today.getDay()) % 7;
+  const first = addDays(today, toSunday);
+  const out = [];
+  for(let i = 0; i < n; i++) out.push(addDays(first, i * 7));
+  return out;
+}
+function pastSundays(n){
+  const upcoming = upcomingSundays(1);
+  const out = [];
+  for(let i = 1; i <= n; i++) out.push(addDays(upcoming[0], -7 * i));
+  return out.reverse();
+}
+async function loadDuty(){
+  $('dutyBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  DUTY_UPCOMING = upcomingSundays(8);
+  DUTY_PAST = pastSundays(4);
+  const from = ymd(DUTY_PAST[0]), to = ymd(DUTY_UPCOMING[DUTY_UPCOMING.length - 1]);
+  const { data, error } = await sb.from('wa_duty').select('day,employee_id')
+    .gte('day', from).lte('day', to);
+  if(error){
+    $('dutyBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>';
+    return;
+  }
+  DUTY_BY_DAY = {};
+  (data || []).forEach(r => { DUTY_BY_DAY[String(r.day).slice(0, 10)] = r.employee_id; });
+  paintDuty();
+}
+function paintDuty(){
+  const editable = canManageDuty();
+  $('dutyBody').innerHTML =
+    '<div class="sec" style="margin:0 0 4px">Ближайшие воскресенья</div>' +
+    DUTY_UPCOMING.map(d => dutyRowHTML(d, editable)).join('') +
+    '<div class="sec">Прошедшие воскресенья</div>' +
+    DUTY_PAST.map(d => dutyRowHTML(d, false)).join('');
+
+  if(!editable) return;
+  $('dutyBody').querySelectorAll('[data-savebtn]').forEach(b =>
+    b.onclick = () => saveDuty(b.dataset.savebtn));
+  $('dutyBody').querySelectorAll('[data-clearbtn]').forEach(b =>
+    b.onclick = () => clearDuty(b.dataset.clearbtn));
+}
+function dutyRowHTML(day, editable){
+  const key = ymd(day);
+  const empId = DUTY_BY_DAY[key] || '';
+  const dateLabel = fmtDate(day.toISOString());
+  if(!editable){
+    return '<div class="dutyrow">' +
+      '<span class="dd past">' + esc(dateLabel) + '</span>' +
+      '<span class="dv">' + (empId ? esc(empName(empId)) : 'не назначен') + '</span>' +
+    '</div>';
+  }
+  return '<div class="dutyrow">' +
+    '<span class="dd">' + esc(dateLabel) + '</span>' +
+    '<select data-sel="' + key + '">' +
+      '<option value="">Не назначен</option>' +
+      EMPS.map(e => '<option value="' + esc(e.id) + '"' + (e.id === empId ? ' selected' : '') + '>' +
+        esc(e.full_name) + '</option>').join('') +
+    '</select>' +
+    '<button class="btn ghost sm" data-savebtn="' + key + '">Сохранить</button>' +
+    (empId ? '<button class="btn ghost sm" data-clearbtn="' + key + '">Убрать</button>' : '') +
+  '</div>';
+}
+async function saveDuty(day){
+  const sel = document.querySelector('[data-sel="' + day + '"]');
+  const employee_id = sel && sel.value ? sel.value : '';
+  if(!employee_id) return clearDuty(day);
+
+  const { error } = await sb.from('wa_duty').upsert({ day, employee_id }, { onConflict:'day' });
+  if(error) return toast(errText(error, 'update'));
+  DUTY_BY_DAY[day] = employee_id;
+  toast('Сохранено');
+  paintDuty();
+}
+async function clearDuty(day){
+  const { error } = await sb.from('wa_duty').delete().eq('day', day);
+  if(error) return toast(errText(error, 'update'));
+  delete DUTY_BY_DAY[day];
+  toast('Убрано');
+  paintDuty();
+}
+
+/* ============================================================
+   4. НАСТРОЙКИ
+   ============================================================ */
+async function loadSettings(){
+  $('settingsBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const { data, error } = await sb.from('settings').select('key,value').eq('key', 'wa').maybeSingle();
+  if(error){
+    $('settingsBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>';
+    return;
+  }
+  WA_SETTINGS = (data && data.value) || {};
+  paintSettings();
+}
+let SET_DAYS = [];
+function paintSettings(){
+  SET_DAYS = Array.isArray(WA_SETTINGS.work_days) && WA_SETTINGS.work_days.length
+    ? WA_SETTINGS.work_days.slice() : [1, 2, 3, 4, 5, 6];
+
+  $('settingsBody').innerHTML =
+    '<div class="row2">' +
+      '<div class="field"><label class="field-label" for="setStart">Начало рабочего дня</label>' +
+        '<input id="setStart" type="time" value="' + esc((WA_SETTINGS.work_start || '09:00').slice(0, 5)) + '"></div>' +
+      '<div class="field"><label class="field-label" for="setEnd">Конец рабочего дня</label>' +
+        '<input id="setEnd" type="time" value="' + esc((WA_SETTINGS.work_end || '18:00').slice(0, 5)) + '"></div>' +
+    '</div>' +
+    '<div class="field"><label class="field-label">Рабочие дни</label>' +
+      '<div class="wdays" id="setDays"></div></div>' +
+    '<div class="row2">' +
+      '<div class="field"><label class="field-label" for="setLate">Опоздание, минут</label>' +
+        '<input id="setLate" class="num" type="number" min="1" max="999" value="' +
+          esc(WA_SETTINGS.late_min != null ? WA_SETTINGS.late_min : 20) + '"></div>' +
+      '<div class="field"><label class="field-label" for="setGap">Пауза для нового обращения, часов</label>' +
+        '<input id="setGap" class="num" type="number" min="1" max="72" value="' +
+          esc(WA_SETTINGS.gap_hours != null ? WA_SETTINGS.gap_hours : 6) + '"></div>' +
+    '</div>' +
+    '<button class="btn" id="setSave">Сохранить</button>' +
+    '<div class="msg err" id="setMsg"></div>';
+
+  paintSetDays();
+  $('setSave').onclick = saveSettings;
+}
+function paintSetDays(){
+  $('setDays').innerHTML = WEEKDAYS.map((w, i) =>
+    '<button type="button" class="' + (SET_DAYS.includes(i + 1) ? 'on' : '') + '" data-d="' + (i + 1) + '">' +
+    esc(w) + '</button>').join('');
+  $('setDays').querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    const n = Number(b.dataset.d);
+    SET_DAYS = SET_DAYS.includes(n) ? SET_DAYS.filter(x => x !== n) : SET_DAYS.concat(n).sort();
+    paintSetDays();
+  });
+}
+async function saveSettings(){
+  const msg = $('setMsg');
+  const late = Number($('setLate').value), gap = Number($('setGap').value);
+  if(!$('setStart').value || !$('setEnd').value){
+    msg.className = 'msg err'; msg.textContent = 'Укажите начало и конец рабочего дня'; return;
+  }
+  if(!SET_DAYS.length){
+    msg.className = 'msg err'; msg.textContent = 'Отметьте хотя бы один рабочий день'; return;
+  }
+  if(!late || late < 1){ msg.className = 'msg err'; msg.textContent = 'Укажите порог опоздания в минутах'; return; }
+  if(!gap || gap < 1){ msg.className = 'msg err'; msg.textContent = 'Укажите паузу для нового обращения в часах'; return; }
+
+  const value = {
+    work_start: $('setStart').value,
+    work_end: $('setEnd').value,
+    work_days: SET_DAYS.slice(),
+    late_min: late,
+    gap_hours: gap
+  };
+
+  $('setSave').disabled = true; $('setSave').textContent = 'Сохраняем…';
+  const { error } = await sb.from('settings').update({ value }).eq('key', 'wa');
+  $('setSave').disabled = false; $('setSave').textContent = 'Сохранить';
+  if(error){ msg.className = 'msg err'; msg.textContent = errText(error, 'update'); return; }
+  msg.className = 'msg ok'; msg.textContent = 'Сохранено';
+  WA_SETTINGS = value;
+}
+</script>
+</body>
+</html>

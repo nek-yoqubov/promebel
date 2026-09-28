@@ -581,6 +581,8 @@ const SECTIONS = [
   { key:'admin',   group:'company', label:'Сотрудники',     href:'admin.html',            icon:'users',
     roles:['admin','director','hr'] },
   { key:'links',   group:'company', label:'Ссылки и планы', href:'links.html',            icon:'link' },
+  { key:'wa',      group:'control', label:'WhatsApp',       href:'whatsapp.html',         icon:'phone',
+    roles:['admin','director','head','callcenter','auditor'] },
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
     roles:['admin','director','auditor','head','regional'], orBoss:true },
   { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',

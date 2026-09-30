@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PRO MEBEL — приложение</title>
+<meta name="robots" content="noindex">
+<script>
+(function () {
+  var ios = "https://apps.apple.com/tj/app/promebel/id6784102813";
+  var android = "https://play.google.com/store/apps/details?id=tj.promebel.loyalty";
+  var ua = navigator.userAgent || "";
+  var isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  var isAndroid = /Android/i.test(ua);
+  if (isIOS) location.replace(ios);
+  else if (isAndroid) location.replace(android);
+})();
+</script>
+<style>
+  :root { --bg:#f6f5f3; --text:#1a1a1a; --muted:#6b6b6b; --accent:#e30613; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  .card { width:100%; max-width:380px; text-align:center; }
+  .logo { width:220px; max-width:80%; margin-bottom:28px; }
+  h1 { font-size:22px; margin:0 0 8px; }
+  p { color:var(--muted); margin:0 0 28px; font-size:15px; }
+  a.btn { display:block; padding:15px; margin-bottom:12px; border-radius:12px; background:#111; color:#fff;
+          text-decoration:none; font-weight:600; font-size:16px; }
+  a.btn.play { background:var(--accent); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="../crm/logo-h-dark.png" alt="PRO MEBEL" onerror="this.style.display='none'">
+    <h1>Приложение PRO MEBEL</h1>
+    <p>Выберите свой магазин приложений</p>
+    <a class="btn" href="https://apps.apple.com/tj/app/promebel/id6784102813">App Store — iPhone</a>
+    <a class="btn play" href="https://play.google.com/store/apps/details?id=tj.promebel.loyalty">Google Play — Android</a>
+  </div>
+</body>
+</html>

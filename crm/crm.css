@@ -956,6 +956,9 @@ body.preview .tbar{top:var(--pvh)}
 .acp .bar i{display:block;height:100%;border-radius:999px;background:var(--brand);
   transition:width .3s}
 .acp.hit .bar i{background:var(--ok)}
+/* зелёная плашка бонуса KPI */
+.kpibonus{background:rgba(38,182,115,.14);color:var(--ok);border-radius:12px;
+  padding:10px 13px;font-weight:700;font-size:14px;margin-bottom:10px}
 /* таблица по всем — руководителю */
 .acrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
 .acrow:last-child{border-bottom:none}

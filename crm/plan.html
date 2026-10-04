@@ -43,6 +43,7 @@
       <div id="teamBox"></div>
       <div id="acBox"></div>
       <div id="acAllBox"></div>
+      <div id="kcBox"></div>
     </aside>
   </div>
 </main>
@@ -63,7 +64,6 @@ let SUGGEST = null;        // {id, num} — чип «Счётчик» под т�
 let NEW_CLIENT = null;     // клиент для следующего добавленного пункта (переход из карточки)
 let S_CLIENT = null;       // клиент, выбранный в открытой шторке
 let DONE_OPEN = false;     // «Выполнено» оставляем развёрнутым, если его открыли
-let AC_LOADED = '';        // для кого уже тянули средний чек
 
 const ACT_COLS = 'id,owner_id,client_id,title,note,due_at,done_at,plan_date,target,progress,' +
   'sort_order,client:clients(id,full_name,phone)';
@@ -144,7 +144,6 @@ function paintWho(){
 function switchWho(id){
   if(!id || id === WHO) return;
   WHO = id;
-  AC_LOADED = '';
   NEW_CLIENT = null;
   SUGGEST = null;
   const sel = $('whoSel');
@@ -200,7 +199,7 @@ async function load(){
   EARLIER = (past && past.data) || [];
   paint();
   loadTeam();
-  loadAvg();
+  loadKpi();
 }
 
 /* ============================================================
@@ -651,92 +650,105 @@ async function loadTeam(){
 function syncSide(){
   const side = $('pside');
   if(!side) return;
-  side.hidden = !['teamBox','acBox','acAllBox']
+  side.hidden = !['teamBox','acBox','acAllBox','kcBox']
     .some(id => $(id) && $(id).innerHTML.trim());
 }
 
-function loadAvg(){
-  if(AC_LOADED === WHO) return;
-  AC_LOADED = WHO;
-  loadAvgCheck().then(syncSide, syncSide);
-}
-
 /* ============================================================
-   СРЕДНИЙ ЧЕК ИЗ 1С
-   crm.avg_check(from, to) — строка на каждого, кого мне открыли,
-   crm.avg_check_daily(emp, from, to) — тот же чек по дням.
-   Дни берём по Душанбе: смену в 1С закрывают там, а телефон
-   сотрудника может стоять в другом поясе.
-   Если 1С не отвечает или сотрудник к ней не привязан — блока
-   просто нет, остальные показатели от этого не страдают.
+   KPI МЕСЯЦА
+   crm.kpi_view() — один запрос на страницу. null — KPI не положен:
+   тогда блоков нет вообще. При смене сотрудника в базу не ходим,
+   перерисовываем из уже полученного ответа.
+   Ошибка запроса — те же пустые блоки, остальная страница живёт.
    ============================================================ */
-async function loadAvgCheck(){
-  const box = $('acBox'), all = $('acAllBox');
-  if(!box) return;
-  const who = WHO;                       // пока считаем, сотрудника могли переключить
+let KPI = null, KPI_REQ = null;
 
-  const issues = await sb.schema('crm').rpc('data_issues_active');
-  if(who !== WHO) return;
-  if(!issues.error && (issues.data || []).includes('avg_check')){
-    box.innerHTML = ''; if(all) all.innerHTML = ''; return;
+function loadKpi(){
+  if(!KPI_REQ){
+    KPI_REQ = sb.schema('crm').rpc('kpi_view').then(
+      r => { KPI = r.error ? null : (r.data || null); },
+      () => { KPI = null; });
   }
-
-  const today = tzYmd(), mStart = tzMonthStart(today), wStart = tzWeekStart(today);
-  const { data, error } = await sb.schema('crm').rpc('avg_check', { p_from: mStart, p_to: today });
-  if(who !== WHO) return;
-  if(error){ box.innerHTML = ''; if(all) all.innerHTML = ''; return; }
-
-  const rows = data || [];
-  paintAvgAll(all, rows, who);
-
-  const mine = rows.find(r => r.employee_id === who);
-  if(!mine || !mine.erp_manager){ box.innerHTML = ''; return; }   // не заведён в 1С
-
-  box.innerHTML = '<div class="sec" style="margin-left:0">Средний чек (1С)</div>' +
-    '<div class="loading">Считаем…</div>';
-
-  // неделя может начаться в прошлом месяце — тогда берём дни с её понедельника
-  const dFrom = wStart < mStart ? wStart : mStart;
-  const day = await sb.schema('crm').rpc('avg_check_daily', {
-    p_emp: who, p_from: dFrom, p_to: today
-  });
-  if(who !== WHO) return;
-  paintAvg(box, mine, (!day.error && day.data) || [], today, wStart);
+  return KPI_REQ.then(paintKpi);
 }
 
-/* суммы за отрезок: средний чек считаем от сумм, а не усредняем средние */
-function sumDays(days, from, to){
-  let checks = 0, amount = 0;
-  days.forEach(d => {
-    const b = String(d.bdate || '').slice(0, 10);
-    if(b >= from && b <= to){
-      checks += Number(d.checks) || 0;
-      amount += Number(d.amount) || 0;
-    }
-  });
-  return { checks: checks, avg: checks ? amount / checks : 0 };
+const MONTH_NOM = ['январь','февраль','март','апрель','май','июнь',
+  'июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+
+/* число с пробелом-разделителем тысяч */
+function kNum(v){
+  return Math.round(Number(v) || 0).toLocaleString('ru-RU').replace(/[  ]/g, ' ');
+}
+function usd(v){ return kNum(v) + ' $'; }
+/* '2026-10-03' → '3 окт' */
+function dayShort(ymdStr){
+  const p = String(ymdStr).split('-');
+  return p.length === 3 ? Number(p[2]) + ' ' + MONTHS[Number(p[1]) - 1] : '—';
 }
 
-function paintAvg(box, mine, days, today, wStart){
-  const cards = [
-    ['Сегодня', sumDays(days, today, today)],
-    ['Неделя',  sumDays(days, wStart, today)],
-    ['Месяц',   { checks: Number(mine.checks) || 0, avg: Number(mine.avg_check) || 0 }]
-  ];
-  const card = c =>
-    '<div class="acc"><div class="acl">' + esc(c[0]) + '</div>' +
-      '<div class="acv">' + esc(c[1].checks ? fmtMoney(c[1].avg, 'TJS') : '—') + '</div>' +
-      '<div class="acn">' + c[1].checks + ' ' +
-        esc(plural(c[1].checks, 'чек', 'чека', 'чеков')) + '</div></div>';
+function paintKpi(){
+  const box = $('acBox'), all = $('acAllBox'), kc = $('kcBox');
+  if(!box || !all || !kc) return;
+  const k = KPI;
+  if(!k){ box.innerHTML = ''; all.innerHTML = ''; kc.innerHTML = ''; return syncSide(); }
 
-  box.innerHTML = '<div class="sec" style="margin-left:0">Средний чек (1С)</div>' +
+  const parts = [kpiPersonalHTML(k), kpiAllHTML(k), kpiCommonHTML(k)];
+  const synced = k.meta && k.meta.synced_at ? ' · обновлено ' + tzTime(k.meta.synced_at) : '';
+  const cap = '<div class="hint">Данные вносятся вручную, обновляются раз в час' + esc(synced) + '</div>';
+
+  // подпись — под последним непустым блоком
+  let last = -1;
+  parts.forEach((h, i) => { if(h) last = i; });
+  if(last >= 0) parts[last] += cap;
+
+  box.innerHTML = parts[0];
+  all.innerHTML = parts[1];
+  kc.innerHTML = parts[2];
+  syncSide();
+}
+
+/* ---------- личный план: строка WHO ---------- */
+function kpiPersonalHTML(k){
+  const mine = (k.personal || []).find(r => r.employee_id === WHO);
+  if(!mine) return '';
+  const meta = k.meta || {};
+  const plan = Number(mine.plan) || 0, sold = Number(mine.sold) || 0;
+  const days = mine.days || {};
+
+  const keys = Object.keys(days).sort();
+  const lastKey = keys.length ? keys[keys.length - 1] : '';
+  const wStart = tzWeekStart(tzYmd());
+  const week = keys.filter(d => d >= wStart).reduce((s, d) => s + (Number(days[d]) || 0), 0);
+
+  const card = (label, val, note) =>
+    '<div class="acc"><div class="acl">' + esc(label) + '</div>' +
+      '<div class="acv">' + esc(val) + '</div>' +
+      '<div class="acn">' + esc(note || '') + '</div></div>';
+  const cards =
+    card('Последний день', lastKey ? usd(days[lastKey]) : '—', lastKey ? dayShort(lastKey) : '') +
+    card('Неделя', usd(week), 'с ' + dayShort(wStart)) +
+    card('Месяц', usd(sold),
+      meta.work_days ? (meta.days_passed || 0) + ' из ' + meta.work_days + ' раб. дн.' : '');
+
+  const left = (Number(meta.work_days) || 0) - (Number(meta.days_passed) || 0);
+  const remain = plan - sold;
+  const need = (remain > 0 && left > 0)
+    ? '<div class="hint" style="margin:0 0 10px">Осталось ' + esc(usd(remain)) +
+      ' · нужно в день ' + esc(usd(Math.ceil(remain / left))) + '</div>'
+    : '';
+
+  const bonus = (plan > 0 && sold >= plan)
+    ? '<div class="kpibonus">Бонус ' + esc(kNum(meta.bonus_personal)) + ' смн</div>'
+    : '';
+
+  const m = String(k.period || '').split('-');
+  const month = MONTH_NOM[Number(m[1]) - 1] || '';
+
+  return '<div class="sec" style="margin-left:0">Личный план' + (month ? ', ' + esc(month) : '') + '</div>' +
     '<div class="ac">' +
-      '<div class="acs">' + cards.map(card).join('') + '</div>' +
-      avgBar('Средний чек за месяц', Number(mine.avg_check) || 0, Number(mine.target_avg) || 0,
-        v => fmtMoney(v, 'TJS')) +
-      avgBar('Чеков за месяц', Number(mine.checks) || 0, Number(mine.target_checks) || 0,
-        v => String(Math.round(v))) +
-      '<div class="hint">Данные из 1С, обновляются раз в час</div>' +
+      '<div class="acs">' + cards + '</div>' +
+      avgBar('Продано', sold, plan, usd) +
+      need + bonus +
     '</div>';
 }
 
@@ -753,30 +765,52 @@ function avgBar(label, fact, target, fmt){
     '<div class="bar"><i style="width:' + Math.max(0, Math.min(pct, 100)) + '%"></i></div></div>';
 }
 
-/* Руководителю — все, кого ему открыла 1С, по убыванию среднего чека */
-function paintAvgAll(box, rows, who){
-  if(!box) return;
-  box.innerHTML = '';
-  if(!mayPickWho()) return;
-  const list = rows.filter(r => r.erp_manager)
-    .sort((a, b) => (Number(b.avg_check) || 0) - (Number(a.avg_check) || 0));
-  if(list.length < 2) return;            // таблица из одного себя ни о чём не говорит
+/* ---------- руководителю: все продавцы по убыванию продаж ---------- */
+function kpiAllHTML(k){
+  const list = (k.personal || []).slice();
+  if(k.boss !== true || list.length < 2) return '';
+  list.sort((a, b) => (Number(b.sold) || 0) - (Number(a.sold) || 0));
 
-  box.innerHTML = '<div class="sec" style="margin-left:0">Средний чек за месяц</div>' +
+  return '<div class="sec" style="margin-left:0">Все продавцы</div>' +
     list.map(r => {
-      const checks = Number(r.checks) || 0;
-      const avg = Number(r.avg_check) || 0, target = Number(r.target_avg) || 0;
-      const pct = target ? Math.round(avg / target * 100) : null;
-      return '<div class="acrow' + (r.employee_id === who ? ' me' : '') + '">' +
+      const plan = Number(r.plan) || 0, sold = Number(r.sold) || 0;
+      const pct = plan ? Math.round(sold / plan * 100) : null;
+      return '<div class="acrow' + (r.employee_id === WHO ? ' me' : '') + '">' +
         '<span class="acnm">' + esc(r.full_name) + '</span>' +
-        '<span class="acch">' + checks + ' ' +
-          esc(plural(checks, 'чек', 'чека', 'чеков')) + '</span>' +
-        '<span class="acav">' + esc(fmtMoney(avg, 'TJS')) + '</span>' +
+        '<span class="acav">' + esc(usd(sold)) + '</span>' +
         '<span class="acpl' + (pct !== null && pct >= 100 ? ' hit' : '') + '">' +
           (pct === null ? '—' : pct + '%') + '</span>' +
       '</div>';
     }).join('') +
-    '<div class="hint">Порядок — по среднему чеку. Процент — от личного плана.</div>';
+    '<div class="hint">Порядок — по продажам. Процент — от личного плана.</div>';
+}
+
+/* ---------- общий план шоурума ---------- */
+function kpiCommonHTML(k){
+  const rows = (k.common || []).slice().sort((a, b) => (Number(a.pos) || 0) - (Number(b.pos) || 0));
+  if(!rows.length) return '';
+
+  // проценты не обрезаем на 100: перевыполнение одной позиции перекрывает недобор другой
+  const pcts = rows.filter(r => Number(r.plan) > 0).map(r => (Number(r.done) || 0) / Number(r.plan) * 100);
+  const avg = pcts.length ? pcts.reduce((s, v) => s + v, 0) / pcts.length : 0;
+  const hit = pcts.length > 0 && avg >= 100;
+
+  const total = pcts.length
+    ? '<div class="acp' + (hit ? ' hit' : '') + '">' +
+        '<div class="acpt"><span>Среднее по позициям</span>' +
+          '<span class="acpp">' + Math.floor(avg) + '%</span></div>' +
+        '<div class="bar"><i style="width:' + Math.max(0, Math.min(Math.floor(avg), 100)) + '%"></i></div></div>'
+    : '';
+  const bonus = hit
+    ? '<div class="kpibonus">Бонус ' + esc(kNum(k.meta && k.meta.bonus_common)) + ' смн</div>'
+    : '';
+
+  return '<div class="sec" style="margin-left:0">Общий план шоурума</div>' +
+    '<div class="ac">' +
+      rows.map(r => avgBar(r.name, Number(r.done) || 0, Number(r.plan) || 0,
+        v => kNum(v) + ' ' + (r.unit || ''))).join('') +
+      total + bonus +
+    '</div>';
 }
 </script>
 </body>

@@ -692,8 +692,11 @@ function paintKpi(){
   const k = KPI;
   if(!k){ box.innerHTML = ''; all.innerHTML = ''; kc.innerHTML = ''; return syncSide(); }
 
-  const parts = [kpiPersonalHTML(k), kpiAllHTML(k), kpiCommonHTML(k)];
-  const synced = k.meta && k.meta.synced_at ? ' · обновлено ' + tzTime(k.meta.synced_at) : '';
+  const mine = ownRecord(k);
+  const parts = [kpiPersonalHTML(k) + kpiOwnHTML(k), kpiAllHTML(k) + kpiOwnListHTML(k), kpiCommonHTML(k)];
+  const at = (k.meta && k.meta.synced_at) || (mine && mine.synced_at) ||
+    ((k.own || []).find(r => r && r.synced_at) || {}).synced_at;
+  const synced = at ? ' · обновлено ' + tzTime(at) : '';
   const cap = '<div class="hint">Данные вносятся вручную, обновляются раз в час' + esc(synced) + '</div>';
 
   // подпись — под последним непустым блоком
@@ -763,6 +766,103 @@ function avgBar(label, fact, target, fmt){
       '<span class="sub">из ' + esc(fmt(target)) + '</span>' +
       '<span class="acpp">' + pct + '%</span></div>' +
     '<div class="bar"><i style="width:' + Math.max(0, Math.min(pct, 100)) + '%"></i></div></div>';
+}
+
+/* ---------- личный KPI из отдельной таблицы сотрудника ----------
+   Все поля *_text — готовые строки из таблицы: показываем как есть.
+   Числа plan/done нужны только для ширины полос. */
+function ownRecord(k){
+  return (k.own || []).find(r => r && r.employee_id === WHO) || null;
+}
+function ownNum(v){ return Number(v) || 0; }
+function ownPct(done, plan){
+  return ownNum(plan) > 0 ? Math.max(0, ownNum(done) / ownNum(plan) * 100) : 0;
+}
+/* '4 800' / '1 200,50' → число; пусто и мусор → 0 */
+function ownMoney(t){
+  const n = Number(String(t == null ? '' : t).replace(/[\s  ]/g, '').replace(',', '.'));
+  return isFinite(n) ? n : 0;
+}
+
+function ownItemHTML(it, isTotal){
+  if(!it) return '';
+  const u = it.unit ? ' ' + it.unit : '';
+  const pct = Math.min(100, ownPct(it.done, it.plan));
+  const hit = ownNum(it.plan) > 0 && ownNum(it.done) >= ownNum(it.plan);
+  const rest = [];
+  if(it.left_text) rest.push('Осталось ' + it.left_text);
+  if(it.per_day_text) rest.push('нужно в день ' + it.per_day_text);
+  const last = it.last && (it.last.day || it.last.text)
+    ? 'последний день ' + (it.last.day || '') + ': ' + (it.last.text || '') : '';
+  return '<div class="acp own' + (hit ? ' hit' : '') + (isTotal ? ' own-tot' : '') + '">' +
+    '<div class="acpt"><span>' + esc(it.name) + '</span>' +
+      '<b>' + esc((it.done_text || '0') + u) + '</b>' +
+      '<span class="sub">из ' + esc((it.plan_text || '') + u) + '</span>' +
+      '<span class="acpp">' + esc(it.pct_text || '') + '</span></div>' +
+    '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+    (rest.length ? '<div class="ownnote">' + esc(rest.join(' · ')) + '</div>' : '') +
+    (last ? '<div class="ownnote">' + esc(last) + '</div>' : '') +
+  '</div>';
+}
+
+function kpiOwnHTML(k){
+  const rec = ownRecord(k);
+  if(!rec) return '';
+  const d = rec.data || {};
+  const items = d.items || [], kpis = d.kpis || [], scale = d.scale || [], sets = d.settings || [];
+
+  let html = '<div class="sec" style="margin-left:0">' + esc(rec.title || 'Личный KPI') + '</div><div class="ac">';
+
+  html += items.map(it => ownItemHTML(it, false)).join('');
+  if(d.total) html += ownItemHTML(d.total, true);
+
+  if(kpis.length){
+    html += '<div class="ownsub">KPI и бонусы</div>' + kpis.map(x =>
+      '<div class="okpi"><div class="okn">' + esc(x.name) + '</div>' +
+        '<div class="okv"><span>' + esc((x.done_text || '0') + ' из ' + (x.plan_text || '')) + '</span>' +
+          '<span>' + esc(x.pct_text || '') + '</span>' +
+          '<span class="okb">бонус ' + esc(x.bonus_text || '0') + ' смн</span></div></div>').join('');
+  }
+
+  const total = d.bonus_total == null ? '' : String(d.bonus_total);
+  html += ownMoney(total) > 0
+    ? '<div class="kpibonus" style="margin-top:10px">Бонус ' + esc(total) + ' смн</div>'
+    : '<div class="ownzero">Бонус пока 0 смн</div>';
+
+  if(scale.length){
+    // ступень — наибольший from, не превышающий процент KPI №1
+    const first = kpis[0];
+    const pct = first && ownNum(first.plan) > 0 ? ownNum(first.done) / ownNum(first.plan) * 100 : null;
+    let cur = -1;
+    if(pct !== null) scale.forEach((st, i) => {
+      if(ownNum(st.from) <= pct && (cur < 0 || ownNum(st.from) >= ownNum(scale[cur].from))) cur = i;
+    });
+    html += '<div class="ownsub">' + esc(d.scale_title || 'Шкала бонуса') + '</div>' +
+      scale.map((st, i) =>
+        '<div class="osc' + (i === cur ? ' on' : '') + '">от ' + esc(st.from_text || '') +
+          ' — ' + esc(st.bonus_text || '0') + ' смн</div>').join('');
+  }
+
+  if(sets.length){
+    html += '<div class="hint" style="margin-top:12px">' +
+      esc(sets.map(s => s.label + ' ' + s.value).join(' · ')) + '</div>';
+  }
+  return html + '</div>';
+}
+
+/* ---------- руководителю: личные KPI всех, у кого есть таблица ---------- */
+function kpiOwnListHTML(k){
+  const list = (k.own || []).filter(Boolean);
+  if(!list.length || (list.length === 1 && list[0].employee_id === WHO)) return '';
+  return '<div class="sec" style="margin-left:0">Личные KPI</div>' +
+    list.map(r => {
+      const t = (r.data && r.data.total) || null;
+      return '<div class="acrow' + (r.employee_id === WHO ? ' me' : '') + '">' +
+        '<span class="acnm">' + esc(r.full_name) + '</span>' +
+        '<span class="acov">' + esc(t ? (t.done_text || '0') + ' из ' + (t.plan_text || '') : '—') + '</span>' +
+        '<span class="acpl">' + esc(t ? (t.pct_text || '') : '') + '</span>' +
+      '</div>';
+    }).join('');
 }
 
 /* ---------- руководителю: все продавцы по убыванию продаж ---------- */

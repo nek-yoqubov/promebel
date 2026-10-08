@@ -808,6 +808,7 @@ function ownItemHTML(it, isTotal){
 function kpiOwnHTML(k){
   const rec = ownRecord(k);
   if(!rec) return '';
+  if(rec.data && rec.data.version === 2) return kpiOwnV2HTML(rec);
   const d = rec.data || {};
   const items = d.items || [], kpis = d.kpis || [], scale = d.scale || [], sets = d.settings || [];
 
@@ -850,19 +851,154 @@ function kpiOwnHTML(k){
   return html + '</div>';
 }
 
+/* ---------- личный KPI, формат version 2 (квартальные таблицы) ----------
+   cells / values / *_text — готовые строки из таблицы: показываем как есть.
+   plan и done нужны только для ширины полос. */
+function v2Cols(cols){
+  const find = n => (cols || []).findIndex(c => String(c).trim().toLowerCase() === n);
+  return { plan: find('план'), done: find('сделано'), pct: find('%'), bonus: find('бонус, смн') };
+}
+function v2Cell(row, i){
+  const v = i >= 0 && row && row.cells ? row.cells[i] : '';
+  return v == null ? '' : String(v);
+}
+/* '5,2%' → 5.2, '4 800' → 4800; пусто и мусор → NaN */
+function v2Num(t){
+  const x = String(t == null ? '' : t).replace(/[^\d,.\-]/g, '').replace(',', '.');
+  return x === '' ? NaN : Number(x);
+}
+function v2Total(t){
+  if(!t) return '';
+  const vals = (t.values || []).map(v => v == null ? '' : String(v));
+  let txt;
+  if(vals.length > 1) txt = vals.slice(0, -1).join(' · ') + ' · бонус ' + vals[vals.length - 1] + ' смн';
+  else txt = vals.join(' · ');
+  return '<div class="ownt">' + esc(((t.label || '') + ' ' + txt).trim()) + '</div>';
+}
+
+/* строка секции: полоса, если есть «План» и «Сделано», иначе список */
+function v2RowHTML(row, cols){
+  const c = v2Cols(cols);
+  const used = new Set([c.plan, c.done, c.pct, c.bonus]);
+  const extra = (cols || []).map((name, i) => used.has(i) ? '' : (v2Cell(row, i) ? name + ': ' + v2Cell(row, i) : ''))
+    .filter(Boolean).join(' · ');
+  const bonus = c.bonus >= 0 && v2Cell(row, c.bonus) !== ''
+    ? '<span class="okb">бонус ' + esc(v2Cell(row, c.bonus)) + ' смн</span>' : '';
+  const note = extra ? '<div class="ownnote">' + esc(extra) + '</div>' : '';
+
+  if(c.plan >= 0 && c.done >= 0){
+    const plan = ownNum(row.plan), done = ownNum(row.done);
+    const w = plan > 0 ? Math.min(100, Math.max(0, done / plan * 100)) : 0;
+    return '<div class="acp own' + (plan > 0 && done >= plan ? ' hit' : '') + '">' +
+      '<div class="acpt"><span>' + esc(row.name) + '</span>' +
+        '<b>' + esc(v2Cell(row, c.done)) + '</b>' +
+        '<span class="sub">из ' + esc(v2Cell(row, c.plan)) + '</span>' +
+        (c.pct >= 0 ? '<span class="acpp">' + esc(v2Cell(row, c.pct)) + '</span>' : '') +
+        bonus + '</div>' +
+      '<div class="bar"><i style="width:' + w + '%"></i></div>' + note + '</div>';
+  }
+  const cells = (cols || []).map((name, i) => v2Cell(row, i) ? name + ': ' + v2Cell(row, i) : '')
+    .filter(Boolean).join(' · ');
+  return '<div class="acp own"><div class="acpt"><span>' + esc(row.name) + '</span></div>' +
+    (cells ? '<div class="ownnote">' + esc(cells) + '</div>' : '') + '</div>';
+}
+
+/* месячный блок: ставки, а не план — список без полос */
+function v2MonthlyHTML(m){
+  const cols = m.cols || [];
+  const grid = 'grid-template-columns:minmax(0,1.5fr) repeat(' + Math.max(cols.length, 1) + ',minmax(0,1fr))';
+  return '<div class="ownsub">' + esc(m.title || '') + '</div>' +
+    '<div class="mgrid mhead" style="' + grid + '"><span></span>' +
+      cols.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>' +
+    (m.rows || []).map(r =>
+      '<div class="mgrid" style="' + grid + '"><span class="mn">' + esc(r.name) + '</span>' +
+        cols.map((x, i) => '<span>' + esc(v2Cell(r, i)) + '</span>').join('') + '</div>').join('') +
+    v2Total(m.total);
+}
+
+/* ступень шкалы: наибольший from, не превышающий процент */
+function v2ScaleHTML(sc, secs){
+  const title = String(sc.title || '');
+  const has1 = /№\s*1(?!\d)/.test(title), has2 = /№\s*2(?!\d)/.test(title);
+  const sec = n => secs.find(x => new RegExp('№\\s*' + n + '(?!\\d)').test(x.title || ''));
+  let pct = NaN;
+  if(has1){
+    const s1 = sec(1), r = s1 && (s1.rows || [])[0];
+    if(r && ownNum(r.plan) > 0) pct = ownNum(r.done) / ownNum(r.plan) * 100;
+  }else if(has2){
+    const s2 = sec(2);
+    if(s2 && s2.total && (s2.total.values || []).length) pct = v2Num(s2.total.values[0]);
+  }
+  const steps = sc.steps || [];
+  let cur = -1;
+  steps.forEach((st, i) => {
+    const f = st.from != null ? Number(st.from) : v2Num(st.from_text);
+    if(isFinite(pct) && f <= pct) {
+      const best = cur < 0 ? -Infinity : (steps[cur].from != null ? Number(steps[cur].from) : v2Num(steps[cur].from_text));
+      if(f >= best) cur = i;
+    }
+  });
+  return '<div class="ownsub">' + esc(title) + '</div>' +
+    steps.map((st, i) => '<div class="osc' + (i === cur ? ' on' : '') + '">от ' + esc(st.from_text || '') +
+      ' — ' + esc(st.bonus_text || '0') + ' смн</div>').join('');
+}
+
+function kpiOwnV2HTML(rec){
+  const d = rec.data || {};
+  const head = d.header || {};
+  const secs = d.sections || [], monthly = d.monthly || [], scales = d.scales || [];
+  const pending = d.pending || [], sets = d.settings || [];
+
+  let html = '<div class="sec" style="margin-left:0">' + esc(rec.title || head.title || 'Личный KPI') + '</div>' +
+    (head.period ? '<div class="hint" style="margin:-4px 0 8px">' + esc(head.period) + '</div>' : '') +
+    '<div class="ac">';
+
+  secs.forEach(sec => {
+    html += '<div class="ownsub">' + esc(sec.title || '') + '</div>' +
+      (sec.rows || []).map(r => v2RowHTML(r, sec.cols)).join('') + v2Total(sec.total);
+  });
+  monthly.forEach(m => { html += v2MonthlyHTML(m); });
+
+  pending.forEach(p => {
+    html += '<div class="pendcard">' + icon('clock') + '<div><b>' + esc(p.title || '') + '</b>' +
+      '<div>В процессе — данные появятся после настройки выгрузки из 1С</div></div></div>';
+  });
+
+  scales.forEach(sc => { html += v2ScaleHTML(sc, secs); });
+
+  if(sets.length){
+    html += '<div class="hint" style="margin-top:12px">' +
+      esc(sets.map(x => x.label + ' ' + x.value).join(' · ')) + '</div>';
+  }
+
+  return html + '</div>';
+}
+
 /* ---------- руководителю: личные KPI всех, у кого есть таблица ---------- */
 function kpiOwnListHTML(k){
   const list = (k.own || []).filter(Boolean);
   if(!list.length || (list.length === 1 && list[0].employee_id === WHO)) return '';
   return '<div class="sec" style="margin-left:0">Личные KPI</div>' +
     list.map(r => {
-      const t = (r.data && r.data.total) || null;
+      const sum = ownListSummary(r);
       return '<div class="acrow' + (r.employee_id === WHO ? ' me' : '') + '">' +
         '<span class="acnm">' + esc(r.full_name) + '</span>' +
-        '<span class="acov">' + esc(t ? (t.done_text || '0') + ' из ' + (t.plan_text || '') : '—') + '</span>' +
-        '<span class="acpl">' + esc(t ? (t.pct_text || '') : '') + '</span>' +
+        '<span class="acov">' + esc(sum ? sum.text : '—') + '</span>' +
+        '<span class="acpl">' + esc(sum ? sum.pct : '') + '</span>' +
       '</div>';
     }).join('');
+}
+/* строка списка «Личные KPI»: старый вид — итог, v2 — первая строка первой секции */
+function ownListSummary(r){
+  const d = r.data || {};
+  if(d.version === 2){
+    const sec = (d.sections || [])[0], row = sec && (sec.rows || [])[0];
+    if(!row) return null;
+    const c = v2Cols(sec.cols);
+    return { text: v2Cell(row, c.done) + ' из ' + v2Cell(row, c.plan), pct: v2Cell(row, c.pct) };
+  }
+  const t = d.total || null;
+  return t ? { text: (t.done_text || '0') + ' из ' + (t.plan_text || ''), pct: t.pct_text || '' } : null;
 }
 
 /* ---------- руководителю: все продавцы по убыванию продаж ---------- */

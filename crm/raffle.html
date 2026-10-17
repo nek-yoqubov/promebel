@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Розыгрыш</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Розыгрыш LABO</h1></div>
+
+  <div class="rf-state"><span id="cacheState"></span><span class="rf-head-acts" id="headActs"></span></div>
+
+  <!-- ---------- Поиск по всем клиентам ---------- -->
+  <div class="pad rf-search">
+    <div class="f-search">
+      <span id="searchIcon"></span>
+      <input id="q" type="search" placeholder="Имя клиента — сколько осталось до купона" autocomplete="off">
+    </div>
+  </div>
+  <div id="searchBox"></div>
+
+  <div class="seg rf-seg" id="seg"></div>
+
+  <!-- ---------- Списки ---------- -->
+  <section id="paneList">
+    <div class="toolbar" id="listBar"></div>
+    <div id="bulkBar"></div>
+    <div id="listBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Аналитика ---------- -->
+  <section id="paneStats" hidden>
+    <div class="period" id="statPeriod"></div>
+    <div class="tiles" id="statTiles"></div>
+    <div id="statsBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Распределение ---------- -->
+  <section id="paneDist" hidden>
+    <div id="distBody"><div class="loading">Загрузка…</div></div>
+  </section>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+const RAFFLE = 'labo';
+const SET_KEY = 'raffle_' + RAFFLE;
+const RAFFLE_ROLES = ['sales','head','regional','brand','callcenter','admin','director','auditor'];
+const MGR_ROLES = ['sales','head','regional','brand','callcenter'];
+const CALL_RES_RU = { reached:'Дозвонился', no_answer:'Не взял', promised:'Обещал прийти', refused:'Отказ' };
+const CALL_RES_CLS = { reached:'info', no_answer:'muted', promised:'ok', refused:'late' };
+const LIST_EMPTY = {
+  first:'Клиентов в этом диапазоне нет',
+  next:'Сейчас никому не осталось мало до следующего купона',
+  mine:'За вами пока не закреплены клиенты'
+};
+
+let TAB = '';
+let SET = {};
+let LISTS = {};            // kind -> строки из crm.raffle_list
+let SEL = new Set();       // выбранные клиенты для ручного закрепления
+let FILTER = '';           // '' — все, 'none' — без менеджера, иначе id менеджера
+
+(async () => {
+  if(!await requireAuth()) return;
+  if(!RAFFLE_ROLES.includes(ME.role)){ location.replace('index.html'); return; }
+
+  await renderShell({ title:'Розыгрыш', tab:'raffle' });
+  await loadEmployees();
+
+  $('searchIcon').outerHTML = icon('search');
+  paintHeadActs();
+  paintSeg();
+  initSearch();
+
+  await Promise.all([loadSettings(), loadState()]);
+  const want = new URLSearchParams(location.search).get('tab');
+  showTab(tabs().some(t => t.key === want) ? want : tabs()[0].key);
+})();
+
+/* ============================================================
+   ПРАВА — повторяют RLS, только чтобы прятать лишние кнопки
+   ============================================================ */
+function readOnly(){ return isAuditor() || IS_PREVIEW; }
+function isBoss(){ return isBossRole(); }
+function canManage(){ return isBoss() && !readOnly(); }
+function canCall(r){ return !readOnly() && (isBoss() || (r && r.employee_id === ME.id)); }
+
+function tabs(){
+  const t = [
+    { key:'first', label:'До первого' },
+    { key:'next',  label:'До следующего' }
+  ];
+  if(!isBoss() && !isAuditor()) t.push({ key:'mine', label:'Мои' });
+  if(isBoss()) t.push({ key:'dist', label:'Распределение' });
+  if(isBoss() || isAuditor()) t.push({ key:'stats', label:'Аналитика' });
+  return t;
+}
+function paintSeg(){
+  $('seg').innerHTML = tabs().map(t =>
+    '<button data-t="' + t.key + '">' + esc(t.label) + '</button>').join('');
+  $('seg').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+}
+function showTab(t, filter){
+  TAB = t;
+  history.replaceState(null, '', 'raffle.html?tab=' + t);
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  const on = $('seg').querySelector('.on');
+  if(on) on.scrollIntoView({ block:'nearest', inline:'nearest' });
+  $('paneList').hidden = t === 'dist' || t === 'stats';
+  $('paneDist').hidden = t !== 'dist';
+  $('paneStats').hidden = t !== 'stats';
+  if(t === 'dist') loadDist();
+  else if(t === 'stats') loadStats();
+  else { SEL.clear(); FILTER = filter || ''; loadList(t); }
+}
+function paintHeadActs(){
+  if(!canManage()){ $('headActs').innerHTML = ''; return; }
+  $('headActs').innerHTML =
+    '<button class="btn ghost sm" id="btnRefresh">' + icon('repeat') + 'Обновить суммы</button>' +
+    '<button class="btn ghost sm" id="btnSettings">' + icon('settings') + 'Настройки</button>';
+  $('btnRefresh').onclick = refreshNow;
+  $('btnSettings').onclick = openSettings;
+}
+
+/* ============================================================
+   ФОРМАТЫ
+   ============================================================ */
+function money(v){ return som(Number(v) || 0); }
+function moneyUp(v){ return som(Math.ceil(Number(v) || 0)); }      // «осталось» округляем вверх
+function couponsText(n){
+  n = Number(n) || 0;
+  return n ? n + ' ' + plural(n, 'купон', 'купона', 'купонов') : 'купона нет';
+}
+function remainText(r){
+  return (Number(r.coupons) ? 'до следующего ' : 'до первого ') + moneyUp(r.to_next);
+}
+function assigneeText(r){
+  return r.employee_id ? empName(r.employee_id) : 'не закреплён';
+}
+/* продавец из top_seller — тот же код, что в «Должности» сотрудника */
+function sellerMatch(e, code){
+  if(!e || !code) return false;
+  const pos = String(e.position || '').trim();
+  return code === e.erp_manager || code === pos || pos.split(/\s+/).includes(code);
+}
+function sellerName(code){
+  if(!code) return '—';
+  const e = EMPS.find(x => sellerMatch(x, code));
+  return e ? e.full_name + ' (' + code + ')' : code;
+}
+function sellerCode(e){
+  if(e.erp_manager) return e.erp_manager;
+  const m = String(e.position || '').match(/\S*\d+\S*$/);
+  return m ? m[0] : '';
+}
+function resultHTML(res){
+  if(!res) return '';
+  return '<span class="rf-res ' + (CALL_RES_CLS[res] || '') + '">' + esc(CALL_RES_RU[res] || res) + '</span>';
+}
+function lastCallHTML(r){
+  if(!r.last_call_at) return '<span class="dim">не звонили</span>';
+  return resultHTML(r.last_result) + ' <span class="dim">' + esc(agoText(r.last_call_at)) + '</span>' +
+    (r.last_comment ? '<div class="rf-cmt">' + esc(r.last_comment) + '</div>' : '');
+}
+function callbackHTML(d){
+  if(!d) return '<span class="dim">—</span>';
+  const today = tzYmd();
+  const cls = d < today ? 'late' : d === today ? 'warn' : '';
+  const txt = d === today ? 'сегодня' : d === tzShift(today, 1) ? 'завтра' : fmtDateOnly(d);
+  return '<span class="rf-cb ' + cls + '">' + esc(txt) + (d < today ? ' · просрочено' : '') + '</span>';
+}
+
+/* ============================================================
+   СУММЫ: когда обновлялись
+   ============================================================ */
+async function loadState(){
+  const { data } = await sb.from('raffle_cache_state').select('refreshed_at,clients').eq('raffle', RAFFLE).maybeSingle();
+  $('cacheState').innerHTML = data
+    ? 'Суммы на ' + esc(fmtWhen(data.refreshed_at)) + ' · обновляются раз в час, как на табло · ' +
+      esc(data.clients) + ' ' + plural(data.clients, 'клиент', 'клиента', 'клиентов') + ' с покупками'
+    : 'Суммы ещё не загружены';
+}
+async function refreshNow(){
+  const b = $('btnRefresh');
+  b.disabled = true;
+  const { error } = await sb.rpc('raffle_refresh_now', { p_raffle: RAFFLE });
+  b.disabled = false;
+  if(error) return toast(errText(error));
+  toast('Суммы обновлены');
+  LISTS = {};
+  await loadState();
+  showTab(TAB);
+}
+
+/* ============================================================
+   НАСТРОЙКИ РАЗДЕЛА — crm.settings, ключ raffle_labo
+   ============================================================ */
+async function loadSettings(){
+  const { data } = await sb.from('settings').select('value').eq('key', SET_KEY).maybeSingle();
+  SET = (data && data.value) || {};
+}
+function firstFrom(){ return SET.first_from != null ? Number(SET.first_from) : 30000; }
+function nextGap(){ return SET.next_gap != null ? Number(SET.next_gap) : 3000; }
+
+function openSettings(){
+  const reportTo = Array.isArray(SET.report_to) ? SET.report_to : [];
+  const bosses = EMPS.filter(e => ['admin','director','head','regional'].includes(e.role));
+  modalOpen({
+    title:'Настройки розыгрыша',
+    bodyHTML:
+      '<div class="row2">' +
+        '<div class="field"><label class="field-label" for="sFirst">«До первого купона» — от суммы</label>' +
+          '<input id="sFirst" class="num" type="number" min="0" max="49999" step="1000" value="' + esc(firstFrom()) + '">' +
+          '<div class="hint">Список показывает клиентов от этой суммы до 50 000 сом</div></div>' +
+        '<div class="field"><label class="field-label" for="sGap">«До следующего» — осталось меньше</label>' +
+          '<input id="sGap" class="num" type="number" min="100" max="10000" step="500" value="' + esc(nextGap()) + '">' +
+          '<div class="hint">Клиенты с купоном, которым до следующего меньше этой суммы</div></div>' +
+      '</div>' +
+      '<div class="field"><label class="field-label">Утренняя сводка по звонкам в Telegram</label>' +
+        '<div class="pickbox">' + bosses.map(e =>
+          '<label class="chk"><input type="checkbox" data-rep="' + esc(e.id) + '"' +
+            (reportTo.includes(e.id) ? ' checked' : '') + '>' + esc(e.full_name) + '</label>').join('') +
+        '</div></div>',
+    saveLabel:'Сохранить',
+    onSave: saveSettings
+  });
+}
+async function saveSettings(){
+  const f = Number($('sFirst').value), g = Number($('sGap').value);
+  if(!(f >= 0 && f < 50000)) return modalMsg('Нижняя граница — от 0 до 49 999 сом');
+  if(!(g > 0 && g <= 10000)) return modalMsg('Порог — от 1 до 10 000 сом');
+  const report_to = Array.from(document.querySelectorAll('[data-rep]:checked')).map(x => x.dataset.rep);
+  const value = Object.assign({}, SET, { first_from: f, next_gap: g, report_to });
+  modalBusy(true, 'Сохраняем…');
+  const { error } = await sb.from('settings').update({ value }).eq('key', SET_KEY);
+  modalBusy(false, 'Сохранить');
+  if(error) return modalMsg(errText(error, 'update'));
+  SET = value;
+  modalClose();
+  toast('Сохранено');
+  LISTS = {};
+  showTab(TAB);
+}
+
+/* ============================================================
+   1. ПОИСК — все клиенты, даже с покупкой на 1 000 сом
+   ============================================================ */
+let SEARCH_ROWS = [];
+function initSearch(){
+  let timer = null;
+  $('q').oninput = () => {
+    clearTimeout(timer);
+    const s = $('q').value.trim();
+    if(s.length < 2){ $('searchBox').innerHTML = ''; return; }
+    timer = setTimeout(() => runSearch(s), 250);
+  };
+}
+async function runSearch(s){
+  $('searchBox').innerHTML = '<div class="loading">Ищем…</div>';
+  const { data, error } = await sb.rpc('raffle_search', { q: s, p_raffle: RAFFLE });
+  if($('q').value.trim() !== s) return;
+  if(error){ $('searchBox').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  SEARCH_ROWS = data || [];
+  if(!SEARCH_ROWS.length){
+    $('searchBox').innerHTML = '<div class="empty">Не нашли. Если клиент покупал в период розыгрыша, ' +
+      'проверьте написание имени — суммы обновляются раз в час.</div>';
+    return;
+  }
+  $('searchBox').innerHTML = '<div class="rows rf-found">' + SEARCH_ROWS.map(r =>
+    '<button class="row" data-open="' + esc(r.client_code) + '">' +
+      '<span class="dot' + (Number(r.coupons) ? ' rf-has' : '') + '"></span>' +
+      '<span class="rb">' +
+        '<span class="l1"><span class="t">' + esc(r.client_name) + '</span>' +
+          '<span class="amt">' + esc(money(r.amount)) + '</span></span>' +
+        '<span class="l2">' + esc([couponsText(r.coupons), remainText(r),
+          'покупка ' + fmtDateOnly(r.last_purchase), assigneeText(r)].join(' · ')) + '</span>' +
+      '</span></button>').join('') + '</div>';
+  $('searchBox').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+}
+
+/* ============================================================
+   2–3. СПИСКИ
+   ============================================================ */
+async function loadList(kind, force){
+  if(!LISTS[kind] || force){
+    $('listBody').innerHTML = '<div class="loading">Загрузка…</div>';
+    const { data, error } = await sb.rpc('raffle_list', { p_kind: kind, p_raffle: RAFFLE });
+    if(error){ $('listBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+    LISTS[kind] = data || [];
+  }
+  if(TAB === kind) paintList();
+}
+function visibleRows(){
+  const rows = LISTS[TAB] || [];
+  if(FILTER === 'none') return rows.filter(r => !r.employee_id);
+  if(FILTER) return rows.filter(r => r.employee_id === FILTER);
+  return rows;
+}
+function paintList(){
+  const all = LISTS[TAB] || [];
+  const rows = visibleRows();
+  const called = all.filter(r => r.last_call_at).length;
+  const free = all.filter(r => !r.employee_id).length;
+  const today = tzYmd();
+  const due = all.filter(r => r.callback_date && r.callback_date <= today).length;
+
+  let what = TAB === 'first'
+    ? 'Сумма от ' + money(firstFrom()) + ' до 50 000 сом'
+    : TAB === 'next' ? 'Есть купон, до следующего меньше ' + money(nextGap())
+    : 'Все клиенты, закреплённые за вами';
+  let bar = '<span class="grow rf-sum">' + esc(what) + ' · <b>' + all.length + '</b> ' +
+    plural(all.length, 'клиент', 'клиента', 'клиентов') +
+    ' · звонили ' + called + (due ? ' · <span class="rf-cb warn">перезвонить сегодня: ' + due + '</span>' : '') +
+    (isBoss() ? ' · без менеджера ' + free : '') + '</span>';
+
+  if(isBoss() || isAuditor()){
+    const mgrIds = Array.from(new Set(all.map(r => r.employee_id).filter(Boolean)));
+    bar += '<select id="fEmp" aria-label="Менеджер">' +
+      '<option value="">Все менеджеры</option>' +
+      '<option value="none"' + (FILTER === 'none' ? ' selected' : '') + '>Без менеджера</option>' +
+      mgrIds.map(id => '<option value="' + esc(id) + '"' + (FILTER === id ? ' selected' : '') + '>' +
+        esc(empName(id)) + '</option>').join('') +
+    '</select>';
+  }
+  if(canManage() && rows.length) bar += '<button class="btn ghost sm" id="selAll">Выбрать всех</button>';
+  bar += '<button class="btn ghost sm" id="xlsBtn">' + icon('download') + 'Excel</button>';
+  $('listBar').innerHTML = bar;
+  if($('fEmp')) $('fEmp').onchange = () => { FILTER = $('fEmp').value; SEL.clear(); paintList(); };
+  if($('selAll')) $('selAll').onclick = () => {
+    const allOn = rows.every(r => SEL.has(r.client_code));
+    rows.forEach(r => allOn ? SEL.delete(r.client_code) : SEL.add(r.client_code));
+    paintList();
+  };
+  $('xlsBtn').onclick = () => exportXlsx(rows.map(r => ({
+    'Клиент': r.client_name, 'Код': r.client_code, 'Сумма': Number(r.amount),
+    'Купонов': r.coupons, 'Осталось': Math.ceil(Number(r.to_next)),
+    'Последняя покупка': fmtDateOnly(r.last_purchase), 'Менеджер': r.employee_id ? empName(r.employee_id) : '',
+    'Последний звонок': r.last_call_at ? fmtDateTime(r.last_call_at) : '',
+    'Результат': CALL_RES_RU[r.last_result] || '', 'Перезвонить': r.callback_date ? fmtDateOnly(r.callback_date) : ''
+  })), 'Розыгрыш', 'raffle-' + TAB + '-' + tzYmd() + '.xlsx');
+
+  paintBulk();
+
+  if(!rows.length){
+    $('listBody').innerHTML = '<div class="empty">' + esc(FILTER ? 'Под фильтр никто не попал' : LIST_EMPTY[TAB]) + '</div>';
+    return;
+  }
+  const sel = canManage();
+  $('listBody').innerHTML = '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
+    (sel ? '<th class="rf-ck"></th>' : '') +
+    '<th>Клиент</th><th class="num">Сумма</th><th class="num">Осталось</th><th>Покупка</th>' +
+    '<th>Менеджер</th><th>Последний звонок</th><th>Перезвонить</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(r => rowHTML(r, sel)).join('') + '</tbody></table></div>';
+
+  $('listBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  $('listBody').querySelectorAll('[data-call]').forEach(b => b.onclick = () => {
+    const r = rows.find(x => x.client_code === b.dataset.call);
+    openCall(r);
+  });
+  $('listBody').querySelectorAll('[data-sel]').forEach(c => c.onchange = () => {
+    c.checked ? SEL.add(c.dataset.sel) : SEL.delete(c.dataset.sel);
+    paintBulk();
+  });
+}
+function rowHTML(r, sel){
+  const code = esc(r.client_code);
+  return '<tr>' +
+    (sel ? '<td data-label="Выбрать" class="rf-ck"><input type="checkbox" data-sel="' + code + '"' +
+      (SEL.has(r.client_code) ? ' checked' : '') + ' aria-label="Выбрать"></td>' : '') +
+    '<td data-label="Клиент" class="nm"><span><button class="rf-lnk" data-open="' + code + '">' + esc(r.client_name) + '</button>' +
+      '<span class="dim rf-small rf-blk">' + esc(couponsText(r.coupons)) + '</span></span></td>' +
+    '<td data-label="Сумма" class="num money">' + esc(money(r.amount)) + '</td>' +
+    '<td data-label="Осталось" class="num"><b class="rf-left">' + esc(moneyUp(r.to_next)) + '</b></td>' +
+    '<td data-label="Покупка">' + esc(fmtDateOnly(r.last_purchase)) + '</td>' +
+    '<td data-label="Менеджер">' + (r.employee_id ? esc(empName(r.employee_id)) : '<span class="dim">не закреплён</span>') + '</td>' +
+    '<td data-label="Звонок"><span>' + lastCallHTML(r) + '</span></td>' +
+    '<td data-label="Перезвонить">' + callbackHTML(r.callback_date) + '</td>' +
+    '<td class="acts-cell"><div class="acts">' +
+      (canCall(r) ? '<button class="btn sm ok" data-call="' + code + '">' + icon('phone') + 'Позвонил</button>' : '') +
+    '</div></td>' +
+  '</tr>';
+}
+
+/* ---------- ручное закрепление пачкой ---------- */
+function managerOptions(sel){
+  return EMPS.filter(e => MGR_ROLES.includes(e.role)).map(e =>
+    '<option value="' + esc(e.id) + '"' + (e.id === sel ? ' selected' : '') + '>' + esc(e.full_name) + '</option>').join('');
+}
+function paintBulk(){
+  if(!canManage() || !SEL.size){ $('bulkBar').innerHTML = ''; return; }
+  $('bulkBar').innerHTML = '<div class="panel rf-bulk">' +
+    '<b>Выбрано: ' + SEL.size + '</b>' +
+    '<select id="bulkEmp" aria-label="Менеджер"><option value="">Кому закрепить…</option>' + managerOptions('') + '</select>' +
+    '<button class="btn sm" id="bulkSet">Закрепить</button>' +
+    '<button class="btn sm danger" id="bulkOff">Снять закрепление</button>' +
+    '<button class="btn sm ghost" id="bulkClr">Сбросить выбор</button>' +
+  '</div>';
+  $('bulkSet').onclick = () => {
+    const emp = $('bulkEmp').value;
+    if(!emp) return toast('Выберите менеджера');
+    assignCodes(Array.from(SEL), emp);
+  };
+  $('bulkOff').onclick = () => confirmBox('Снять закрепление',
+    'Снять закрепление у ' + SEL.size + ' ' + plural(SEL.size, 'клиента', 'клиентов', 'клиентов') + '?',
+    'Снять', () => assignCodes(Array.from(SEL), null));
+  $('bulkClr').onclick = () => { SEL.clear(); paintList(); };
+}
+async function assignCodes(codes, emp){
+  const { data, error } = await sb.rpc('raffle_assign_set', { p_codes: codes, p_emp: emp, p_raffle: RAFFLE });
+  if(error) return toast(errText(error, 'update'));
+  toast(emp ? 'Закреплено за ' + empName(emp) + ': ' + (data || 0) : 'Закрепление снято: ' + (data || 0));
+  SEL.clear();
+  LISTS = {};
+  return reloadCurrent();
+}
+function reloadCurrent(){
+  if(TAB === 'dist') return loadDist();
+  if(TAB === 'stats') return loadStats();
+  return loadList(TAB, true);
+}
+
+/* ============================================================
+   КАРТОЧКА КЛИЕНТА
+   ============================================================ */
+let CARD = null;
+async function openCard(code){
+  modalOpen({ title:'Клиент', wide:true, bodyHTML:'<div class="loading">Загрузка…</div>' });
+  const [c, a, k, l] = await Promise.all([
+    sb.from('raffle_clients').select('client_code,client_name,amount,last_purchase,top_seller')
+      .eq('raffle', RAFFLE).eq('client_code', code).maybeSingle(),
+    sb.from('raffle_assign').select('employee_id,method,assigned_at,assigned_by')
+      .eq('raffle', RAFFLE).eq('client_code', code).maybeSingle(),
+    sb.from('raffle_calls').select('id,employee_id,author_id,result,comment,callback_date,called_at,amount_at_call')
+      .eq('raffle', RAFFLE).eq('client_code', code).order('called_at', { ascending:false }).limit(100),
+    sb.from('raffle_assign_log').select('from_emp,to_emp,method,actor_id,created_at')
+      .eq('raffle', RAFFLE).eq('client_code', code).order('created_at', { ascending:false }).limit(30)
+  ]);
+  if(!document.getElementById('crmModal')) return;
+  const err = c.error || a.error || k.error;
+  if(err){ modalBody().innerHTML = '<div class="empty">' + esc(errText(err)) + '</div>'; return; }
+  if(!c.data){ modalBody().innerHTML = '<div class="empty">Клиента нет в розыгрыше</div>'; return; }
+
+  const amount = Number(c.data.amount) || 0;
+  const cp = amount < 50000 ? 0 : 1 + Math.floor((amount - 50000) / 10000);
+  const left = amount < 50000 ? 50000 - amount : 10000 - ((amount - 50000) % 10000);
+  CARD = Object.assign({}, c.data, { coupons: cp, to_next: left },
+    a.data ? { employee_id: a.data.employee_id, method: a.data.method, assigned_at: a.data.assigned_at } : { employee_id: null });
+  paintCard(k.data || [], l.data || []);
+}
+function paintCard(calls, log){
+  const r = CARD;
+  document.querySelector('#crmModal .modal-head h2').textContent = r.client_name;
+  let html =
+    '<div class="rf-big"><div><span class="n">' + esc(money(r.amount)) + '</span><span class="c">сумма покупок</span></div>' +
+      '<div><span class="n">' + esc(String(r.coupons)) + '</span><span class="c">' +
+        esc(plural(r.coupons, 'купон', 'купона', 'купонов')) + '</span></div>' +
+      '<div><span class="n rf-left">' + esc(moneyUp(r.to_next)) + '</span><span class="c">' +
+        (r.coupons ? 'до следующего купона' : 'до первого купона') + '</span></div></div>' +
+    '<dl class="kv" style="padding:0 0 14px">' +
+      '<dt>Последняя покупка</dt><dd>' + esc(fmtDateOnly(r.last_purchase)) + '</dd>' +
+      '<dt>Больше всего купил у</dt><dd>' + esc(sellerName(r.top_seller)) + '</dd>' +
+      '<dt>Закреплён за</dt><dd>' + (r.employee_id
+        ? esc(empName(r.employee_id)) + ' <span class="dim">· ' + (r.method === 'auto' ? 'авто' : 'вручную') +
+          ', ' + esc(fmtDate(r.assigned_at)) + '</span>'
+        : '<span class="dim">не закреплён</span>') + '</dd>' +
+      '<dt>Код в 1С</dt><dd class="dim">' + esc(r.client_code) + '</dd>' +
+    '</dl>';
+
+  if(canManage()){
+    html += '<div class="rf-assign">' +
+      '<select id="cardEmp" aria-label="Менеджер"><option value="">Кому закрепить…</option>' + managerOptions(r.employee_id) + '</select>' +
+      '<button class="btn sm" id="cardSet">Закрепить</button>' +
+      (r.employee_id ? '<button class="btn sm ghost" id="cardOff">Снять</button>' : '') +
+    '</div>';
+  }
+  if(canCall(r)){
+    html += '<button class="btn ok block" id="cardCall" style="margin:4px 0 6px">' + icon('phone') + 'Позвонил</button>';
+  }else if(!readOnly() && r.employee_id !== ME.id){
+    html += '<div class="hint">Отметить звонок может только закреплённый менеджер.</div>';
+  }
+
+  html += '<div class="sec" style="margin:18px 0 8px">Звонки</div>' + (calls.length
+    ? '<div class="rf-calls">' + calls.map(callItemHTML).join('') + '</div>'
+    : '<div class="hint">Звонков пока не было' + (r.employee_id && r.employee_id !== ME.id && !isBoss() && !isAuditor()
+        ? ' (или они не ваши)' : '') + '</div>');
+
+  if(log.length && (isBoss() || isAuditor())){
+    html += '<div class="sec" style="margin:18px 0 8px">История закрепления</div><div class="rf-calls">' +
+      log.map(x => '<div class="rf-call"><div class="l1"><span>' +
+        esc(x.from_emp ? empName(x.from_emp) : '—') + ' → ' + esc(x.to_emp ? empName(x.to_emp) : 'снято') +
+        '</span><span class="dim">' + esc(fmtDateTime(x.created_at)) + '</span></div>' +
+        '<div class="dim rf-small">' + esc((x.method === 'auto' ? 'автоматически' : x.to_emp ? 'вручную' : '') +
+          (x.actor_id ? ' · ' + empName(x.actor_id) : '')) + '</div></div>').join('') + '</div>';
+  }
+  modalBody().innerHTML = html;
+
+  if($('cardSet')) $('cardSet').onclick = async () => {
+    const emp = $('cardEmp').value;
+    if(!emp) return toast('Выберите менеджера');
+    await assignCodes([r.client_code], emp);
+    openCard(r.client_code);
+  };
+  if($('cardOff')) $('cardOff').onclick = async () => {
+    await assignCodes([r.client_code], null);
+    openCard(r.client_code);
+  };
+  if($('cardCall')) $('cardCall').onclick = () => openCall(r);
+}
+function callItemHTML(k){
+  const who = empName(k.employee_id) + (k.author_id && k.author_id !== k.employee_id ? ' (отметил ' + empName(k.author_id) + ')' : '');
+  return '<div class="rf-call">' +
+    '<div class="l1">' + resultHTML(k.result) + '<span class="dim">' + esc(fmtDateTime(k.called_at)) + '</span></div>' +
+    '<div class="rf-small">' + esc(who) + ' · сумма тогда ' + esc(money(k.amount_at_call)) +
+      (k.callback_date ? ' · перезвонить ' + esc(fmtDateOnly(k.callback_date)) : '') + '</div>' +
+    (k.comment ? '<div class="rf-cmt">' + esc(k.comment) + '</div>' : '') +
+  '</div>';
+}
+
+/* ============================================================
+   5. ЗВОНОК
+   ============================================================ */
+function openCall(r){
+  if(!r) return;
+  let res = '';
+  const bossPick = isBoss() && !readOnly();
+  modalOpen({
+    title:'Звонок: ' + r.client_name,
+    sheet:true,
+    bodyHTML:
+      '<div class="hint" style="margin:0 0 12px">' + esc(money(r.amount) + ' · ' + couponsText(r.coupons) + ' · ' + remainText(r)) + '</div>' +
+      '<div class="field"><label class="field-label">Результат <span class="req">*</span></label>' +
+        '<div class="chips-plain" id="cRes">' + Object.keys(CALL_RES_RU).map(k =>
+          '<button type="button" class="chip" data-r="' + k + '">' + esc(CALL_RES_RU[k]) + '</button>').join('') +
+        '</div></div>' +
+      (bossPick
+        ? '<div class="field"><label class="field-label" for="cEmp">Кто звонил</label>' +
+            '<select id="cEmp">' + (r.employee_id ? '' : '<option value="' + esc(ME.id) + '">' + esc(ME.full_name) + '</option>') +
+              managerOptions(r.employee_id || '') + '</select></div>'
+        : '') +
+      '<div class="field"><label class="field-label" for="cCmt">Комментарий</label>' +
+        '<textarea id="cCmt" rows="3" placeholder="Что сказал клиент"></textarea></div>' +
+      '<div class="field"><label class="field-label" for="cCb">Перезвонить</label>' +
+        '<input id="cCb" type="date" min="' + esc(tzYmd()) + '">' +
+        '<div class="chips-plain" style="margin:8px 0 0">' +
+          [[1, 'Завтра'], [2, 'Через 2 дня'], [7, 'Через неделю']].map(x =>
+            '<button type="button" class="chip" data-cb="' + x[0] + '">' + x[1] + '</button>').join('') +
+        '</div></div>',
+    saveLabel:'Сохранить звонок',
+    onSave: async () => {
+      if(!res) return modalMsg('Выберите результат звонка');
+      const row = {
+        raffle: RAFFLE, client_code: r.client_code, result: res,
+        comment: $('cCmt').value.trim() || null,
+        callback_date: $('cCb').value || null,
+        employee_id: bossPick ? $('cEmp').value : ME.id
+      };
+      modalBusy(true, 'Сохраняем…');
+      const { error } = await sb.from('raffle_calls').insert(row);
+      modalBusy(false, 'Сохранить звонок');
+      if(error) return modalMsg(errText(error, 'insert') || '');
+      modalClose();
+      toast('Звонок отмечен');
+      LISTS = {};
+      reloadCurrent();
+    }
+  });
+  $('cRes').querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+    res = b.dataset.r;
+    $('cRes').querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b));
+  });
+  document.querySelectorAll('[data-cb]').forEach(b => b.onclick = () => {
+    $('cCb').value = tzShift(tzYmd(), Number(b.dataset.cb));
+  });
+}
+
+/* ============================================================
+   4. РАСПРЕДЕЛЕНИЕ — только руководство
+   ============================================================ */
+let DIST = { assigned: [], log: [], calls: [] };
+let DIST_PICK = null;
+async function loadDist(){
+  $('distBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const since = tzAt(tzYmd(), 0, 0);
+  const [as, f, n, lg, ck] = await Promise.all([
+    sb.rpc('raffle_list', { p_kind:'assigned', p_raffle: RAFFLE }),
+    LISTS.first ? { data: LISTS.first } : sb.rpc('raffle_list', { p_kind:'first', p_raffle: RAFFLE }),
+    LISTS.next ? { data: LISTS.next } : sb.rpc('raffle_list', { p_kind:'next', p_raffle: RAFFLE }),
+    sb.from('raffle_assign_log').select('client_code,from_emp,to_emp,method,actor_id,created_at')
+      .eq('raffle', RAFFLE).order('created_at', { ascending:false }).limit(40),
+    sb.from('raffle_calls').select('employee_id,called_at').eq('raffle', RAFFLE).gte('called_at', since)
+  ]);
+  const err = as.error || f.error || n.error || lg.error || ck.error;
+  if(err){ $('distBody').innerHTML = '<div class="empty">' + esc(errText(err)) + '</div>'; return; }
+  LISTS.first = f.data || []; LISTS.next = n.data || [];
+  DIST.assigned = as.data || [];
+  DIST.log = lg.data || [];
+  DIST.calls = ck.data || [];
+  if(!DIST_PICK) DIST_PICK = new Set(Array.isArray(SET.managers) ? SET.managers : []);
+  paintDist();
+}
+function paintDist(){
+  const target = LISTS.first.concat(LISTS.next);
+  const manual = target.filter(r => r.method === 'manual').length;
+  const free = target.filter(r => !r.employee_id).length;
+  const mgrs = EMPS.filter(e => MGR_ROLES.includes(e.role));
+  const count = id => DIST.assigned.filter(r => r.employee_id === id).length;
+  const ro = !canManage();
+
+  let html = '<div class="sec">Автоматически</div><div class="panel">' +
+    '<div class="hint" style="margin:0 0 12px">Распределяются клиенты из обоих списков: <b>' + target.length +
+      '</b> (без менеджера ' + free + ', закреплено вручную ' + manual + '). ' +
+      'Клиент уходит продавцу, который продал ему больше всех, если тот отмечен. Остальные — поровну.</div>' +
+    '<div class="field"><label class="field-label">Между кем распределять</label>' +
+      '<div class="pickbox rf-pick">' + mgrs.map(e => {
+        const code = sellerCode(e);
+        return '<label class="chk"><input type="checkbox" data-mgr="' + esc(e.id) + '"' +
+          (DIST_PICK.has(e.id) ? ' checked' : '') + (ro ? ' disabled' : '') + '>' +
+          '<span class="grow">' + esc(e.full_name) + (code ? ' <span class="dim">· ' + esc(code) + '</span>' : '') + '</span>' +
+          '<span class="dim">' + count(e.id) + '</span></label>';
+      }).join('') + '</div></div>' +
+    '<label class="switch"><input type="checkbox" id="dStrict"' + (ro ? ' disabled' : '') + '><span class="sl">Строго поровну' +
+      '<i>Не отдавать клиента его продавцу — делить всех поровну</i></span></label>' +
+    '<label class="switch"><input type="checkbox" id="dAll"' + (ro ? ' disabled' : '') + '><span class="sl">Перераспределить всех' +
+      '<i>Включая клиентов, закреплённых вручную</i></span></label>' +
+    (ro ? '' : '<button class="btn" id="dRun" style="margin-top:10px">Распределить</button>') +
+    '<div id="dResult"></div>' +
+  '</div>';
+
+  // нагрузка по менеджерам
+  const byEmp = {};
+  DIST.assigned.forEach(r => {
+    const x = byEmp[r.employee_id] || (byEmp[r.employee_id] = { all:0, first:0, next:0, called:0 });
+    x.all++;
+    if(r.last_call_at) x.called++;
+  });
+  LISTS.first.forEach(r => { if(r.employee_id && byEmp[r.employee_id]) byEmp[r.employee_id].first++; });
+  LISTS.next.forEach(r => { if(r.employee_id && byEmp[r.employee_id]) byEmp[r.employee_id].next++; });
+  const todayCalls = {};
+  DIST.calls.forEach(c => todayCalls[c.employee_id] = (todayCalls[c.employee_id] || 0) + 1);
+  const ids = Object.keys(byEmp).sort((a, b) => byEmp[b].all - byEmp[a].all);
+
+  html += '<div class="sec">Кто за кем</div>' + (ids.length
+    ? '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+        '<th>Менеджер</th><th class="num">Закреплено</th><th class="num">До первого</th><th class="num">До следующего</th>' +
+        '<th class="num">Звонили</th><th class="num">Звонков сегодня</th></tr></thead><tbody>' +
+        ids.map(id => '<tr>' +
+          '<td data-label="Менеджер" class="nm"><button class="rf-lnk" data-flt="' + esc(id) + '">' + esc(empName(id)) + '</button></td>' +
+          '<td data-label="Закреплено" class="num">' + byEmp[id].all + '</td>' +
+          '<td data-label="До первого" class="num">' + byEmp[id].first + '</td>' +
+          '<td data-label="До следующего" class="num">' + byEmp[id].next + '</td>' +
+          '<td data-label="Звонили" class="num">' + byEmp[id].called + '</td>' +
+          '<td data-label="Сегодня" class="num">' + (todayCalls[id] || 0) + '</td>' +
+        '</tr>').join('') + '</tbody></table></div>'
+    : '<div class="empty">Пока никто ни за кем не закреплён</div>');
+
+  html += '<div class="sec">Перезакрепления</div>' + (DIST.log.length
+    ? '<div class="panel rf-calls">' + DIST.log.map(x => {
+        const name = (DIST.assigned.find(r => r.client_code === x.client_code) ||
+                      target.find(r => r.client_code === x.client_code) || {}).client_name || x.client_code;
+        return '<div class="rf-call"><div class="l1"><button class="rf-lnk" data-open="' + esc(x.client_code) + '">' + esc(name) + '</button>' +
+          '<span class="dim">' + esc(fmtDateTime(x.created_at)) + '</span></div>' +
+          '<div class="rf-small">' + esc((x.from_emp ? empName(x.from_emp) : '—') + ' → ' + (x.to_emp ? empName(x.to_emp) : 'снято') +
+            ' · ' + (x.method === 'auto' ? 'авто' : x.to_emp ? 'вручную' : '') + (x.actor_id ? ', ' + empName(x.actor_id) : '')) + '</div></div>';
+      }).join('') + '</div>'
+    : '<div class="empty">Записей пока нет</div>');
+
+  $('distBody').innerHTML = html;
+  $('distBody').querySelectorAll('[data-mgr]').forEach(c => c.onchange = () => {
+    c.checked ? DIST_PICK.add(c.dataset.mgr) : DIST_PICK.delete(c.dataset.mgr);
+  });
+  $('distBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  $('distBody').querySelectorAll('[data-flt]').forEach(b => b.onclick = () => {
+    showTab('first', b.dataset.flt);
+  });
+  if($('dRun')) $('dRun').onclick = runAuto;
+}
+function runAuto(){
+  const ids = EMPS.filter(e => DIST_PICK.has(e.id)).map(e => e.id);   // порядок — как в списке
+  if(!ids.length) return toast('Отметьте хотя бы одного менеджера');
+  const strict = $('dStrict').checked, all = $('dAll').checked;
+  confirmBox('Распределить клиентов',
+    'Распределить между: ' + ids.map(empName).join(', ') + '.' +
+    (strict ? ' Строго поровну.' : '') + (all ? ' Включая закреплённых вручную.' : ' Закреплённых вручную не трогаем.'),
+    'Распределить', async () => {
+      $('dRun').disabled = true;
+      const { data, error } = await sb.rpc('raffle_auto_assign',
+        { p_managers: ids, p_strict: strict, p_all: all, p_raffle: RAFFLE });
+      if(error){ $('dRun').disabled = false; return toast(errText(error, 'update')); }
+      SET.managers = ids;
+      LISTS = {};
+      await loadDist();
+      const d = data || {};
+      $('dResult').innerHTML = '<div class="warnbox info" style="margin:14px 0 0">' + icon('checkCircle') + '<div>' +
+        'Распределено ' + (d.total || 0) + ', изменилось ' + (d.changed || 0) + '. ' +
+        'Своему продавцу — ' + (d.by_top || 0) + ', поровну — ' + (d.by_equal || 0) +
+        (d.skipped_manual ? ', вручную закреплённых не тронули — ' + d.skipped_manual : '') + '.<br>' +
+        (d.per_manager || []).map(m => esc(empName(m.employee_id)) + ': ' + (m.top + m.equal) +
+          (m.top ? ' (своих ' + m.top + ')' : '')).join(' · ') +
+      '</div></div>';
+      toast('Готово');
+    });
+}
+/* ============================================================
+   7. АНАЛИТИКА — руководство и ревизор
+   «Купил после звонка» — сумма клиента выросла за 7 дней после звонка
+   ============================================================ */
+const STAT_PERIODS = [
+  { key:'today', label:'Сегодня' },
+  { key:'yday',  label:'Вчера' },
+  { key:'week',  label:'7 дней' },
+  { key:'all',   label:'Весь розыгрыш' }
+];
+let STAT_P = 'all', STATS = null;
+function statRange(){
+  const t = tzYmd();
+  if(STAT_P === 'today') return [t, t];
+  if(STAT_P === 'yday') return [tzShift(t, -1), tzShift(t, -1)];
+  if(STAT_P === 'week') return [tzShift(t, -6), t];
+  return ['2026-07-20', t];
+}
+async function loadStats(){
+  $('statPeriod').innerHTML = STAT_PERIODS.map(p =>
+    '<button class="chip' + (p.key === STAT_P ? ' on' : '') + '" data-p="' + p.key + '">' + esc(p.label) + '</button>').join('');
+  $('statPeriod').querySelectorAll('[data-p]').forEach(b => b.onclick = () => { STAT_P = b.dataset.p; loadStats(); });
+  $('statTiles').innerHTML = '';
+  $('statsBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const [from, to] = statRange();
+  const { data, error } = await sb.rpc('raffle_stats', { p_from: from, p_to: to, p_raffle: RAFFLE });
+  if(error){ $('statsBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  STATS = data || {};
+  paintStats();
+}
+function sTile(n, c, cls){
+  return '<div class="tile ' + (cls || '') + '"><div class="n">' + esc(String(n)) + '</div><div class="c">' + esc(c) + '</div></div>';
+}
+function pct(a, b){ return b ? Math.round(a * 100 / b) + '%' : '—'; }
+function paintStats(){
+  const t = STATS.totals || {};
+  $('statTiles').innerHTML =
+    sTile(t.calls || 0, 'Звонков') +
+    sTile((t.reached || 0) + ' (' + pct(t.reached || 0, t.calls || 0) + ')', 'Дозвонились', 'info') +
+    sTile(t.clients || 0, 'Клиентов обзвонили') +
+    sTile(t.promised || 0, 'Обещали прийти') +
+    sTile(t.bought || 0, 'Купили после звонка', 'ok') +
+    sTile(moneyUp(t.bought_sum || 0), 'На сумму', 'ok') +
+    sTile(t.new_coupons || 0, 'Новых купонов', 'ok');
+
+  const byM = STATS.by_manager || [];
+  let html = '<div class="sec">По менеджерам</div>' + (byM.length
+    ? '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+        '<th>Менеджер</th><th class="num">Звонков</th><th class="num">Дозвонов</th><th class="num">Клиентов</th>' +
+        '<th class="num">Купили после звонка</th><th class="num">Сумма</th><th class="num">Новых купонов</th></tr></thead><tbody>' +
+        byM.map(m => '<tr>' +
+          '<td data-label="Менеджер" class="nm">' + esc(empName(m.employee_id)) + '</td>' +
+          '<td data-label="Звонков" class="num">' + m.calls + '</td>' +
+          '<td data-label="Дозвонов" class="num">' + m.reached + ' <span class="dim">' + pct(m.reached, m.calls) + '</span></td>' +
+          '<td data-label="Клиентов" class="num">' + m.clients + '</td>' +
+          '<td data-label="Купили" class="num">' + m.bought + ' <span class="dim">' + pct(m.bought, m.clients) + '</span></td>' +
+          '<td data-label="Сумма" class="num money">' + esc(moneyUp(m.bought_sum)) + '</td>' +
+          '<td data-label="Новых купонов" class="num">' + m.new_coupons + '</td>' +
+        '</tr>').join('') + '</tbody></table></div>'
+    : '<div class="empty">За этот период звонков нет</div>');
+
+  const cmp = STATS.compare || [];
+  const yes = cmp.find(x => x.called) || { clients:0, bought:0, bought_sum:0, new_coupons:0 };
+  const no = cmp.find(x => !x.called) || { clients:0, bought:0, bought_sum:0, new_coupons:0 };
+  const cmpRow = (label, x) => '<tr><td data-label="" class="nm">' + label + '</td>' +
+    '<td data-label="Клиентов" class="num">' + x.clients + '</td>' +
+    '<td data-label="Купили" class="num">' + x.bought + '</td>' +
+    '<td data-label="Доля" class="num"><b>' + pct(x.bought, x.clients) + '</b></td>' +
+    '<td data-label="Сумма" class="num money">' + esc(moneyUp(x.bought_sum)) + '</td>' +
+    '<td data-label="Новых купонов" class="num">' + x.new_coupons + '</td></tr>';
+  html += '<div class="sec">Помогают ли звонки</div>' +
+    '<div class="hint" style="margin:-4px 16px 10px">Все закреплённые сейчас клиенты: купили ли они с момента закрепления. ' +
+      'Период на это сравнение не влияет.</div>' +
+    '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr><th></th>' +
+      '<th class="num">Клиентов</th><th class="num">Купили</th><th class="num">Доля</th><th class="num">Сумма</th>' +
+      '<th class="num">Новых купонов</th></tr></thead><tbody>' +
+      cmpRow('Звонили', yes) + cmpRow('Не звонили', no) + '</tbody></table></div>';
+
+  const calls = STATS.calls || [];
+  html += '<div class="sec rf-sec-row"><span>Звонки</span>' +
+    (calls.length ? '<button class="btn ghost sm" id="statXls">' + icon('download') + 'Excel</button>' : '') + '</div>' +
+    '<div class="hint" style="margin:-4px 16px 10px">«Купил за 7 дней» — насколько выросла сумма клиента за 7 дней после звонка. ' +
+      'Суммы обновляются раз в час; у свежих звонков окно ещё открыто.</div>' +
+    (calls.length
+      ? '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
+          '<th>Когда</th><th>Клиент</th><th>Менеджер</th><th>Результат</th><th class="num">Купил за 7 дней</th><th class="num">Купоны</th>' +
+          '</tr></thead><tbody>' + calls.map(k => '<tr>' +
+            '<td data-label="Когда">' + esc(fmtDateTime(k.called_at)) + '</td>' +
+            '<td data-label="Клиент" class="nm"><button class="rf-lnk" data-open="' + esc(k.client_code) + '">' +
+              esc(k.client_name || k.client_code) + '</button></td>' +
+            '<td data-label="Менеджер">' + esc(empName(k.employee_id)) + '</td>' +
+            '<td data-label="Результат"><span>' + resultHTML(k.result) +
+              (k.comment ? '<span class="rf-cmt rf-blk">' + esc(k.comment) + '</span>' : '') + '</span></td>' +
+            '<td data-label="Купил за 7 дней" class="num">' + (Number(k.bought_sum) > 0
+              ? '<b class="rf-res ok">' + esc(moneyUp(k.bought_sum)) + '</b>'
+              : '<span class="dim">' + (k.window_done ? 'нет' : 'пока нет') + '</span>') + '</td>' +
+            '<td data-label="Купоны" class="num">' + (Number(k.new_coupons) > 0 ? '<b class="rf-res ok">+' + k.new_coupons + '</b>' : '<span class="dim">—</span>') + '</td>' +
+          '</tr>').join('') + '</tbody></table></div>'
+      : '<div class="empty">Звонков нет</div>');
+
+  $('statsBody').innerHTML = html;
+  $('statsBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  if($('statXls')) $('statXls').onclick = () => exportXlsx(calls.map(k => ({
+    'Когда': fmtDateTime(k.called_at), 'Клиент': k.client_name || k.client_code, 'Код': k.client_code,
+    'Менеджер': empName(k.employee_id), 'Результат': CALL_RES_RU[k.result] || k.result, 'Комментарий': k.comment || '',
+    'Сумма при звонке': Number(k.amount_at_call), 'Сумма через 7 дней': Number(k.amount_after),
+    'Купил за 7 дней': Number(k.bought_sum), 'Новых купонов': Number(k.new_coupons)
+  })), 'Звонки', 'raffle-calls-' + tzYmd() + '.xlsx');
+}
+</script>
+</body>
+</html>

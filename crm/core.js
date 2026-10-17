@@ -121,7 +121,8 @@ const AUDIT_TABLE_RU = {
   employee_review:'Оценка', clients:'Клиенты', deals:'Сделки', activities:'План',
   events:'События', event_checks:'Проверки акций', vacancies:'Вакансии', candidates:'Кандидаты',
   adaptations:'Адаптация', service_orders:'Заявки', callbacks:'Обзвон', feedback:'Замечания',
-  links:'Ссылки', branches:'Филиалы', regions:'Регионы'
+  links:'Ссылки', branches:'Филиалы', regions:'Регионы',
+  raffle_assign:'Розыгрыш: закрепления', raffle_calls:'Розыгрыш: звонки'
 };
 function optionsFrom(dict, sel){
   return Object.keys(dict).map(k =>
@@ -518,6 +519,7 @@ const ICONS = {
   table:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
   printer:'<svg class="i" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
   down:'<svg class="i sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>',
+  gift:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13"/><path d="M12 8H8.5a2.5 2.5 0 1 1 0-5C11 3 12 8 12 8zM12 8h3.5a2.5 2.5 0 1 0 0-5C13 3 12 8 12 8z"/></svg>',
     settings:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>'
 };
 function icon(name){ return ICONS[name] || ''; }
@@ -573,6 +575,8 @@ const SECTIONS = [
     roles:['sales','head','regional','brand','admin','director','auditor'] },
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
     notRoles:['production','cashier'] },
+  { key:'raffle',  group:'sales',   label:'Розыгрыш',       href:'raffle.html',           icon:'gift',
+    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star' },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
     roles:['callcenter','head','admin','director','auditor'], soon:true },

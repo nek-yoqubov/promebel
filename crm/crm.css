@@ -1132,6 +1132,7 @@ body.preview .tbar{top:var(--pvh)}
 .rf-cb.warn{color:var(--warn)} .rf-cb.late{color:var(--late)}
 .rf-left{color:var(--brand);font-variant-numeric:tabular-nums;white-space:nowrap}
 .rf-sum{font-size:14px;color:var(--ink-2)}
+.toolbar .rf-sum{flex:1 1 100%;order:-1}
 .rf-panel{padding:8px 0;overflow-x:auto}
 .rf-tbl td{font-size:14px;padding:10px 8px}
 .rf-tbl th{padding:0 8px 10px}
@@ -1176,6 +1177,11 @@ body.preview .tbar{top:var(--pvh)}
   .rf-seg button{font-size:13px;padding:0 10px;overflow:visible}
 }
 .rf-sec-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.rf-me{color:var(--brand)}
+.rf-scope{display:flex;gap:6px;flex:none}
+.rf-scope .chip{height:36px;padding:0 14px}
+.rf-reasons{margin-bottom:8px}
+.rf-reasons .chip{height:34px;padding:0 12px;font-size:13px}
 @media (min-width:1024px){
   #paneStats .hint{margin-left:24px !important;margin-right:24px !important}
 }

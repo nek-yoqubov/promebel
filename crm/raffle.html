@@ -71,7 +71,7 @@ let TAB = '';
 let SET = {};
 let LISTS = {};            // kind -> строки из crm.raffle_list
 let SEL = new Set();       // выбранные клиенты для ручного закрепления
-let FILTER = '';           // '' — все, 'none' — без менеджера, иначе id менеджера
+let FILTER = '';           // '' — все, 'me' — мои, 'none' — без менеджера, иначе id менеджера
 
 (async () => {
   if(!await requireAuth()) return;
@@ -81,11 +81,11 @@ let FILTER = '';           // '' — все, 'none' — без менеджер�
   await loadEmployees();
 
   $('searchIcon').outerHTML = icon('search');
+  await Promise.all([loadSettings(), loadState()]);   // от настроек зависит, кто управляет разделом
   paintHeadActs();
   paintSeg();
   initSearch();
 
-  await Promise.all([loadSettings(), loadState()]);
   const want = new URLSearchParams(location.search).get('tab');
   showTab(tabs().some(t => t.key === want) ? want : tabs()[0].key);
 })();
@@ -94,7 +94,10 @@ let FILTER = '';           // '' — все, 'none' — без менеджер�
    ПРАВА — повторяют RLS, только чтобы прятать лишние кнопки
    ============================================================ */
 function readOnly(){ return isAuditor() || IS_PREVIEW; }
-function isBoss(){ return isBossRole(); }
+/* управляют разделом люди из настроек (bosses) и администратор */
+function isBoss(){ return !!ME && (ME.role === 'admin' || (Array.isArray(SET.bosses) && SET.bosses.includes(ME.id))); }
+/* смотрят всё и аналитику: управляющие, директора и ревизор */
+function isViewer(){ return isBoss() || isBossRole() || isAuditor(); }
 function canManage(){ return isBoss() && !readOnly(); }
 function canCall(r){ return !readOnly() && (isBoss() || (r && r.employee_id === ME.id)); }
 
@@ -103,9 +106,9 @@ function tabs(){
     { key:'first', label:'До первого' },
     { key:'next',  label:'До следующего' }
   ];
-  if(!isBoss() && !isAuditor()) t.push({ key:'mine', label:'Мои' });
+  if(!isViewer()) t.push({ key:'mine', label:'Мои' });
   if(isBoss()) t.push({ key:'dist', label:'Распределение' });
-  if(isBoss() || isAuditor()) t.push({ key:'stats', label:'Аналитика' });
+  if(isViewer()) t.push({ key:'stats', label:'Аналитика' });
   return t;
 }
 function paintSeg(){
@@ -124,7 +127,7 @@ function showTab(t, filter){
   $('paneStats').hidden = t !== 'stats';
   if(t === 'dist') loadDist();
   else if(t === 'stats') loadStats();
-  else { SEL.clear(); FILTER = filter || ''; loadList(t); }
+  else { SEL.clear(); FILTER = filter || (isViewer() || t === 'mine' ? '' : 'me'); loadList(t); }
 }
 function paintHeadActs(){
   if(!canManage()){ $('headActs').innerHTML = ''; return; }
@@ -172,7 +175,8 @@ function resultHTML(res){
 }
 function lastCallHTML(r){
   if(!r.last_call_at) return '<span class="dim">не звонили</span>';
-  return resultHTML(r.last_result) + ' <span class="dim">' + esc(agoText(r.last_call_at)) + '</span>' +
+  const who = r.last_call_by && r.last_call_by !== ME.id ? ' · ' + empName(r.last_call_by) : '';
+  return resultHTML(r.last_result) + ' <span class="dim">' + esc(agoText(r.last_call_at) + who) + '</span>' +
     (r.last_comment ? '<div class="rf-cmt">' + esc(r.last_comment) + '</div>' : '');
 }
 function callbackHTML(d){
@@ -233,7 +237,9 @@ function openSettings(){
         '<div class="pickbox">' + bosses.map(e =>
           '<label class="chk"><input type="checkbox" data-rep="' + esc(e.id) + '"' +
             (reportTo.includes(e.id) ? ' checked' : '') + '>' + esc(e.full_name) + '</label>').join('') +
-        '</div></div>',
+        '</div></div>' +
+      '<div class="hint">Распределяют и меняют настройки: ' +
+        esc((SET.bosses || []).map(empName).join(', ') || '—') + '.</div>',
     saveLabel:'Сохранить',
     onSave: saveSettings
   });
@@ -243,12 +249,12 @@ async function saveSettings(){
   if(!(f >= 0 && f < 50000)) return modalMsg('Нижняя граница — от 0 до 49 999 сом');
   if(!(g > 0 && g <= 10000)) return modalMsg('Порог — от 1 до 10 000 сом');
   const report_to = Array.from(document.querySelectorAll('[data-rep]:checked')).map(x => x.dataset.rep);
-  const value = Object.assign({}, SET, { first_from: f, next_gap: g, report_to });
   modalBusy(true, 'Сохраняем…');
-  const { error } = await sb.from('settings').update({ value }).eq('key', SET_KEY);
+  const { data, error } = await sb.rpc('raffle_settings_save',
+    { p_first: f, p_gap: g, p_report_to: report_to, p_raffle: RAFFLE });
   modalBusy(false, 'Сохранить');
   if(error) return modalMsg(errText(error, 'update'));
-  SET = value;
+  SET = data || Object.assign({}, SET, { first_from: f, next_gap: g, report_to });
   modalClose();
   toast('Сохранено');
   LISTS = {};
@@ -305,6 +311,7 @@ async function loadList(kind, force){
 }
 function visibleRows(){
   const rows = LISTS[TAB] || [];
+  if(FILTER === 'me') return rows.filter(r => r.employee_id === ME.id);
   if(FILTER === 'none') return rows.filter(r => !r.employee_id);
   if(FILTER) return rows.filter(r => r.employee_id === FILTER);
   return rows;
@@ -312,24 +319,33 @@ function visibleRows(){
 function paintList(){
   const all = LISTS[TAB] || [];
   const rows = visibleRows();
-  const called = all.filter(r => r.last_call_at).length;
+  const called = rows.filter(r => r.last_call_at).length;          // счётчики — по тому, что на экране
   const free = all.filter(r => !r.employee_id).length;
   const today = tzYmd();
-  const due = all.filter(r => r.callback_date && r.callback_date <= today).length;
+  const due = rows.filter(r => r.callback_date && r.callback_date <= today).length;
 
   let what = TAB === 'first'
     ? 'Сумма от ' + money(firstFrom()) + ' до 50 000 сом'
     : TAB === 'next' ? 'Есть купон, до следующего меньше ' + money(nextGap())
     : 'Все клиенты, закреплённые за вами';
-  let bar = '<span class="grow rf-sum">' + esc(what) + ' · <b>' + all.length + '</b> ' +
-    plural(all.length, 'клиент', 'клиента', 'клиентов') +
+  const mine = all.filter(r => r.employee_id === ME.id).length;
+  let bar = '';
+  if(!isViewer() && TAB !== 'mine'){
+    bar += '<div class="rf-scope" role="group" aria-label="Чьи клиенты">' +
+      '<button class="chip' + (FILTER === 'me' ? ' on' : '') + '" data-scope="me">Мои · ' + mine + '</button>' +
+      '<button class="chip' + (FILTER !== 'me' ? ' on' : '') + '" data-scope="">Все · ' + all.length + '</button>' +
+    '</div>';
+  }
+  bar += '<span class="grow rf-sum">' + esc(what) + ' · <b>' + all.length + '</b> ' +
+    plural(all.length, 'клиент', 'клиента', 'клиентов') + (mine && TAB !== 'mine' ? ', за вами ' + mine : '') +
     ' · звонили ' + called + (due ? ' · <span class="rf-cb warn">перезвонить сегодня: ' + due + '</span>' : '') +
     (isBoss() ? ' · без менеджера ' + free : '') + '</span>';
 
-  if(isBoss() || isAuditor()){
+  if(isViewer()){
     const mgrIds = Array.from(new Set(all.map(r => r.employee_id).filter(Boolean)));
     bar += '<select id="fEmp" aria-label="Менеджер">' +
       '<option value="">Все менеджеры</option>' +
+      (mine ? '<option value="me"' + (FILTER === 'me' ? ' selected' : '') + '>Мои клиенты</option>' : '') +
       '<option value="none"' + (FILTER === 'none' ? ' selected' : '') + '>Без менеджера</option>' +
       mgrIds.map(id => '<option value="' + esc(id) + '"' + (FILTER === id ? ' selected' : '') + '>' +
         esc(empName(id)) + '</option>').join('') +
@@ -339,6 +355,7 @@ function paintList(){
   bar += '<button class="btn ghost sm" id="xlsBtn">' + icon('download') + 'Excel</button>';
   $('listBar').innerHTML = bar;
   if($('fEmp')) $('fEmp').onchange = () => { FILTER = $('fEmp').value; SEL.clear(); paintList(); };
+  $('listBar').querySelectorAll('[data-scope]').forEach(b => b.onclick = () => { FILTER = b.dataset.scope; paintList(); });
   if($('selAll')) $('selAll').onclick = () => {
     const allOn = rows.every(r => SEL.has(r.client_code));
     rows.forEach(r => allOn ? SEL.delete(r.client_code) : SEL.add(r.client_code));
@@ -355,14 +372,16 @@ function paintList(){
   paintBulk();
 
   if(!rows.length){
-    $('listBody').innerHTML = '<div class="empty">' + esc(FILTER ? 'Под фильтр никто не попал' : LIST_EMPTY[TAB]) + '</div>';
+    $('listBody').innerHTML = '<div class="empty">' + esc(
+      FILTER === 'me' ? 'За вами в этом списке клиентов нет — нажмите «Все», чтобы увидеть весь список'
+      : FILTER ? 'Под фильтр никто не попал' : LIST_EMPTY[TAB]) + '</div>';
     return;
   }
   const sel = canManage();
   $('listBody').innerHTML = '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
     (sel ? '<th class="rf-ck"></th>' : '') +
     '<th>Клиент</th><th class="num">Сумма</th><th class="num">Осталось</th><th>Покупка</th>' +
-    '<th>Менеджер</th><th>Последний звонок</th><th>Перезвонить</th><th></th>' +
+    '<th>Закреплён за</th><th>Последний звонок</th><th>Перезвонить</th><th></th>' +
     '</tr></thead><tbody>' + rows.map(r => rowHTML(r, sel)).join('') + '</tbody></table></div>';
 
   $('listBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
@@ -385,7 +404,8 @@ function rowHTML(r, sel){
     '<td data-label="Сумма" class="num money">' + esc(money(r.amount)) + '</td>' +
     '<td data-label="Осталось" class="num"><b class="rf-left">' + esc(moneyUp(r.to_next)) + '</b></td>' +
     '<td data-label="Покупка">' + esc(fmtDateOnly(r.last_purchase)) + '</td>' +
-    '<td data-label="Менеджер">' + (r.employee_id ? esc(empName(r.employee_id)) : '<span class="dim">не закреплён</span>') + '</td>' +
+    '<td data-label="Закреплён за">' + (r.employee_id === ME.id ? '<b class="rf-me">вы</b>'
+      : r.employee_id ? esc(empName(r.employee_id)) : '<span class="dim">не закреплён</span>') + '</td>' +
     '<td data-label="Звонок"><span>' + lastCallHTML(r) + '</span></td>' +
     '<td data-label="Перезвонить">' + callbackHTML(r.callback_date) + '</td>' +
     '<td class="acts-cell"><div class="acts">' +
@@ -494,10 +514,9 @@ function paintCard(calls, log){
 
   html += '<div class="sec" style="margin:18px 0 8px">Звонки</div>' + (calls.length
     ? '<div class="rf-calls">' + calls.map(callItemHTML).join('') + '</div>'
-    : '<div class="hint">Звонков пока не было' + (r.employee_id && r.employee_id !== ME.id && !isBoss() && !isAuditor()
-        ? ' (или они не ваши)' : '') + '</div>');
+    : '<div class="hint">Звонков пока не было</div>');
 
-  if(log.length && (isBoss() || isAuditor())){
+  if(log.length && isViewer()){
     html += '<div class="sec" style="margin:18px 0 8px">История закрепления</div><div class="rf-calls">' +
       log.map(x => '<div class="rf-call"><div class="l1"><span>' +
         esc(x.from_emp ? empName(x.from_emp) : '—') + ' → ' + esc(x.to_emp ? empName(x.to_emp) : 'снято') +
@@ -532,6 +551,13 @@ function callItemHTML(k){
 /* ============================================================
    5. ЗВОНОК
    ============================================================ */
+/* Готовые причины: кнопка подставляет текст в комментарий, дописать можно своё.
+   Причины для аналитики берём из того, что осталось в тексте комментария. */
+const CALL_REASONS = ['Придёт на этой неделе', 'Сейчас нет денег', 'Ждёт заказ / объект', 'Купил в другом месте',
+  'Сейчас не нужно', 'Перезвонить позже', 'Не знал про розыгрыш'];
+function needComment(res){ return !!res && res !== 'no_answer'; }
+function reasonsIn(text){ return CALL_REASONS.filter(x => String(text || '').includes(x)); }
+
 function openCall(r){
   if(!r) return;
   let res = '';
@@ -550,8 +576,11 @@ function openCall(r){
             '<select id="cEmp">' + (r.employee_id ? '' : '<option value="' + esc(ME.id) + '">' + esc(ME.full_name) + '</option>') +
               managerOptions(r.employee_id || '') + '</select></div>'
         : '') +
-      '<div class="field"><label class="field-label" for="cCmt">Комментарий</label>' +
-        '<textarea id="cCmt" rows="3" placeholder="Что сказал клиент"></textarea></div>' +
+      '<div class="field"><label class="field-label" for="cCmt">Комментарий <span class="req" id="cReq" hidden>*</span></label>' +
+        '<div class="chips-plain rf-reasons" id="cWhy">' + CALL_REASONS.map(x =>
+          '<button type="button" class="chip" data-why="' + esc(x) + '">' + esc(x) + '</button>').join('') + '</div>' +
+        '<textarea id="cCmt" rows="3" placeholder="Что сказал клиент"></textarea>' +
+        '<div class="hint" id="cCmtHint">Выберите результат звонка</div></div>' +
       '<div class="field"><label class="field-label" for="cCb">Перезвонить</label>' +
         '<input id="cCb" type="date" min="' + esc(tzYmd()) + '">' +
         '<div class="chips-plain" style="margin:8px 0 0">' +
@@ -561,9 +590,12 @@ function openCall(r){
     saveLabel:'Сохранить звонок',
     onSave: async () => {
       if(!res) return modalMsg('Выберите результат звонка');
+      const comment = $('cCmt').value.trim();
+      if(needComment(res) && !comment) return modalMsg('Напишите комментарий или нажмите готовую причину');
       const row = {
         raffle: RAFFLE, client_code: r.client_code, result: res,
-        comment: $('cCmt').value.trim() || null,
+        comment: comment || null,
+        reasons: res === 'no_answer' ? [] : reasonsIn(comment),
         callback_date: $('cCb').value || null,
         employee_id: bossPick ? $('cEmp').value : ME.id
       };
@@ -577,10 +609,35 @@ function openCall(r){
       reloadCurrent();
     }
   });
+  const cmt = $('cCmt');
+  const paintWhy = () => {
+    $('cWhy').querySelectorAll('[data-why]').forEach(b => b.classList.toggle('on', cmt.value.includes(b.dataset.why)));
+  };
+  const paintNeed = () => {
+    $('cReq').hidden = !needComment(res);
+    $('cWhy').hidden = res === 'no_answer';
+    $('cCmtHint').textContent = !res ? 'Выберите результат звонка'
+      : needComment(res) ? 'Обязательно: нажмите причину или напишите, что сказал клиент'
+      : 'Можно не заполнять';
+  };
+  paintNeed();
   $('cRes').querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
     res = b.dataset.r;
     $('cRes').querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b));
+    paintNeed();
   });
+  $('cWhy').querySelectorAll('[data-why]').forEach(b => b.onclick = () => {
+    const x = b.dataset.why, v = cmt.value;
+    if(v.includes(x)){
+      cmt.value = v.replace(x, '').replace(/\s*\.\s*\./g, '.').replace(/^[\s.;,]+|[\s.;,]+$/g, '');
+    }else{
+      const base = v.replace(/[\s.;,]+$/, '');
+      cmt.value = base ? base + '. ' + x : x;
+    }
+    paintWhy();
+    cmt.focus();
+  });
+  cmt.oninput = paintWhy;
   document.querySelectorAll('[data-cb]').forEach(b => b.onclick = () => {
     $('cCb').value = tzShift(tzYmd(), Number(b.dataset.cb));
   });
@@ -774,6 +831,23 @@ function paintStats(){
         '</tr>').join('') + '</tbody></table></div>'
     : '<div class="empty">За этот период звонков нет</div>');
 
+  const byR = STATS.by_reason || [];
+  html += '<div class="sec">По причинам</div>' +
+    '<div class="hint" style="margin:-4px 16px 10px">Причины из комментариев к звонкам, где дозвонились. ' +
+      '«Купили» — клиенты, у которых сумма выросла за 7 дней после такого звонка.</div>' + (byR.length
+    ? '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+        '<th>Причина</th><th class="num">Раз</th><th class="num">Клиентов</th><th class="num">Купили</th>' +
+        '<th class="num">Сумма</th><th class="num">Новых купонов</th></tr></thead><tbody>' +
+        byR.map(x => '<tr>' +
+          '<td data-label="Причина" class="nm">' + esc(x.reason) + '</td>' +
+          '<td data-label="Раз" class="num">' + x.calls + '</td>' +
+          '<td data-label="Клиентов" class="num">' + x.clients + '</td>' +
+          '<td data-label="Купили" class="num">' + x.bought + ' <span class="dim">' + pct(x.bought, x.clients) + '</span></td>' +
+          '<td data-label="Сумма" class="num money">' + esc(moneyUp(x.bought_sum)) + '</td>' +
+          '<td data-label="Новых купонов" class="num">' + x.new_coupons + '</td>' +
+        '</tr>').join('') + '</tbody></table></div>'
+    : '<div class="empty">Пока нет звонков с причинами</div>');
+
   const cmp = STATS.compare || [];
   const yes = cmp.find(x => x.called) || { clients:0, bought:0, bought_sum:0, new_coupons:0 };
   const no = cmp.find(x => !x.called) || { clients:0, bought:0, bought_sum:0, new_coupons:0 };
@@ -817,7 +891,8 @@ function paintStats(){
   $('statsBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
   if($('statXls')) $('statXls').onclick = () => exportXlsx(calls.map(k => ({
     'Когда': fmtDateTime(k.called_at), 'Клиент': k.client_name || k.client_code, 'Код': k.client_code,
-    'Менеджер': empName(k.employee_id), 'Результат': CALL_RES_RU[k.result] || k.result, 'Комментарий': k.comment || '',
+    'Менеджер': empName(k.employee_id), 'Результат': CALL_RES_RU[k.result] || k.result,
+    'Причины': (k.reasons || []).join(', '), 'Комментарий': k.comment || '',
     'Сумма при звонке': Number(k.amount_at_call), 'Сумма через 7 дней': Number(k.amount_after),
     'Купил за 7 дней': Number(k.bought_sum), 'Новых купонов': Number(k.new_coupons)
   })), 'Звонки', 'raffle-calls-' + tzYmd() + '.xlsx');

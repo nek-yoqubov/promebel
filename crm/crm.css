@@ -1178,10 +1178,32 @@ body.preview .tbar{top:var(--pvh)}
 }
 .rf-sec-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .rf-me{color:var(--brand)}
-.rf-scope{display:flex;gap:6px;flex:none}
+.rf-scope{display:flex;gap:6px;flex:none;flex-wrap:wrap;max-width:100%}
 .rf-scope .chip{height:36px;padding:0 14px}
 .rf-reasons{margin-bottom:8px}
 .rf-reasons .chip{height:34px;padding:0 12px;font-size:13px}
 @media (min-width:1024px){
   #paneStats .hint{margin-left:24px !important;margin-right:24px !important}
 }
+
+/* ============================================================
+   Обзвон клиентов — карточка с документами из 1С
+   ============================================================ */
+.co-big{grid-template-columns:repeat(4,1fr)}
+.co-docs{display:flex;flex-direction:column;gap:6px}
+.co-doc{border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.co-doc summary{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  padding:9px 12px;cursor:pointer;list-style:none;font-size:14px}
+.co-doc summary::-webkit-details-marker{display:none}
+.co-doc[open] summary{border-bottom:1px solid var(--line)}
+.co-dl{min-width:0}
+.co-neg{color:var(--late)}
+.co-doc.ret{border-color:rgba(240,84,106,.35)}
+.co-items{width:100%;border-collapse:collapse;font-size:13.5px}
+.co-items td{padding:6px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.co-items tr:last-child td{border-bottom:none}
+.co-items td.num{text-align:right;white-space:nowrap;width:1%}
+@media (max-width:760px){
+  .co-big{grid-template-columns:1fr 1fr}
+}
+.co-bym{display:flex;justify-content:space-between;gap:12px;max-width:320px}

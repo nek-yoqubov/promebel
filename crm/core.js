@@ -122,7 +122,8 @@ const AUDIT_TABLE_RU = {
   events:'События', event_checks:'Проверки акций', vacancies:'Вакансии', candidates:'Кандидаты',
   adaptations:'Адаптация', service_orders:'Заявки', callbacks:'Обзвон', feedback:'Замечания',
   links:'Ссылки', branches:'Филиалы', regions:'Регионы',
-  raffle_assign:'Розыгрыш: закрепления', raffle_calls:'Розыгрыш: звонки'
+  raffle_assign:'Розыгрыш: закрепления', raffle_calls:'Розыгрыш: звонки',
+  callout_assign:'Обзвон: закрепления', callout_calls:'Обзвон: звонки'
 };
 function optionsFrom(dict, sel){
   return Object.keys(dict).map(k =>
@@ -576,6 +577,8 @@ const SECTIONS = [
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
     notRoles:['production','cashier'] },
   { key:'raffle',  group:'sales',   label:'Розыгрыш',       href:'raffle.html',           icon:'gift',
+    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
+  { key:'callout', group:'sales',   label:'Обзвон клиентов', href:'callout.html',         icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star' },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',

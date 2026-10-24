@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Обзвон клиентов</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Обзвон клиентов</h1></div>
+
+  <div class="rf-state"><span id="cfgState"></span></div>
+
+  <div class="seg rf-seg" id="seg" hidden></div>
+
+  <!-- ---------- Список ---------- -->
+  <section id="paneList">
+    <div class="pad rf-search">
+      <div class="f-search">
+        <span id="searchIcon"></span>
+        <input id="q" type="search" placeholder="Найти клиента в списке" autocomplete="off">
+      </div>
+    </div>
+    <div class="toolbar" id="listBar"></div>
+    <div id="bulkBar"></div>
+    <div id="listBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Распределение ---------- -->
+  <section id="paneDist" hidden>
+    <div id="distBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Аналитика ---------- -->
+  <section id="paneStats" hidden>
+    <div class="tiles" id="statTiles"></div>
+    <div id="statsBody"><div class="loading">Загрузка…</div></div>
+  </section>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+/* Список фиксированный: покупатели 01.08–22.10, закреплены за кодом продавца («Мебельный9»).
+   Суммы и покупки берёт из 1С функция crm.callout_list — в CRM они не хранятся. */
+const CAMPAIGN = 'oct26';
+const SECTION_ROLES = ['sales','head','regional','brand','callcenter','admin','director','auditor'];
+const CALL_RES_RU = { reached:'Дозвонился', no_answer:'Не взял', promised:'Обещал прийти', refused:'Отказ' };
+const CALL_RES_CLS = { reached:'info', no_answer:'muted', promised:'ok', refused:'late' };
+const CALL_REASONS = ['Придёт на этой неделе', 'Сейчас нет денег', 'Ждёт заказ / объект', 'Купил в другом месте',
+  'Сейчас не нужно', 'Перезвонить позже'];
+const FILTERS = [
+  { key:'',      label:'Все' },
+  { key:'fresh', label:'Не звонили' },
+  { key:'due',   label:'Перезвонить' },
+  { key:'came',  label:'Пришли' }
+];
+
+let CFG = {};               // настройки обзвона: период, коды менеджеров
+let BOSSES = [];            // кто управляет — общий список с «Розыгрышем»
+let STAFF = [];             // сотрудники с кодом 1С: нужен, чтобы назвать продавца по коду
+let TAB = '';
+let ROWS = null;            // строки crm.callout_list
+let FILTER = '', SELLER = '', SEL = new Set();
+
+(async () => {
+  if(!await requireAuth()) return;
+  if(!SECTION_ROLES.includes(ME.role)){ location.replace('index.html'); return; }
+
+  await renderShell({ title:'Обзвон клиентов', tab:'callout' });
+  await loadEmployees();
+  $('searchIcon').outerHTML = icon('search');
+
+  const [cfg, raffle, staff] = await Promise.all([
+    sb.from('settings').select('value').eq('key', 'callout_' + CAMPAIGN).maybeSingle(),
+    sb.from('settings').select('value').eq('key', 'raffle_labo').maybeSingle(),
+    sb.from('employees').select('id,full_name,role,position,erp_manager').eq('is_active', true)
+  ]);
+  CFG = (cfg.data && cfg.data.value) || {};
+  BOSSES = (raffle.data && raffle.data.value && raffle.data.value.bosses) || [];
+  STAFF = staff.data || [];
+  paintState();
+  paintSeg();
+
+  let timer = null;
+  $('q').oninput = () => { clearTimeout(timer); timer = setTimeout(paintList, 200); };
+
+  const want = new URLSearchParams(location.search).get('tab');
+  showTab(tabs().some(t => t.key === want) ? want : tabs()[0].key);
+})();
+
+/* ============================================================
+   ПРАВА — повторяют RLS, только чтобы прятать лишние кнопки.
+   Роли как в «Розыгрыше»: управляют люди из списка bosses и администратор.
+   ============================================================ */
+function readOnly(){ return isAuditor() || IS_PREVIEW; }
+function isBoss(){ return !!ME && (ME.role === 'admin' || BOSSES.includes(ME.id)); }
+function isViewer(){ return isBoss() || isBossRole() || isAuditor(); }
+function canManage(){ return isBoss() && !readOnly(); }
+/* менеджер видит только своих — значит, любой его клиент свой */
+function canCall(){ return !readOnly() && (isBoss() || !isViewer()); }
+
+function tabs(){
+  if(!isViewer()) return [{ key:'list', label:'Мой список' }];
+  const t = [{ key:'list', label:'Списки' }];
+  if(isBoss()) t.push({ key:'dist', label:'Распределение' });
+  t.push({ key:'stats', label:'Аналитика' });
+  return t;
+}
+function paintSeg(){
+  const t = tabs();
+  $('seg').hidden = t.length < 2;
+  $('seg').innerHTML = t.map(x => '<button data-t="' + x.key + '">' + esc(x.label) + '</button>').join('');
+  $('seg').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+}
+function showTab(t){
+  TAB = t;
+  history.replaceState(null, '', 'callout.html?tab=' + t);
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('paneList').hidden = t !== 'list';
+  $('paneDist').hidden = t !== 'dist';
+  $('paneStats').hidden = t !== 'stats';
+  if(t === 'list') loadList();
+  else if(t === 'dist') loadDist();
+  else loadStats();
+}
+function paintState(){
+  $('cfgState').textContent = CFG.period_from
+    ? 'Покупатели за ' + fmtDateOnly(CFG.period_from) + '–' + fmtDateOnly(CFG.period_to) +
+      ' · «пришёл» — покупка после звонка · суммы из 1С, обновляются раз в час'
+    : 'Обзвон не настроен';
+}
+
+/* ============================================================
+   ФОРМАТЫ
+   ============================================================ */
+function money(v){ return som(Number(v) || 0); }
+/* sold_at из 1С — местное время Душанбе без пояса: показываем как есть */
+function wall(ts){
+  if(!ts) return '—';
+  const m = String(ts).match(/^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)/);
+  return m ? m[3] + '.' + m[2] + '.' + m[1] + ' ' + m[4] + ':' + m[5] : String(ts);
+}
+function wallDate(ts){ return ts ? fmtDateOnly(String(ts).slice(0, 10)) : '—'; }
+function sellerMatch(e, code){
+  if(!e || !code) return false;
+  const pos = String(e.position || '').trim();
+  return code === e.erp_manager || code === pos || pos.split(/\s+/).includes(code);
+}
+/* «Мебельный9 · Низомаддинов Нуриддин»; у Мебельный5 два человека */
+function sellerNames(code){ return STAFF.filter(e => sellerMatch(e, code)).map(e => e.full_name); }
+function sellerLabel(code){
+  const n = sellerNames(code);
+  return n.length ? n.join(', ') : code;
+}
+function daysText(n){
+  if(n === null || n === undefined) return '—';
+  return n === 0 ? 'сегодня' : n + ' ' + plural(n, 'день', 'дня', 'дней');
+}
+function resultHTML(res){
+  if(!res) return '';
+  return '<span class="rf-res ' + (CALL_RES_CLS[res] || '') + '">' + esc(CALL_RES_RU[res] || res) + '</span>';
+}
+function lastCallHTML(r){
+  if(!r.last_call_at) return '<span class="dim">не звонили</span>';
+  const who = r.last_call_by && r.last_call_by !== ME.id ? ' · ' + empName(r.last_call_by) : '';
+  return resultHTML(r.last_result) + ' <span class="dim">' + esc(agoText(r.last_call_at) + who) + '</span>' +
+    (r.last_comment ? '<span class="rf-cmt rf-blk">' + esc(r.last_comment) + '</span>' : '');
+}
+function callbackHTML(d){
+  if(!d) return '<span class="dim">—</span>';
+  const today = tzYmd();
+  const cls = d < today ? 'late' : d === today ? 'warn' : '';
+  const txt = d === today ? 'сегодня' : d === tzShift(today, 1) ? 'завтра' : fmtDateOnly(d);
+  return '<span class="rf-cb ' + cls + '">' + esc(txt) + (d < today ? ' · просрочено' : '') + '</span>';
+}
+function cameHTML(r){
+  if(!r.came_at) return r.last_call_at ? '<span class="dim">пока нет</span>' : '<span class="dim">—</span>';
+  return '<b class="rf-res ok">пришёл ' + esc(wallDate(r.came_at)) + '</b>' +
+    '<span class="rf-small rf-blk">' + esc(money(r.came_sum)) + '</span>';
+}
+
+/* ============================================================
+   СПИСОК
+   ============================================================ */
+async function loadList(force){
+  if(!ROWS || force){
+    $('listBody').innerHTML = '<div class="loading">Загрузка…</div>';
+    const { data, error } = await sb.rpc('callout_list', { p_campaign: CAMPAIGN });
+    if(error){ $('listBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+    ROWS = data || [];
+  }
+  paintList();
+}
+function visibleRows(){
+  const today = tzYmd();
+  const q = $('q').value.trim().toLowerCase().replace(/ё/g, 'е');
+  return (ROWS || []).filter(r => {
+    if(SELLER && r.seller !== SELLER) return false;
+    if(FILTER === 'fresh' && r.last_call_at) return false;
+    if(FILTER === 'due' && !(r.callback_date && r.callback_date <= today)) return false;
+    if(FILTER === 'came' && !r.came_at) return false;
+    if(q){
+      const name = String(r.client_name || '').toLowerCase().replace(/ё/g, 'е');
+      if(!q.split(/\s+/).every(w => name.includes(w))) return false;
+    }
+    return true;
+  });
+}
+function paintList(){
+  if(!ROWS) return;
+  const rows = visibleRows();
+  const scope = SELLER ? ROWS.filter(r => r.seller === SELLER) : ROWS;
+  const today = tzYmd();
+  const called = scope.filter(r => r.last_call_at).length;
+  const came = scope.filter(r => r.came_at).length;
+  const due = scope.filter(r => r.callback_date && r.callback_date <= today).length;
+
+  let bar = '<span class="grow rf-sum"><b>' + scope.length + '</b> ' + plural(scope.length, 'клиент', 'клиента', 'клиентов') +
+    ' · звонили ' + called + ' · пришли ' + came +
+    (due ? ' · <span class="rf-cb warn">перезвонить сегодня: ' + due + '</span>' : '') + '</span>';
+  bar += '<div class="rf-scope">' + FILTERS.map(f =>
+    '<button class="chip' + (FILTER === f.key ? ' on' : '') + '" data-f="' + f.key + '">' + esc(f.label) + '</button>').join('') + '</div>';
+  if(isViewer()){
+    const codes = Array.from(new Set(ROWS.map(r => r.seller))).sort((a, b) => a.localeCompare(b, 'ru', { numeric:true }));
+    bar += '<select id="fSeller" aria-label="Менеджер"><option value="">Все менеджеры</option>' +
+      codes.map(c => '<option value="' + esc(c) + '"' + (SELLER === c ? ' selected' : '') + '>' +
+        esc(c + ' · ' + sellerLabel(c)) + '</option>').join('') + '</select>';
+  }
+  if(canManage() && rows.length) bar += '<button class="btn ghost sm" id="selAll">Выбрать всех</button>';
+  bar += '<button class="btn ghost sm" id="xlsBtn">' + icon('download') + 'Excel</button>';
+  $('listBar').innerHTML = bar;
+
+  $('listBar').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { FILTER = b.dataset.f; paintList(); });
+  if($('fSeller')) $('fSeller').onchange = () => { SELLER = $('fSeller').value; SEL.clear(); paintList(); };
+  if($('selAll')) $('selAll').onclick = () => {
+    const allOn = rows.every(r => SEL.has(r.client_code));
+    rows.forEach(r => allOn ? SEL.delete(r.client_code) : SEL.add(r.client_code));
+    paintList();
+  };
+  $('xlsBtn').onclick = () => exportXlsx(rows.map(r => ({
+    'Клиент': r.client_name, 'Код': r.client_code, 'Менеджер': r.seller,
+    'Сумма за период': Number(r.amount), 'Покупок': r.purchases,
+    'Последняя покупка': fmtDateOnly(r.last_purchase), 'Не покупал, дней': r.days_since,
+    'Последний звонок': r.last_call_at ? fmtDateTime(r.last_call_at) : '',
+    'Результат': CALL_RES_RU[r.last_result] || '', 'Комментарий': r.last_comment || '',
+    'Перезвонить': r.callback_date ? fmtDateOnly(r.callback_date) : '',
+    'Пришёл': r.came_at ? wall(r.came_at) : '', 'Купил после звонка': r.came_sum ? Number(r.came_sum) : ''
+  })), 'Обзвон', 'obzvon-' + tzYmd() + '.xlsx');
+
+  paintBulk();
+
+  if(!rows.length){
+    $('listBody').innerHTML = '<div class="empty">' + esc(ROWS.length
+      ? 'Под фильтр никто не попал'
+      : isViewer() ? 'Список пуст' : 'За вами нет клиентов в обзвоне') + '</div>';
+    return;
+  }
+  const sel = canManage();
+  const showSeller = isViewer();
+  $('listBody').innerHTML = '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
+    (sel ? '<th class="rf-ck"></th>' : '') +
+    '<th>Клиент</th>' + (showSeller ? '<th>Менеджер</th>' : '') +
+    '<th class="num">Сумма за период</th><th class="num">Покупок</th><th>Последняя покупка</th>' +
+    '<th>Последний звонок</th><th>Перезвонить</th><th>Пришёл</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(r => rowHTML(r, sel, showSeller)).join('') + '</tbody></table></div>';
+
+  $('listBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  $('listBody').querySelectorAll('[data-call]').forEach(b => b.onclick = () =>
+    openCall(rows.find(x => x.client_code === b.dataset.call)));
+  $('listBody').querySelectorAll('[data-sel]').forEach(c => c.onchange = () => {
+    c.checked ? SEL.add(c.dataset.sel) : SEL.delete(c.dataset.sel);
+    paintBulk();
+  });
+}
+function rowHTML(r, sel, showSeller){
+  const code = esc(r.client_code);
+  return '<tr>' +
+    (sel ? '<td data-label="Выбрать" class="rf-ck"><input type="checkbox" data-sel="' + code + '"' +
+      (SEL.has(r.client_code) ? ' checked' : '') + ' aria-label="Выбрать"></td>' : '') +
+    '<td data-label="Клиент" class="nm"><button class="rf-lnk" data-open="' + code + '">' + esc(r.client_name) + '</button></td>' +
+    (showSeller ? '<td data-label="Менеджер"><span>' + esc(r.seller) +
+      '<span class="dim rf-small rf-blk">' + esc(sellerLabel(r.seller)) + '</span></span></td>' : '') +
+    '<td data-label="Сумма за период" class="num money">' + esc(money(r.amount)) + '</td>' +
+    '<td data-label="Покупок" class="num">' + r.purchases + '</td>' +
+    '<td data-label="Последняя покупка"><span>' + esc(fmtDateOnly(r.last_purchase)) +
+      '<span class="dim rf-small rf-blk">' + esc(r.days_since === null ? '' : r.days_since === 0 ? 'покупал сегодня'
+        : 'не покупал ' + daysText(r.days_since)) + '</span></span></td>' +
+    '<td data-label="Звонок"><span>' + lastCallHTML(r) + '</span></td>' +
+    '<td data-label="Перезвонить">' + callbackHTML(r.callback_date) + '</td>' +
+    '<td data-label="Пришёл"><span>' + cameHTML(r) + '</span></td>' +
+    '<td class="acts-cell"><div class="acts">' +
+      (canCall() ? '<button class="btn sm ok" data-call="' + code + '">' + icon('phone') + 'Позвонил</button>' : '') +
+    '</div></td>' +
+  '</tr>';
+}
+
+/* ---------- перекрепление пачкой ---------- */
+function sellerOptions(sel){
+  return (CFG.codes || []).map(c => '<option value="' + esc(c) + '"' + (c === sel ? ' selected' : '') + '>' +
+    esc(c + ' · ' + sellerLabel(c)) + '</option>').join('');
+}
+function paintBulk(){
+  if(!canManage() || !SEL.size){ $('bulkBar').innerHTML = ''; return; }
+  $('bulkBar').innerHTML = '<div class="panel rf-bulk">' +
+    '<b>Выбрано: ' + SEL.size + '</b>' +
+    '<select id="bulkSeller" aria-label="Кому"><option value="">Кому перекрепить…</option>' + sellerOptions('') + '</select>' +
+    '<button class="btn sm" id="bulkSet">Перекрепить</button>' +
+    '<button class="btn sm ghost" id="bulkClr">Сбросить выбор</button>' +
+  '</div>';
+  $('bulkSet').onclick = () => {
+    const s = $('bulkSeller').value;
+    if(!s) return toast('Выберите менеджера');
+    reassign(Array.from(SEL), s);
+  };
+  $('bulkClr').onclick = () => { SEL.clear(); paintList(); };
+}
+async function reassign(codes, seller){
+  const { data, error } = await sb.rpc('callout_assign_set', { p_codes: codes, p_seller: seller, p_campaign: CAMPAIGN });
+  if(error) return toast(errText(error, 'update'));
+  toast('Перекреплено за ' + seller + ': ' + (data || 0));
+  SEL.clear();
+  ROWS = null;
+  if(TAB === 'dist') return loadDist();
+  return loadList(true);
+}
+
+/* ============================================================
+   КАРТОЧКА: покупки за период с товарами, после звонка, звонки
+   ============================================================ */
+async function openCard(code){
+  modalOpen({ title:'Клиент', wide:true, bodyHTML:'<div class="loading">Загрузка…</div>' });
+  const { data, error } = await sb.rpc('callout_card', { p_client: code, p_campaign: CAMPAIGN });
+  if(!document.getElementById('crmModal')) return;
+  if(error){ modalBody().innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!data){ modalBody().innerHTML = '<div class="empty">Клиента нет в вашем списке</div>'; return; }
+  paintCard(data);
+}
+function docHTML(d){
+  const ret = d.kind === 'возврат';
+  return '<details class="co-doc' + (ret ? ' ret' : '') + '"><summary>' +
+    '<span class="co-dl"><b>' + esc(fmtDateOnly(d.date)) + '</b> · ' + esc(d.number || '') +
+      (ret ? ' <span class="tagbox">возврат</span>' : d.kind === 'смешанный' ? ' <span class="tagbox">с возвратом</span>' : '') +
+      '<span class="dim rf-small rf-blk">' + esc(d.manager || '') + ' · ' + (d.items || []).length + ' ' +
+        plural((d.items || []).length, 'позиция', 'позиции', 'позиций') + '</span></span>' +
+    '<span class="money' + (ret ? ' co-neg' : '') + '">' + esc(money(d.amount)) + '</span></summary>' +
+    '<table class="co-items"><tbody>' + (d.items || []).map(i =>
+      '<tr><td>' + esc(i.name) + '</td><td class="num">' + esc(String(Number(i.qty))) + '</td>' +
+      '<td class="num money">' + esc(money(i.amount)) + '</td></tr>').join('') + '</tbody></table></details>';
+}
+function paintCard(c){
+  document.querySelector('#crmModal .modal-head h2').textContent = c.client_name;
+  const t = c.totals || {};
+  const p = c.period || {};
+  const byM = Object.keys(c.by_manager || {}).map(k => [k, Number(c.by_manager[k])]).sort((a, b) => b[1] - a[1]);
+  let html =
+    '<div class="rf-big co-big">' +
+      '<div><span class="n">' + esc(money(t.amount)) + '</span><span class="c">сумма за период</span></div>' +
+      '<div><span class="n">' + esc(String(t.purchases || 0)) + '</span><span class="c">' +
+        plural(t.purchases || 0, 'покупка', 'покупки', 'покупок') + (t.returns ? ', возвратов ' + t.returns : '') + '</span></div>' +
+      '<div><span class="n">' + esc(fmtDateOnly(t.first)) + '</span><span class="c">первая покупка</span></div>' +
+      '<div><span class="n">' + esc(fmtDateOnly(t.last)) + '</span><span class="c">последняя за период</span></div>' +
+    '</div>' +
+    '<dl class="kv" style="padding:0 0 14px">' +
+      '<dt>Закреплён за</dt><dd>' + esc(c.seller + ' · ' + sellerLabel(c.seller)) +
+        ' <span class="dim">· ' + (c.method === 'auto' ? 'авто' : 'вручную') + '</span></dd>' +
+      '<dt>У кого покупал</dt><dd>' + (byM.length ? byM.map(x => '<span class="co-bym"><span>' + esc(x[0]) + '</span>' +
+        '<span class="money' + (x[1] < 0 ? ' co-neg' : '') + '">' + esc(money(x[1])) + '</span></span>').join('') : '—') + '</dd>' +
+      '<dt>Код в 1С</dt><dd class="dim">' + esc(c.client_code) + '</dd>' +
+    '</dl>';
+
+  if(canManage()){
+    html += '<div class="rf-assign"><select id="cardSeller" aria-label="Кому">' + sellerOptions(c.seller) + '</select>' +
+      '<button class="btn sm" id="cardSet">Перекрепить</button></div>';
+  }
+  if(canCall()){
+    html += '<button class="btn ok block" id="cardCall" style="margin:4px 0 6px">' + icon('phone') + 'Позвонил</button>';
+  }
+
+  const after = c.after || [];
+  html += '<div class="sec" style="margin:18px 0 8px">После звонка — покупки с ' + esc(fmtDateOnly(p.after_from)) + '</div>' +
+    (after.length
+      ? '<div class="co-docs">' + after.map(docHTML).join('') + '</div>'
+      : '<div class="hint">Пока не приходил</div>');
+
+  const calls = c.calls || [];
+  html += '<div class="sec" style="margin:18px 0 8px">Звонки</div>' + (calls.length
+    ? '<div class="rf-calls">' + calls.map(k => '<div class="rf-call">' +
+        '<div class="l1">' + resultHTML(k.result) + '<span class="dim">' + esc(fmtDateTime(k.called_at)) + '</span></div>' +
+        '<div class="rf-small">' + esc(empName(k.employee_id) +
+          (k.author_id && k.author_id !== k.employee_id ? ' (отметил ' + empName(k.author_id) + ')' : '') +
+          (k.callback_date ? ' · перезвонить ' + fmtDateOnly(k.callback_date) : '')) + '</div>' +
+        (k.comment ? '<div class="rf-cmt">' + esc(k.comment) + '</div>' : '') +
+        '<div class="rf-small">' + (k.came_at
+          ? '<b class="rf-res ok">Пришёл ' + esc(wall(k.came_at)) + '</b> · купил после звонка на ' + esc(money(k.came_sum))
+          : '<span class="dim">После этого звонка покупок нет</span>') + '</div>' +
+      '</div>').join('') + '</div>'
+    : '<div class="hint">Звонков пока не было</div>');
+
+  const docs = c.docs || [];
+  html += '<div class="sec" style="margin:18px 0 8px">Покупки за ' + esc(fmtDateOnly(p.from) + '–' + fmtDateOnly(p.to)) +
+    ' · ' + docs.length + ' ' + plural(docs.length, 'документ', 'документа', 'документов') + '</div>' +
+    (docs.length ? '<div class="co-docs">' + docs.map(docHTML).join('') + '</div>' : '<div class="hint">Покупок нет</div>');
+
+  modalBody().innerHTML = html;
+  if($('cardSet')) $('cardSet').onclick = async () => {
+    await reassign([c.client_code], $('cardSeller').value);
+    openCard(c.client_code);
+  };
+  if($('cardCall')) $('cardCall').onclick = () => openCall({ client_code: c.client_code, client_name: c.client_name,
+    seller: c.seller, amount: t.amount, purchases: t.purchases, last_purchase: t.last });
+}
+
+/* ============================================================
+   ЗВОНОК — как в «Розыгрыше»: причины подставляются в комментарий
+   ============================================================ */
+function needComment(res){ return !!res && res !== 'no_answer'; }
+function reasonsIn(text){ return CALL_REASONS.filter(x => String(text || '').includes(x)); }
+function openCall(r){
+  if(!r) return;
+  let res = '';
+  const bossPick = isBoss() && !readOnly();
+  const team = STAFF.filter(e => sellerMatch(e, r.seller));
+  modalOpen({
+    title:'Звонок: ' + r.client_name,
+    sheet:true,
+    bodyHTML:
+      '<div class="hint" style="margin:0 0 12px">' + esc(money(r.amount) + ' за период · ' + (r.purchases || 0) + ' ' +
+        plural(r.purchases || 0, 'покупка', 'покупки', 'покупок') + ' · последняя ' + fmtDateOnly(r.last_purchase)) + '</div>' +
+      '<div class="field"><label class="field-label">Результат <span class="req">*</span></label>' +
+        '<div class="chips-plain" id="cRes">' + Object.keys(CALL_RES_RU).map(k =>
+          '<button type="button" class="chip" data-r="' + k + '">' + esc(CALL_RES_RU[k]) + '</button>').join('') +
+        '</div></div>' +
+      (bossPick
+        ? '<div class="field"><label class="field-label" for="cEmp">Кто звонил</label><select id="cEmp">' +
+            team.concat(STAFF.filter(e => e.id === ME.id && !team.includes(e))).map(e =>
+              '<option value="' + esc(e.id) + '">' + esc(e.full_name) + '</option>').join('') + '</select></div>'
+        : '') +
+      '<div class="field"><label class="field-label" for="cCmt">Комментарий <span class="req" id="cReq" hidden>*</span></label>' +
+        '<div class="chips-plain rf-reasons" id="cWhy">' + CALL_REASONS.map(x =>
+          '<button type="button" class="chip" data-why="' + esc(x) + '">' + esc(x) + '</button>').join('') + '</div>' +
+        '<textarea id="cCmt" rows="3" placeholder="Что сказал клиент"></textarea>' +
+        '<div class="hint" id="cCmtHint">Выберите результат звонка</div></div>' +
+      '<div class="field"><label class="field-label" for="cCb">Перезвонить</label>' +
+        '<input id="cCb" type="date" min="' + esc(tzYmd()) + '">' +
+        '<div class="chips-plain" style="margin:8px 0 0">' +
+          [[1, 'Завтра'], [2, 'Через 2 дня'], [7, 'Через неделю']].map(x =>
+            '<button type="button" class="chip" data-cb="' + x[0] + '">' + x[1] + '</button>').join('') +
+        '</div></div>',
+    saveLabel:'Сохранить звонок',
+    onSave: async () => {
+      if(!res) return modalMsg('Выберите результат звонка');
+      const comment = $('cCmt').value.trim();
+      if(needComment(res) && !comment) return modalMsg('Напишите комментарий или нажмите готовую причину');
+      const row = {
+        campaign: CAMPAIGN, client_code: r.client_code, result: res,
+        comment: comment || null,
+        reasons: res === 'no_answer' ? [] : reasonsIn(comment),
+        callback_date: $('cCb').value || null,
+        employee_id: bossPick && $('cEmp') ? $('cEmp').value : ME.id
+      };
+      modalBusy(true, 'Сохраняем…');
+      const { error } = await sb.from('callout_calls').insert(row);
+      modalBusy(false, 'Сохранить звонок');
+      if(error) return modalMsg(errText(error, 'insert') || '');
+      modalClose();
+      toast('Звонок отмечен');
+      loadList(true);
+    }
+  });
+  const cmt = $('cCmt');
+  const paintWhy = () => {
+    $('cWhy').querySelectorAll('[data-why]').forEach(b => b.classList.toggle('on', cmt.value.includes(b.dataset.why)));
+  };
+  const paintNeed = () => {
+    $('cReq').hidden = !needComment(res);
+    $('cWhy').hidden = res === 'no_answer';
+    $('cCmtHint').textContent = !res ? 'Выберите результат звонка'
+      : needComment(res) ? 'Обязательно: нажмите причину или напишите, что сказал клиент'
+      : 'Можно не заполнять';
+  };
+  paintNeed();
+  $('cRes').querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+    res = b.dataset.r;
+    $('cRes').querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b));
+    paintNeed();
+  });
+  $('cWhy').querySelectorAll('[data-why]').forEach(b => b.onclick = () => {
+    const x = b.dataset.why, v = cmt.value;
+    if(v.includes(x)){
+      cmt.value = v.replace(x, '').replace(/\s*\.\s*\./g, '.').replace(/^[\s.;,]+|[\s.;,]+$/g, '');
+    }else{
+      const base = v.replace(/[\s.;,]+$/, '');
+      cmt.value = base ? base + '. ' + x : x;
+    }
+    paintWhy();
+    cmt.focus();
+  });
+  cmt.oninput = paintWhy;
+  document.querySelectorAll('[data-cb]').forEach(b => b.onclick = () => {
+    $('cCb').value = tzShift(tzYmd(), Number(b.dataset.cb));
+  });
+}
+
+/* ============================================================
+   РАСПРЕДЕЛЕНИЕ — только руководство: нагрузка и история перекреплений
+   ============================================================ */
+/* правило из настроек: own — у кого «свои клиенты», managers — между кем поровну */
+function distRule(){
+  const own = Array.isArray(CFG.own) ? CFG.own : (CFG.own ? [CFG.own] : []);
+  const mgrs = CFG.managers || [];
+  return 'Список зафиксирован при запуске. Свои клиенты — у ' + (own.join(', ') || '—') +
+    ': клиент, покупавший у кого-то из них, идёт только ему (если у двоих — тому, у кого сумма больше). ' +
+    'Покупавшие только у ' + (CFG.skip_only || '—') + ' — никому. Остальные — поровну между ' + (mgrs.join(', ') || '—') +
+    ', по возможности тому, кто продавал больше.';
+}
+async function loadDist(){
+  $('distBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const [list, log] = await Promise.all([
+    ROWS ? { data: ROWS } : sb.rpc('callout_list', { p_campaign: CAMPAIGN }),
+    sb.from('callout_assign_log').select('client_code,from_seller,to_seller,method,actor_id,created_at')
+      .eq('campaign', CAMPAIGN).not('from_seller', 'is', null).order('created_at', { ascending:false }).limit(50)
+  ]);
+  const err = list.error || log.error;
+  if(err){ $('distBody').innerHTML = '<div class="empty">' + esc(errText(err)) + '</div>'; return; }
+  ROWS = list.data || [];
+
+  const by = {};
+  ROWS.forEach(r => {
+    const x = by[r.seller] || (by[r.seller] = { n:0, auto:0, called:0, came:0, sum:0 });
+    x.n++;
+    if(r.method === 'auto') x.auto++;
+    if(r.last_call_at) x.called++;
+    if(r.came_at){ x.came++; x.sum += Number(r.came_sum) || 0; }
+  });
+  const codes = Object.keys(by).sort((a, b) => a.localeCompare(b, 'ru', { numeric:true }));
+  const name = code => (ROWS.find(r => r.client_code === code) || {}).client_name || code;
+
+  $('distBody').innerHTML =
+    '<div class="sec">Кто за кем</div>' +
+    '<div class="hint" style="margin:-4px 16px 10px">' + esc(distRule()) + ' ' +
+      'Перекрепить клиента — галочкой в «Списках» или в карточке.</div>' +
+    '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+      '<th>Менеджер</th><th class="num">Клиентов</th><th class="num">Вручную</th><th class="num">Звонили</th>' +
+      '<th class="num">Пришли</th></tr></thead><tbody>' +
+      codes.map(c => '<tr>' +
+        '<td data-label="Менеджер" class="nm"><button class="rf-lnk" data-seller="' + esc(c) + '">' + esc(c) + '</button>' +
+          '<span class="dim rf-small rf-blk">' + esc(sellerLabel(c)) + '</span></td>' +
+        '<td data-label="Клиентов" class="num">' + by[c].n + '</td>' +
+        '<td data-label="Вручную" class="num">' + (by[c].n - by[c].auto) + '</td>' +
+        '<td data-label="Звонили" class="num">' + by[c].called + '</td>' +
+        '<td data-label="Пришли" class="num">' + by[c].came + '</td>' +
+      '</tr>').join('') + '</tbody></table></div>' +
+    '<div class="sec">Перекрепления</div>' + ((log.data || []).length
+      ? '<div class="panel rf-calls">' + log.data.map(x =>
+          '<div class="rf-call"><div class="l1"><button class="rf-lnk" data-open="' + esc(x.client_code) + '">' + esc(name(x.client_code)) + '</button>' +
+          '<span class="dim">' + esc(fmtDateTime(x.created_at)) + '</span></div>' +
+          '<div class="rf-small">' + esc(x.from_seller + ' → ' + (x.to_seller || 'снято') + (x.actor_id ? ' · ' + empName(x.actor_id) : '')) +
+          '</div></div>').join('') + '</div>'
+      : '<div class="empty">Перекреплений пока не было</div>');
+
+  $('distBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  $('distBody').querySelectorAll('[data-seller]').forEach(b => b.onclick = () => {
+    SELLER = b.dataset.seller; FILTER = ''; showTab('list');
+  });
+}
+
+/* ============================================================
+   АНАЛИТИКА — руководство и ревизор
+   ============================================================ */
+function sTile(n, c, cls){
+  return '<div class="tile ' + (cls || '') + '"><div class="n">' + esc(String(n)) + '</div><div class="c">' + esc(c) + '</div></div>';
+}
+function pct(a, b){ return b ? Math.round(a * 100 / b) + '%' : '—'; }
+async function loadStats(){
+  $('statTiles').innerHTML = '';
+  $('statsBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const { data, error } = await sb.rpc('callout_stats', { p_campaign: CAMPAIGN });
+  if(error){ $('statsBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  const st = data || {};
+  const rows = st.by_seller || [];
+  const sum = k => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  $('statTiles').innerHTML =
+    sTile(sum('clients'), 'Клиентов в списках') +
+    sTile(sum('called') + ' (' + pct(sum('called'), sum('clients')) + ')', 'Позвонили', 'info') +
+    sTile(sum('reached'), 'Дозвонились', 'info') +
+    sTile(sum('came'), 'Пришли после звонка', 'ok') +
+    sTile(money(sum('came_sum')), 'Купили после звонка', 'ok');
+
+  const cmp = st.compare || {};
+  const yes = cmp.called || {}, no = cmp.not_called || {};
+  $('statsBody').innerHTML =
+    '<div class="sec">По менеджерам</div>' +
+    '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+      '<th>Менеджер</th><th class="num">Клиентов</th><th class="num">Позвонил</th><th class="num">Дозвонился</th>' +
+      '<th class="num">Пришли после звонка</th><th class="num">Сумма после звонка</th></tr></thead><tbody>' +
+      rows.slice().sort((a, b) => a.seller.localeCompare(b.seller, 'ru', { numeric:true })).map(r => '<tr>' +
+        '<td data-label="Менеджер" class="nm"><span>' + esc(r.seller) + '<span class="dim rf-small rf-blk">' +
+          esc(sellerLabel(r.seller)) + '</span></span></td>' +
+        '<td data-label="Клиентов" class="num">' + r.clients + '</td>' +
+        '<td data-label="Позвонил" class="num">' + r.called + ' <span class="dim">' + pct(r.called, r.clients) + '</span></td>' +
+        '<td data-label="Дозвонился" class="num">' + r.reached + '</td>' +
+        '<td data-label="Пришли" class="num">' + r.came + ' <span class="dim">' + pct(r.came, r.called) + '</span></td>' +
+        '<td data-label="Сумма" class="num money">' + esc(money(r.came_sum)) + '</td>' +
+      '</tr>').join('') + '</tbody></table></div>' +
+    '<div class="sec">Помогают ли звонки</div>' +
+    '<div class="hint" style="margin:-4px 16px 10px">Все клиенты в списках: сколько пришли с ' + esc(fmtDateOnly(st.after_from)) +
+      ' среди тех, кому звонили, и среди тех, кому не звонили.</div>' +
+    '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr><th></th>' +
+      '<th class="num">Клиентов</th><th class="num">Пришли</th><th class="num">Доля</th><th class="num">Сумма покупок</th>' +
+      '</tr></thead><tbody>' +
+      '<tr><td class="nm">Звонили</td><td data-label="Клиентов" class="num">' + (yes.clients || 0) + '</td>' +
+        '<td data-label="Пришли" class="num">' + (yes.came || 0) +
+          (yes.came_after_call !== undefined ? ' <span class="dim">после звонка ' + yes.came_after_call + '</span>' : '') + '</td>' +
+        '<td data-label="Доля" class="num"><b>' + pct(yes.came || 0, yes.clients || 0) + '</b></td>' +
+        '<td data-label="Сумма" class="num money">' + esc(money(yes.sum)) + '</td></tr>' +
+      '<tr><td class="nm">Не звонили</td><td data-label="Клиентов" class="num">' + (no.clients || 0) + '</td>' +
+        '<td data-label="Пришли" class="num">' + (no.came || 0) + '</td>' +
+        '<td data-label="Доля" class="num"><b>' + pct(no.came || 0, no.clients || 0) + '</b></td>' +
+        '<td data-label="Сумма" class="num money">' + esc(money(no.sum)) + '</td></tr>' +
+    '</tbody></table></div>';
+}
+</script>
+</body>
+</html>

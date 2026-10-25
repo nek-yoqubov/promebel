@@ -1207,3 +1207,21 @@ body.preview .tbar{top:var(--pvh)}
   .co-big{grid-template-columns:1fr 1fr}
 }
 .co-bym{display:flex;justify-content:space-between;gap:12px;max-width:320px}
+
+/* ============================================================
+   Обзвон по причинам — причины в списке, карточка по месяцам
+   ============================================================ */
+.co-other{margin:6px 16px 0}
+.co-other a{color:var(--brand);font-weight:600}
+.cr-rs{display:flex;flex-wrap:wrap;gap:4px}
+.cr-r{display:inline-block;padding:2px 8px;border-radius:7px;font-size:12.5px;font-weight:600;white-space:nowrap;
+  background:rgba(245,179,1,.14);color:var(--warn)}
+.cr-r.drop{background:rgba(240,84,106,.14);color:var(--late)}
+.cr-r.debt{background:rgba(59,158,255,.14);color:var(--info)}
+.cr-head{margin:0 0 12px}
+.cr-mwrap{overflow-x:auto;margin-bottom:6px}
+.cr-months th{padding:8px 12px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700;color:var(--muted);text-align:left}
+.cr-months th.num{text-align:right;white-space:nowrap}
+@media (min-width:1024px){
+  .co-other{margin-left:24px;margin-right:24px}
+}

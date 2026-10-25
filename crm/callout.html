@@ -16,6 +16,7 @@
   <div class="pagehead"><h1>Обзвон клиентов</h1></div>
 
   <div class="rf-state"><span id="cfgState"></span></div>
+  <div id="otherCampaigns"></div>
 
   <div class="seg rf-seg" id="seg" hidden></div>
 
@@ -81,15 +82,17 @@ let FILTER = '', SELLER = '', SEL = new Set();
   await loadEmployees();
   $('searchIcon').outerHTML = icon('search');
 
-  const [cfg, raffle, staff] = await Promise.all([
+  const [cfg, raffle, staff, camps] = await Promise.all([
     sb.from('settings').select('value').eq('key', 'callout_' + CAMPAIGN).maybeSingle(),
     sb.from('settings').select('value').eq('key', 'raffle_labo').maybeSingle(),
-    sb.from('employees').select('id,full_name,role,position,erp_manager').eq('is_active', true)
+    sb.from('employees').select('id,full_name,role,position,erp_manager').eq('is_active', true),
+    sb.rpc('callout_campaigns')
   ]);
   CFG = (cfg.data && cfg.data.value) || {};
   BOSSES = (raffle.data && raffle.data.value && raffle.data.value.bosses) || [];
   STAFF = staff.data || [];
   paintState();
+  paintOther(camps.data || []);
   paintSeg();
 
   let timer = null;
@@ -133,6 +136,14 @@ function showTab(t){
   if(t === 'list') loadList();
   else if(t === 'dist') loadDist();
   else loadStats();
+}
+/* другие активные обзвоны этого сотрудника — ссылкой */
+function paintOther(list){
+  const other = list.filter(c => c.campaign !== CAMPAIGN && c.href);
+  $('otherCampaigns').innerHTML = other.length
+    ? '<div class="hint co-other">Ещё обзвоны: ' + other.map(c => '<a href="' + esc(c.href +
+        (c.kind === 'risk' ? '?c=' + encodeURIComponent(c.campaign) : '')) + '">' + esc(c.title || c.campaign) + '</a>').join(' · ') + '</div>'
+    : '';
 }
 function paintState(){
   $('cfgState').textContent = CFG.period_from

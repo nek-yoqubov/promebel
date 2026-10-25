@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Обзвон: дилеры и ОПИП</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1 id="pageTitle">Обзвон: дилеры и ОПИП</h1></div>
+
+  <div class="rf-state"><span id="cfgState"></span></div>
+  <div id="otherCampaigns"></div>
+
+  <div class="seg rf-seg" id="seg" hidden></div>
+
+  <!-- ---------- Список ---------- -->
+  <section id="paneList">
+    <div class="pad rf-search">
+      <div class="f-search">
+        <span id="searchIcon"></span>
+        <input id="q" type="search" placeholder="Найти клиента в списке" autocomplete="off">
+      </div>
+    </div>
+    <div class="toolbar" id="listBar"></div>
+    <div id="listBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <!-- ---------- Аналитика ---------- -->
+  <section id="paneStats" hidden>
+    <div class="tiles" id="statTiles"></div>
+    <div id="statsBody"><div class="loading">Загрузка…</div></div>
+  </section>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+/* Клиенты папок 1С закреплены за сотрудником (Искандар — «Дилеры Мебельный», Мирзоамир — «ОПИП»).
+   Причины звонка считает ночью crm.callout_risk_calc, пороги и бренды — в настройках кампании. */
+const CAMPAIGN = new URLSearchParams(location.search).get('c') || 'risk26';
+const SECTION_ROLES = ['sales','head','regional','brand','callcenter','admin','director','auditor'];
+const CALL_RES_RU = { reached:'Дозвонился', no_answer:'Не взял', promised:'Обещал прийти', refused:'Отказ' };
+const CALL_RES_CLS = { reached:'info', no_answer:'muted', promised:'ok', refused:'late' };
+const CALL_REASONS = ['Придёт на этой неделе', 'Сейчас нет денег', 'Заплатит долг', 'Ждёт заказ / объект',
+  'Берёт у конкурента', 'Сейчас не нужно', 'Перезвонить позже'];
+const FILTERS = [
+  { key:'',      label:'Все' },
+  { key:'fresh', label:'Не звонили' },
+  { key:'due',   label:'Перезвонить' },
+  { key:'came',  label:'Пришли' },
+  { key:'fixed', label:'Исправились' }
+];
+
+let CFG = {};               // настройки кампании: папки, пороги, бренды
+let BOSSES = [];            // кто управляет — общий список с «Розыгрышем»
+let STAFF = [];
+let TAB = '';
+let ROWS = null;            // строки crm.callout_risk_list
+let FILTER = '', WHO = '';
+
+(async () => {
+  if(!await requireAuth()) return;
+  if(!SECTION_ROLES.includes(ME.role)){ location.replace('index.html'); return; }
+
+  await renderShell({ title:'Обзвон', tab:'callout_' + CAMPAIGN });
+  await loadEmployees();
+  $('searchIcon').outerHTML = icon('search');
+
+  const [cfg, raffle, staff, camps] = await Promise.all([
+    sb.from('settings').select('value').eq('key', 'callout_' + CAMPAIGN).maybeSingle(),
+    sb.from('settings').select('value').eq('key', 'raffle_labo').maybeSingle(),
+    sb.from('employees').select('id,full_name,role,position,erp_manager').eq('is_active', true),
+    sb.rpc('callout_campaigns')
+  ]);
+  CFG = (cfg.data && cfg.data.value) || {};
+  BOSSES = (raffle.data && raffle.data.value && raffle.data.value.bosses) || [];
+  STAFF = staff.data || [];
+  if(CFG.title){
+    $('pageTitle').textContent = CFG.title;
+    document.title = 'PRO MEBEL CRM — ' + CFG.title;
+  }
+  paintOther(camps.data || []);
+  paintSeg();
+
+  let timer = null;
+  $('q').oninput = () => { clearTimeout(timer); timer = setTimeout(paintList, 200); };
+
+  const want = new URLSearchParams(location.search).get('tab');
+  showTab(tabs().some(t => t.key === want) ? want : tabs()[0].key);
+})();
+
+/* ============================================================
+   ПРАВА — повторяют RLS, только чтобы прятать лишние кнопки
+   ============================================================ */
+function readOnly(){ return isAuditor() || IS_PREVIEW; }
+function isBoss(){ return !!ME && (ME.role === 'admin' || BOSSES.includes(ME.id)); }
+function isViewer(){ return isBoss() || isBossRole() || isAuditor(); }
+function canCall(r){ return !readOnly() && (isBoss() || (r && r.employee_id === ME.id)); }
+
+function tabs(){
+  if(!isViewer()) return [{ key:'list', label:'Мой список' }];
+  return [{ key:'list', label:'Списки' }, { key:'stats', label:'Аналитика' }];
+}
+function paintSeg(){
+  const t = tabs();
+  $('seg').hidden = t.length < 2;
+  $('seg').innerHTML = t.map(x => '<button data-t="' + x.key + '">' + esc(x.label) + '</button>').join('');
+  $('seg').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+}
+function showTab(t){
+  TAB = t;
+  history.replaceState(null, '', 'callout-risk.html?c=' + encodeURIComponent(CAMPAIGN) + '&tab=' + t);
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('paneList').hidden = t !== 'list';
+  $('paneStats').hidden = t !== 'stats';
+  if(t === 'list') loadList();
+  else loadStats();
+}
+/* другие активные обзвоны этого сотрудника — ссылкой */
+function paintOther(list){
+  const other = list.filter(c => c.campaign !== CAMPAIGN && c.href);
+  $('otherCampaigns').innerHTML = other.length
+    ? '<div class="hint co-other">Ещё обзвоны: ' + other.map(c => '<a href="' + esc(c.href +
+        (c.kind === 'risk' ? '?c=' + encodeURIComponent(c.campaign) : '')) + '">' + esc(c.title || c.campaign) + '</a>').join(' · ') + '</div>'
+    : '';
+}
+function paintState(){
+  const r = (ROWS || []).find(x => x.calc_day);
+  const p = periodOf(r && r.calc_day);
+  $('cfgState').textContent = !CFG.kind
+    ? 'Обзвон не настроен'
+    : 'Причины пересчитаны ' + (r ? fmtDateOnly(r.calc_day) : '—') + ' · база — среднее за ' + p.baseText +
+      ', темп ' + p.monthText + ' по вчера · упали — темп ниже ' + (CFG.drop_pct || 70) + '% базы · долг от ' +
+      usd(CFG.debt_usd || 500) + ', не уменьшился за ' + (CFG.debt_days || 7) + ' дн.' +
+      (CFG.end_date ? ' · обзвон до ' + fmtDateOnly(CFG.end_date) : '');
+}
+
+/* ============================================================
+   ФОРМАТЫ
+   ============================================================ */
+const MONTHS_RU = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function money(v){ return som(Math.round(Number(v) || 0)); }
+function usd(v){ return fmtMoney(Math.round(Number(v) || 0), 'USD'); }
+/* «текущий месяц» — месяц вчерашнего дня от дня расчёта, база — два прошлых полных */
+function periodOf(day){
+  const d = new Date((day || tzYmd()) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  const m = d.getUTCMonth(), bm = Number(CFG.base_months) || 2;
+  const base = [];
+  for(let i = bm; i >= 1; i--) base.push(MONTHS_RU[(m - i + 12) % 12]);
+  return { baseText: base.join('–'), monthText: MONTHS_GEN[m] };
+}
+function wall(ts){
+  if(!ts) return '—';
+  const m = String(ts).match(/^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)/);
+  return m ? m[3] + '.' + m[2] + '.' + m[1] + ' ' + m[4] + ':' + m[5] : String(ts);
+}
+function wallDate(ts){ return ts ? fmtDateOnly(String(ts).slice(0, 10)) : '—'; }
+function brandLabel(k){ return ((CFG.brands || []).find(b => b.key === k) || {}).label || k; }
+function reasonText(k){
+  if(k === 'drop') return 'упали покупки';
+  if(k === 'debt') return 'долг';
+  return 'меньше ' + brandLabel(k);
+}
+function reasonsHTML(r){
+  const rs = r.reasons || [];
+  if(!rs.length) return r.last_call_at ? '<span class="rf-res ok">исправился</span>' : '<span class="dim">—</span>';
+  return '<span class="cr-rs">' + rs.map(k => '<span class="cr-r' + (k === 'debt' ? ' debt' : k === 'drop' ? ' drop' : '') + '">' +
+    esc(reasonText(k)) + '</span>').join('') + '</span>';
+}
+/* «темп 62% базы» */
+function pctOf(a, b){ return b > 0 ? Math.round((Number(a) || 0) * 100 / b) + '%' : '—'; }
+function teamName(id){ return id ? empName(id) : '—'; }
+function daysText(n){
+  if(n === null || n === undefined) return '—';
+  return n === 0 ? 'сегодня' : n + ' ' + plural(n, 'день', 'дня', 'дней');
+}
+function resultHTML(res){
+  if(!res) return '';
+  return '<span class="rf-res ' + (CALL_RES_CLS[res] || '') + '">' + esc(CALL_RES_RU[res] || res) + '</span>';
+}
+function lastCallHTML(r){
+  if(!r.last_call_at) return '<span class="dim">не звонили</span>';
+  const who = r.last_call_by && r.last_call_by !== ME.id ? ' · ' + empName(r.last_call_by) : '';
+  return resultHTML(r.last_result) + ' <span class="dim">' + esc(agoText(r.last_call_at) + who) + '</span>' +
+    (r.last_comment ? '<span class="rf-cmt rf-blk">' + esc(r.last_comment) + '</span>' : '');
+}
+function callbackHTML(d){
+  if(!d) return '<span class="dim">—</span>';
+  const today = tzYmd();
+  const cls = d < today ? 'late' : d === today ? 'warn' : '';
+  const txt = d === today ? 'сегодня' : d === tzShift(today, 1) ? 'завтра' : fmtDateOnly(d);
+  return '<span class="rf-cb ' + cls + '">' + esc(txt) + (d < today ? ' · просрочено' : '') + '</span>';
+}
+function paid(r){ return r.debt_at_call !== null && r.debt_at_call !== undefined && Number(r.debt) < Number(r.debt_at_call); }
+function afterHTML(r){
+  if(!r.last_call_at) return '<span class="dim">—</span>';
+  const parts = [];
+  if(r.came_at) parts.push('<b class="rf-res ok">пришёл ' + esc(wallDate(r.came_at)) + '</b>' +
+    '<span class="rf-small rf-blk">' + esc(money(r.came_sum)) + '</span>');
+  if(paid(r)) parts.push('<b class="rf-res ok">заплатил</b><span class="rf-small rf-blk">долг ' +
+    esc(usd(r.debt_at_call) + ' → ' + usd(r.debt)) + '</span>');
+  return parts.length ? parts.join('') : '<span class="dim">пока нет</span>';
+}
+
+/* ============================================================
+   СПИСОК
+   ============================================================ */
+async function loadList(force){
+  if(!ROWS || force){
+    $('listBody').innerHTML = '<div class="loading">Загрузка…</div>';
+    const { data, error } = await sb.rpc('callout_risk_list', { p_campaign: CAMPAIGN });
+    if(error){ $('listBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+    ROWS = data || [];
+  }
+  paintState();
+  paintList();
+}
+function visibleRows(){
+  const today = tzYmd();
+  const q = $('q').value.trim().toLowerCase().replace(/ё/g, 'е');
+  return (ROWS || []).filter(r => {
+    if(WHO && r.employee_id !== WHO) return false;
+    if(FILTER === 'fresh' && r.last_call_at) return false;
+    if(FILTER === 'due' && !(r.callback_date && r.callback_date <= today)) return false;
+    if(FILTER === 'came' && !r.came_at && !paid(r)) return false;
+    if(FILTER === 'fixed' && (r.reasons || []).length) return false;
+    if(q){
+      const name = String(r.client_name || '').toLowerCase().replace(/ё/g, 'е');
+      if(!q.split(/\s+/).every(w => name.includes(w))) return false;
+    }
+    return true;
+  });
+}
+function paintList(){
+  if(!ROWS) return;
+  const rows = visibleRows();
+  const scope = WHO ? ROWS.filter(r => r.employee_id === WHO) : ROWS;
+  const today = tzYmd();
+  const called = scope.filter(r => r.last_call_at).length;
+  const came = scope.filter(r => r.came_at).length;
+  const due = scope.filter(r => r.callback_date && r.callback_date <= today).length;
+
+  let bar = '<span class="grow rf-sum"><b>' + scope.length + '</b> ' + plural(scope.length, 'клиент', 'клиента', 'клиентов') +
+    ' · звонили ' + called + ' · пришли ' + came +
+    (due ? ' · <span class="rf-cb warn">перезвонить сегодня: ' + due + '</span>' : '') + '</span>';
+  bar += '<div class="rf-scope">' + FILTERS.map(f =>
+    '<button class="chip' + (FILTER === f.key ? ' on' : '') + '" data-f="' + f.key + '">' + esc(f.label) + '</button>').join('') + '</div>';
+  if(isViewer()){
+    bar += '<select id="fWho" aria-label="Сотрудник"><option value="">Все сотрудники</option>' +
+      (CFG.teams || []).map(t => '<option value="' + esc(t.employee_id) + '"' + (WHO === t.employee_id ? ' selected' : '') + '>' +
+        esc(teamName(t.employee_id) + ' · ' + t.folder) + '</option>').join('') + '</select>';
+  }
+  bar += '<button class="btn ghost sm" id="xlsBtn">' + icon('download') + 'Excel</button>';
+  $('listBar').innerHTML = bar;
+
+  $('listBar').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { FILTER = b.dataset.f; paintList(); });
+  if($('fWho')) $('fWho').onchange = () => { WHO = $('fWho').value; paintList(); };
+  $('xlsBtn').onclick = () => exportXlsx(rows.map(r => ({
+    'Клиент': r.client_name, 'Код': r.client_code, 'Папка': r.folder, 'Сотрудник': teamName(r.employee_id),
+    'Причины': (r.reasons || []).map(reasonText).join(' · ') || (r.last_call_at ? 'исправился' : ''),
+    'База, сом': Number(r.base) || 0, 'Темп, сом': Number(r.pace) || 0, 'С 1-го числа, сом': Number(r.cur) || 0,
+    'Долг, $': Number(r.debt) || 0, ['Долг ' + (CFG.debt_days || 7) + ' дн. назад, $']: r.debt_prev === null ? '' : Number(r.debt_prev),
+    'Последняя покупка': fmtDateOnly(r.last_purchase),
+    'Последний звонок': r.last_call_at ? fmtDateTime(r.last_call_at) : '',
+    'Результат': CALL_RES_RU[r.last_result] || '', 'Комментарий': r.last_comment || '',
+    'Перезвонить': r.callback_date ? fmtDateOnly(r.callback_date) : '',
+    'Пришёл': r.came_at ? wall(r.came_at) : '', 'Купил после звонка': r.came_sum ? Number(r.came_sum) : '',
+    'Заплатил': paid(r) ? 'да' : ''
+  })), 'Обзвон', 'obzvon-' + CAMPAIGN + '-' + tzYmd() + '.xlsx');
+
+  if(!rows.length){
+    $('listBody').innerHTML = '<div class="empty">' + esc(ROWS.length
+      ? 'Под фильтр никто не попал'
+      : isViewer() ? 'Список пуст' : 'Сейчас звонить некому') + '</div>';
+    return;
+  }
+  const showWho = isViewer();
+  $('listBody').innerHTML = '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
+    '<th>Клиент</th>' + (showWho ? '<th>Сотрудник</th>' : '') +
+    '<th>Причины</th><th class="num">База / темп</th><th class="num">Долг</th><th>Последняя покупка</th>' +
+    '<th>Последний звонок</th><th>Перезвонить</th><th>После звонка</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(r => rowHTML(r, showWho)).join('') + '</tbody></table></div>';
+
+  $('listBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  $('listBody').querySelectorAll('[data-call]').forEach(b => b.onclick = () =>
+    openCall(rows.find(x => x.client_code === b.dataset.call)));
+}
+function rowHTML(r, showWho){
+  const code = esc(r.client_code);
+  const base = Number(r.base) || 0;
+  return '<tr>' +
+    '<td data-label="Клиент" class="nm"><button class="rf-lnk" data-open="' + code + '">' + esc(r.client_name) + '</button></td>' +
+    (showWho ? '<td data-label="Сотрудник"><span>' + esc(teamName(r.employee_id)) +
+      '<span class="dim rf-small rf-blk">' + esc(r.folder || '') + '</span></span></td>' : '') +
+    '<td data-label="Причины">' + reasonsHTML(r) + '</td>' +
+    '<td data-label="База / темп" class="num"><span><span class="money">' + esc(money(base)) + '</span>' +
+      '<span class="dim rf-small rf-blk">темп ' + esc(money(r.pace)) + (base > 0 ? ' · ' + pctOf(r.pace, base) : '') + '</span></span></td>' +
+    '<td data-label="Долг" class="num"><span><span class="money">' + esc(usd(r.debt)) + '</span>' +
+      (r.debt_prev !== null && r.debt_prev !== undefined
+        ? '<span class="dim rf-small rf-blk">' + esc((CFG.debt_days || 7) + ' дн. назад ' + usd(r.debt_prev)) + '</span>' : '') +
+    '</span></td>' +
+    '<td data-label="Последняя покупка"><span>' + esc(fmtDateOnly(r.last_purchase)) +
+      '<span class="dim rf-small rf-blk">' + esc(r.days_since === null ? '' : r.days_since === 0 ? 'покупал сегодня'
+        : 'не покупал ' + daysText(r.days_since)) + '</span></span></td>' +
+    '<td data-label="Звонок"><span>' + lastCallHTML(r) + '</span></td>' +
+    '<td data-label="Перезвонить">' + callbackHTML(r.callback_date) + '</td>' +
+    '<td data-label="После звонка"><span>' + afterHTML(r) + '</span></td>' +
+    '<td class="acts-cell"><div class="acts">' +
+      (canCall(r) ? '<button class="btn sm ok" data-call="' + code + '">' + icon('phone') + 'Позвонил</button>' : '') +
+    '</div></td>' +
+  '</tr>';
+}
+
+/* ============================================================
+   КАРТОЧКА: три месяца по брендам, долг, после звонка, звонки, документы
+   ============================================================ */
+async function openCard(code){
+  modalOpen({ title:'Клиент', wide:true, bodyHTML:'<div class="loading">Загрузка…</div>' });
+  const { data, error } = await sb.rpc('callout_risk_card', { p_client: code, p_campaign: CAMPAIGN });
+  if(!document.getElementById('crmModal')) return;
+  if(error){ modalBody().innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!data){ modalBody().innerHTML = '<div class="empty">Клиента нет в вашем списке</div>'; return; }
+  paintCard(data);
+}
+function docHTML(d){
+  const ret = d.kind === 'возврат';
+  return '<details class="co-doc' + (ret ? ' ret' : '') + '"><summary>' +
+    '<span class="co-dl"><b>' + esc(fmtDateOnly(d.date)) + '</b> · ' + esc(d.number || '') +
+      (ret ? ' <span class="tagbox">возврат</span>' : d.kind === 'смешанный' ? ' <span class="tagbox">с возвратом</span>' : '') +
+      '<span class="dim rf-small rf-blk">' + esc(d.manager || '') + ' · ' + (d.items || []).length + ' ' +
+        plural((d.items || []).length, 'позиция', 'позиции', 'позиций') + '</span></span>' +
+    '<span class="money' + (ret ? ' co-neg' : '') + '">' + esc(money(d.amount)) + '</span></summary>' +
+    '<table class="co-items"><tbody>' + (d.items || []).map(i =>
+      '<tr><td>' + esc(i.name) + '</td><td class="num">' + esc(String(Number(i.qty))) + '</td>' +
+      '<td class="num money">' + esc(money(i.amount)) + '</td></tr>').join('') + '</tbody></table></details>';
+}
+function monthName(ymd){ return MONTHS_RU[Number(String(ymd).slice(5, 7)) - 1]; }
+function monthsHTML(c){
+  const months = c.months || [];
+  const cur = tzYmd().slice(0, 7);
+  const brands = (CFG.brands || []).filter(b => months.some(m => m.brands && m.brands[b.key]));
+  const cell = v => '<td class="num money' + (Number(v) < 0 ? ' co-neg' : '') + '">' +
+    (v === undefined || v === null || Number(v) === 0 ? '<span class="dim">0</span>'
+      : esc(Math.round(Number(v)).toLocaleString('ru-RU').replace(/\u00a0/g, ' '))) + '</td>';
+  return '<div class="co-doc cr-mwrap"><table class="co-items cr-months"><thead><tr><th></th>' +
+    months.map(m => '<th class="num">' + esc(monthName(m.month)) +
+      (String(m.month).slice(0, 7) === cur ? '<span class="dim rf-small rf-blk">по сегодня</span>' : '') + '</th>').join('') +
+    '</tr></thead><tbody>' +
+    '<tr><td><b>Всего</b>' + ((c.reasons || []).includes('drop') ? ' <span class="cr-r drop">упали</span>' : '') + '</td>' +
+      months.map(m => cell(m.total)).join('') + '</tr>' +
+    brands.map(b => '<tr><td>' + esc(b.label) +
+        ((c.reasons || []).includes(b.key) ? ' <span class="cr-r">меньше</span>' : '') + '</td>' +
+      months.map(m => cell((m.brands || {})[b.key])).join('') + '</tr>').join('') +
+    '</tbody></table></div>';
+}
+function paintCard(c){
+  document.querySelector('#crmModal .modal-head h2').textContent = c.client_name;
+  const p = c.period || {};
+  const base = Number(c.base) || 0;
+  const pr = periodOf(c.calc_day);
+  let html =
+    '<div class="cr-head">' + reasonsHTML({ reasons: c.reasons, last_call_at: c.first_call }) + '</div>' +
+    '<div class="rf-big co-big">' +
+      '<div><span class="n">' + esc(money(base)) + '</span><span class="c">база: среднее за ' + esc(pr.baseText) + '</span></div>' +
+      '<div><span class="n">' + esc(money(c.pace)) + '</span><span class="c">темп ' + esc(pr.monthText) +
+        (base > 0 ? ' · ' + pctOf(c.pace, base) + ' базы' : '') + '</span></div>' +
+      '<div><span class="n">' + esc(usd(c.debt)) + '</span><span class="c">долг сейчас</span></div>' +
+      '<div><span class="n">' + esc(c.debt_prev === null || c.debt_prev === undefined ? '—' : usd(c.debt_prev)) + '</span>' +
+        '<span class="c">долг ' + (CFG.debt_days || 7) + ' дн. назад</span></div>' +
+    '</div>' +
+    '<dl class="kv" style="padding:0 0 14px">' +
+      '<dt>Закреплён за</dt><dd>' + esc(teamName(c.employee_id)) + ' <span class="dim">· папка ' + esc(c.folder || '—') + '</span></dd>' +
+      '<dt>Код в 1С</dt><dd class="dim">' + esc(c.client_code) + '</dd>' +
+      '<dt>Причины</dt><dd class="dim">пересчитаны ' + esc(fmtDateOnly(c.calc_day)) + ' · темп = с 1-го по вчера ÷ ' +
+        esc(String(p.passed)) + ' раб. дн. × ' + esc(String(p.total)) + '</dd>' +
+    '</dl>';
+
+  if(canCall(c)){
+    html += '<button class="btn ok block" id="cardCall" style="margin:4px 0 6px">' + icon('phone') + 'Позвонил</button>';
+  }
+
+  html += '<div class="sec" style="margin:18px 0 8px">По месяцам, сом</div>' + monthsHTML(c);
+
+  if(c.first_call){
+    const after = c.after || [];
+    const paidNow = c.debt_at_call !== null && Number(c.debt) < Number(c.debt_at_call);
+    html += '<div class="sec" style="margin:18px 0 8px">После звонка ' + esc(fmtDateTime(c.first_call)) + '</div>' +
+      '<div class="hint" style="margin:0 0 8px">' + (paidNow
+        ? '<b class="rf-res ok">Заплатил</b> · долг ' + esc(usd(c.debt_at_call) + ' → ' + usd(c.debt))
+        : 'Долг не уменьшился: ' + esc(usd(c.debt_at_call) + ' → ' + usd(c.debt))) + '</div>' +
+      (after.length
+        ? '<div class="co-docs">' + after.map(docHTML).join('') + '</div>'
+        : '<div class="hint">Покупок после звонка нет</div>');
+  }
+
+  const calls = c.calls || [];
+  html += '<div class="sec" style="margin:18px 0 8px">Звонки</div>' + (calls.length
+    ? '<div class="rf-calls">' + calls.map(k => '<div class="rf-call">' +
+        '<div class="l1">' + resultHTML(k.result) + '<span class="dim">' + esc(fmtDateTime(k.called_at)) + '</span></div>' +
+        '<div class="rf-small">' + esc(empName(k.employee_id) +
+          (k.author_id && k.author_id !== k.employee_id ? ' (отметил ' + empName(k.author_id) + ')' : '') +
+          (k.callback_date ? ' · перезвонить ' + fmtDateOnly(k.callback_date) : '')) + '</div>' +
+        (k.comment ? '<div class="rf-cmt">' + esc(k.comment) + '</div>' : '') +
+        '<div class="rf-small">' + (k.came_at
+          ? '<b class="rf-res ok">Пришёл ' + esc(wall(k.came_at)) + '</b> · купил после звонка на ' + esc(money(k.came_sum))
+          : '<span class="dim">После этого звонка покупок нет</span>') + '</div>' +
+      '</div>').join('') + '</div>'
+    : '<div class="hint">Звонков пока не было</div>');
+
+  const docs = c.docs || [];
+  html += '<div class="sec" style="margin:18px 0 8px">Покупки с ' + esc(fmtDateOnly(p.base_from)) +
+    ' · ' + docs.length + ' ' + plural(docs.length, 'документ', 'документа', 'документов') + '</div>' +
+    (docs.length ? '<div class="co-docs">' + docs.map(docHTML).join('') + '</div>' : '<div class="hint">Покупок нет</div>');
+
+  modalBody().innerHTML = html;
+  if($('cardCall')) $('cardCall').onclick = () => openCall({ client_code: c.client_code, client_name: c.client_name,
+    employee_id: c.employee_id, reasons: c.reasons, base: c.base, pace: c.pace, debt: c.debt });
+}
+
+/* ============================================================
+   ЗВОНОК — как в «Обзвоне клиентов»: причины подставляются в комментарий
+   ============================================================ */
+function needComment(res){ return !!res && res !== 'no_answer'; }
+function reasonsIn(text){ return CALL_REASONS.filter(x => String(text || '').includes(x)); }
+function openCall(r){
+  if(!r) return;
+  let res = '';
+  const bossPick = isBoss() && !readOnly();
+  const team = STAFF.filter(e => e.id === r.employee_id);
+  const why = (r.reasons || []).map(reasonText).join(' · ');
+  modalOpen({
+    title:'Звонок: ' + r.client_name,
+    sheet:true,
+    bodyHTML:
+      '<div class="hint" style="margin:0 0 12px">' + esc((why ? why + ' · ' : '') + 'база ' + money(r.base) +
+        ', темп ' + money(r.pace) + ' · долг ' + usd(r.debt)) + '</div>' +
+      '<div class="field"><label class="field-label">Результат <span class="req">*</span></label>' +
+        '<div class="chips-plain" id="cRes">' + Object.keys(CALL_RES_RU).map(k =>
+          '<button type="button" class="chip" data-r="' + k + '">' + esc(CALL_RES_RU[k]) + '</button>').join('') +
+        '</div></div>' +
+      (bossPick
+        ? '<div class="field"><label class="field-label" for="cEmp">Кто звонил</label><select id="cEmp">' +
+            team.concat(STAFF.filter(e => e.id === ME.id && !team.includes(e))).map(e =>
+              '<option value="' + esc(e.id) + '">' + esc(e.full_name) + '</option>').join('') + '</select></div>'
+        : '') +
+      '<div class="field"><label class="field-label" for="cCmt">Комментарий <span class="req" id="cReq" hidden>*</span></label>' +
+        '<div class="chips-plain rf-reasons" id="cWhy">' + CALL_REASONS.map(x =>
+          '<button type="button" class="chip" data-why="' + esc(x) + '">' + esc(x) + '</button>').join('') + '</div>' +
+        '<textarea id="cCmt" rows="3" placeholder="Что сказал клиент"></textarea>' +
+        '<div class="hint" id="cCmtHint">Выберите результат звонка</div></div>' +
+      '<div class="field"><label class="field-label" for="cCb">Перезвонить</label>' +
+        '<input id="cCb" type="date" min="' + esc(tzYmd()) + '">' +
+        '<div class="chips-plain" style="margin:8px 0 0">' +
+          [[1, 'Завтра'], [2, 'Через 2 дня'], [7, 'Через неделю']].map(x =>
+            '<button type="button" class="chip" data-cb="' + x[0] + '">' + x[1] + '</button>').join('') +
+        '</div></div>',
+    saveLabel:'Сохранить звонок',
+    onSave: async () => {
+      if(!res) return modalMsg('Выберите результат звонка');
+      const comment = $('cCmt').value.trim();
+      if(needComment(res) && !comment) return modalMsg('Напишите комментарий или нажмите готовую причину');
+      const row = {
+        campaign: CAMPAIGN, client_code: r.client_code, result: res,
+        comment: comment || null,
+        reasons: res === 'no_answer' ? [] : reasonsIn(comment),
+        callback_date: $('cCb').value || null,
+        employee_id: bossPick && $('cEmp') ? $('cEmp').value : ME.id
+      };
+      modalBusy(true, 'Сохраняем…');
+      const { error } = await sb.from('callout_calls').insert(row);
+      modalBusy(false, 'Сохранить звонок');
+      if(error) return modalMsg(errText(error, 'insert') || '');
+      modalClose();
+      toast('Звонок отмечен');
+      loadList(true);
+    }
+  });
+  const cmt = $('cCmt');
+  const paintWhy = () => {
+    $('cWhy').querySelectorAll('[data-why]').forEach(b => b.classList.toggle('on', cmt.value.includes(b.dataset.why)));
+  };
+  const paintNeed = () => {
+    $('cReq').hidden = !needComment(res);
+    $('cWhy').hidden = res === 'no_answer';
+    $('cCmtHint').textContent = !res ? 'Выберите результат звонка'
+      : needComment(res) ? 'Обязательно: нажмите причину или напишите, что сказал клиент'
+      : 'Можно не заполнять';
+  };
+  paintNeed();
+  $('cRes').querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+    res = b.dataset.r;
+    $('cRes').querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b));
+    paintNeed();
+  });
+  $('cWhy').querySelectorAll('[data-why]').forEach(b => b.onclick = () => {
+    const x = b.dataset.why, v = cmt.value;
+    if(v.includes(x)){
+      cmt.value = v.replace(x, '').replace(/\s*\.\s*\./g, '.').replace(/^[\s.;,]+|[\s.;,]+$/g, '');
+    }else{
+      const base = v.replace(/[\s.;,]+$/, '');
+      cmt.value = base ? base + '. ' + x : x;
+    }
+    paintWhy();
+    cmt.focus();
+  });
+  cmt.oninput = paintWhy;
+  document.querySelectorAll('[data-cb]').forEach(b => b.onclick = () => {
+    $('cCb').value = tzShift(tzYmd(), Number(b.dataset.cb));
+  });
+}
+
+/* ============================================================
+   АНАЛИТИКА — руководство и ревизор; считается из того же списка
+   ============================================================ */
+function sTile(n, c, cls){
+  return '<div class="tile ' + (cls || '') + '"><div class="n">' + esc(String(n)) + '</div><div class="c">' + esc(c) + '</div></div>';
+}
+function pct(a, b){ return b ? Math.round(a * 100 / b) + '%' : '—'; }
+async function loadStats(){
+  $('statTiles').innerHTML = '';
+  $('statsBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  if(!ROWS){
+    const { data, error } = await sb.rpc('callout_risk_list', { p_campaign: CAMPAIGN });
+    if(error){ $('statsBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+    ROWS = data || [];
+  }
+  paintState();
+  const by = (CFG.teams || []).map(t => {
+    const rs = ROWS.filter(r => r.employee_id === t.employee_id);
+    return {
+      t, clients: rs.length,
+      called: rs.filter(r => r.first_call_at).length,
+      reached: rs.filter(r => r.reached).length,
+      came: rs.filter(r => r.came_at).length,
+      came_sum: rs.reduce((s, r) => s + (Number(r.came_sum) || 0), 0),
+      paid: rs.filter(paid).length,
+      fixed: rs.filter(r => r.first_call_at && !(r.reasons || []).length).length
+    };
+  });
+  const sum = k => by.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  $('statTiles').innerHTML =
+    sTile(sum('clients'), 'Клиентов в списках') +
+    sTile(sum('called') + ' (' + pct(sum('called'), sum('clients')) + ')', 'Позвонили', 'info') +
+    sTile(sum('reached'), 'Дозвонились', 'info') +
+    sTile(sum('came'), 'Пришли после звонка', 'ok') +
+    sTile(money(sum('came_sum')), 'Купили после звонка', 'ok') +
+    sTile(sum('paid'), 'Заплатили долг', 'ok');
+
+  const yes = ROWS.filter(r => r.first_call_at), no = ROWS.filter(r => !r.first_call_at);
+  const cameSince = rs => rs.filter(r => Number(r.since_sum) > 0).length;
+  const sumSince = rs => rs.reduce((s, r) => s + (Number(r.since_sum) || 0), 0);
+  $('statsBody').innerHTML =
+    '<div class="sec">По сотрудникам</div>' +
+    '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr>' +
+      '<th>Сотрудник</th><th class="num">Клиентов</th><th class="num">Позвонил</th><th class="num">Дозвонился</th>' +
+      '<th class="num">Пришли после звонка</th><th class="num">Сумма после звонка</th><th class="num">Заплатили</th>' +
+      '<th class="num">Исправились</th></tr></thead><tbody>' +
+      by.map(r => '<tr>' +
+        '<td data-label="Сотрудник" class="nm"><button class="rf-lnk" data-who="' + esc(r.t.employee_id) + '">' +
+          esc(teamName(r.t.employee_id)) + '</button><span class="dim rf-small rf-blk">' + esc(r.t.folder) + '</span></td>' +
+        '<td data-label="Клиентов" class="num">' + r.clients + '</td>' +
+        '<td data-label="Позвонил" class="num">' + r.called + ' <span class="dim">' + pct(r.called, r.clients) + '</span></td>' +
+        '<td data-label="Дозвонился" class="num">' + r.reached + '</td>' +
+        '<td data-label="Пришли" class="num">' + r.came + ' <span class="dim">' + pct(r.came, r.called) + '</span></td>' +
+        '<td data-label="Сумма" class="num money">' + esc(money(r.came_sum)) + '</td>' +
+        '<td data-label="Заплатили" class="num">' + r.paid + '</td>' +
+        '<td data-label="Исправились" class="num">' + r.fixed + '</td>' +
+      '</tr>').join('') + '</tbody></table></div>' +
+    '<div class="sec">Помогают ли звонки</div>' +
+    '<div class="hint" style="margin:-4px 16px 10px">Все клиенты в списках: сколько купили с ' + esc(fmtDateOnly(CFG.start)) +
+      ' среди тех, кому звонили, и среди тех, кому не звонили.</div>' +
+    '<div class="panel" style="padding:8px 0"><table class="tbl"><thead><tr><th></th>' +
+      '<th class="num">Клиентов</th><th class="num">Пришли</th><th class="num">Доля</th><th class="num">Сумма покупок</th>' +
+      '</tr></thead><tbody>' +
+      '<tr><td class="nm">Звонили</td><td data-label="Клиентов" class="num">' + yes.length + '</td>' +
+        '<td data-label="Пришли" class="num">' + cameSince(yes) +
+          ' <span class="dim">после звонка ' + yes.filter(r => r.came_at).length + '</span></td>' +
+        '<td data-label="Доля" class="num"><b>' + pct(cameSince(yes), yes.length) + '</b></td>' +
+        '<td data-label="Сумма" class="num money">' + esc(money(sumSince(yes))) + '</td></tr>' +
+      '<tr><td class="nm">Не звонили</td><td data-label="Клиентов" class="num">' + no.length + '</td>' +
+        '<td data-label="Пришли" class="num">' + cameSince(no) + '</td>' +
+        '<td data-label="Доля" class="num"><b>' + pct(cameSince(no), no.length) + '</b></td>' +
+        '<td data-label="Сумма" class="num money">' + esc(money(sumSince(no))) + '</td></tr>' +
+    '</tbody></table></div>';
+  $('statsBody').querySelectorAll('[data-who]').forEach(b => b.onclick = () => {
+    WHO = b.dataset.who; FILTER = ''; showTab('list');
+  });
+}
+</script>
+</body>
+</html>

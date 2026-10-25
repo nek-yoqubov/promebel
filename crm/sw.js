@@ -1,9 +1,9 @@
-const CACHE = 'promebel-crm-v22';
+const CACHE = 'promebel-crm-v23';
 const ASSETS = [
   'index.html', 'login.html', 'tasks.html', 'new-task.html', 'admin.html',
   'employee.html', 'links.html', 'notifications.html', 'profile.html',
   'dashboard.html', 'calendar.html', 'clients.html', 'deals.html', 'plan.html',
-  'events.html', 'audit.html', 'preview.html', 'whatsapp.html', 'raffle.html', 'callout.html',
+  'events.html', 'audit.html', 'preview.html', 'whatsapp.html', 'raffle.html', 'callout.html', 'callout-risk.html',
   'core.js', 'crm.css', 'supabase.min.js', 'xlsx.full.min.js', 'favicon.svg', 'anim-done.svg',
   'icon-180.png', 'icon-192.png', 'icon-512.png', 'favicon-32.png',
   'logo-h-dark.png', 'logo-h-light.png', 'logo-mark.png'

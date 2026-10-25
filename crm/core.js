@@ -579,7 +579,9 @@ const SECTIONS = [
   { key:'raffle',  group:'sales',   label:'Розыгрыш',       href:'raffle.html',           icon:'gift',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
   { key:'callout', group:'sales',   label:'Обзвон клиентов', href:'callout.html',         icon:'phone',
-    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
+    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'oct26' },
+  { key:'callout_risk26', group:'sales', label:'Обзвон: дилеры, ОПИП', href:'callout-risk.html', icon:'phone',
+    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'risk26' },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star' },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
     roles:['callcenter','head','admin','director','auditor'], soon:true },
@@ -597,11 +599,28 @@ const SECTIONS = [
   { key:'preview', group:'control', label:'Проверка ролей', href:'preview.html',          icon:'layers',
     roles:['admin'] }
 ];
+/* Активные обзвоны, где у меня есть клиенты (руководство видит все). Держим 10 минут в sessionStorage.
+   Если не загрузились — пункты обзвонов показываем как раньше. */
+let CALLOUTS = null;
+async function loadCallouts(){
+  if(!ME || !SECTIONS.some(s => s.campaign && s.roles && s.roles.includes(ME.role))) return;
+  const key = 'crm_callouts';
+  try{
+    const c = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ CALLOUTS = c.list; return; }
+  }catch(e){}
+  const { data, error } = await sb.rpc('callout_campaigns');
+  if(error || !Array.isArray(data)) return;
+  CALLOUTS = data.map(x => x.campaign);
+  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), list: CALLOUTS })); }catch(e){}
+}
 /* есть ли у меня подчинённые */
 function hasTeam(){ return !!(ME && EMPS.some(e => e.manager_id === ME.id)); }
 function canSee(s){
   if(!ME) return false;
   if(s.notRoles && s.notRoles.includes(ME.role)) return false;
+  // обзвон временный: после даты окончания и тем, у кого нет клиентов, пункт не нужен
+  if(s.campaign && CALLOUTS && !CALLOUTS.includes(s.campaign)) return false;
   if(s.roles && !s.roles.includes(ME.role)) return s.orBoss ? hasTeam() : false;
   return true;
 }
@@ -634,7 +653,7 @@ function tabItems(){
 async function renderShell(opts){
   const o = opts || {};
   const tab = o.tab || '';
-  await loadEmployees();   // нужен, чтобы понять, есть ли подчинённые
+  await Promise.all([loadEmployees(), loadCallouts()]);   // подчинённые и обзвоны решают, какие пункты показать
 
   const tabs = tabItems();
   const tabbar = tabs.map(n => {

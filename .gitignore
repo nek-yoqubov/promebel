@@ -4,3 +4,7 @@
 _docs/
 *.md
 !README.md
+
+# SQL-миграции и структура базы — только в приватном promebel-backup (db/).
+*.sql
+supabase/

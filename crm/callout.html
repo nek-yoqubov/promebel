@@ -165,6 +165,7 @@ function wall(ts){
 function wallDate(ts){ return ts ? fmtDateOnly(String(ts).slice(0, 10)) : '—'; }
 function sellerMatch(e, code){
   if(!e || !code) return false;
+  if(CFG.seller_emp && CFG.seller_emp[code]) return e.id === CFG.seller_emp[code];
   const pos = String(e.position || '').trim();
   return code === e.erp_manager || code === pos || pos.split(/\s+/).includes(code);
 }
@@ -260,7 +261,7 @@ function paintList(){
     paintList();
   };
   $('xlsBtn').onclick = () => exportXlsx(rows.map(r => ({
-    'Клиент': r.client_name, 'Код': r.client_code, 'Менеджер': r.seller,
+    'Клиент': r.client_name, 'Код': r.client_code, 'Менеджер': r.seller, 'Почему звоним': r.note || '',
     'Сумма за период': Number(r.amount), 'Покупок': r.purchases,
     'Последняя покупка': fmtDateOnly(r.last_purchase), 'Не покупал, дней': r.days_since,
     'Последний звонок': r.last_call_at ? fmtDateTime(r.last_call_at) : '',
@@ -299,7 +300,8 @@ function rowHTML(r, sel, showSeller){
   return '<tr>' +
     (sel ? '<td data-label="Выбрать" class="rf-ck"><input type="checkbox" data-sel="' + code + '"' +
       (SEL.has(r.client_code) ? ' checked' : '') + ' aria-label="Выбрать"></td>' : '') +
-    '<td data-label="Клиент" class="nm"><button class="rf-lnk" data-open="' + code + '">' + esc(r.client_name) + '</button></td>' +
+    '<td data-label="Клиент" class="nm"><span><button class="rf-lnk" data-open="' + code + '">' + esc(r.client_name) + '</button>' +
+      (r.note ? '<span class="co-note">' + esc(r.note) + '</span>' : '') + '</span></td>' +
     (showSeller ? '<td data-label="Менеджер"><span>' + esc(r.seller) +
       '<span class="dim rf-small rf-blk">' + esc(sellerLabel(r.seller)) + '</span></span></td>' : '') +
     '<td data-label="Сумма за период" class="num money">' + esc(money(r.amount)) + '</td>' +
@@ -382,6 +384,7 @@ function paintCard(c){
       '<div><span class="n">' + esc(fmtDateOnly(t.first)) + '</span><span class="c">первая покупка</span></div>' +
       '<div><span class="n">' + esc(fmtDateOnly(t.last)) + '</span><span class="c">последняя за период</span></div>' +
     '</div>' +
+    (c.note ? '<div class="co-why"><b>Почему звоним</b><span class="co-note">' + esc(c.note) + '</span></div>' : '') +
     '<dl class="kv" style="padding:0 0 14px">' +
       '<dt>Закреплён за</dt><dd>' + esc(c.seller + ' · ' + sellerLabel(c.seller)) +
         ' <span class="dim">· ' + (c.method === 'auto' ? 'авто' : 'вручную') + '</span></dd>' +
@@ -429,7 +432,7 @@ function paintCard(c){
     openCard(c.client_code);
   };
   if($('cardCall')) $('cardCall').onclick = () => openCall({ client_code: c.client_code, client_name: c.client_name,
-    seller: c.seller, amount: t.amount, purchases: t.purchases, last_purchase: t.last });
+    seller: c.seller, amount: t.amount, purchases: t.purchases, last_purchase: t.last, note: c.note });
 }
 
 /* ============================================================
@@ -447,7 +450,8 @@ function openCall(r){
     sheet:true,
     bodyHTML:
       '<div class="hint" style="margin:0 0 12px">' + esc(money(r.amount) + ' за период · ' + (r.purchases || 0) + ' ' +
-        plural(r.purchases || 0, 'покупка', 'покупки', 'покупок') + ' · последняя ' + fmtDateOnly(r.last_purchase)) + '</div>' +
+        plural(r.purchases || 0, 'покупка', 'покупки', 'покупок') + ' · последняя ' + fmtDateOnly(r.last_purchase)) +
+        (r.note ? '<span class="co-note">' + esc(r.note) + '</span>' : '') + '</div>' +
       '<div class="field"><label class="field-label">Результат <span class="req">*</span></label>' +
         '<div class="chips-plain" id="cRes">' + Object.keys(CALL_RES_RU).map(k =>
           '<button type="button" class="chip" data-r="' + k + '">' + esc(CALL_RES_RU[k]) + '</button>').join('') +

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Закупки</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Закупки</h1>
+    <button class="btn sm" id="newBtnPc" hidden>Новая заявка</button></div>
+
+  <div class="seg rf-seg" id="seg" hidden></div>
+
+  <section id="paneMine" hidden>
+    <div class="chips" id="mineChips"></div>
+    <div id="mineBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <section id="paneAll" hidden>
+    <div class="chips" id="allChips"></div>
+    <div class="toolbar">
+      <div class="f-search grow"><span id="searchIcon"></span>
+        <input id="q" type="search" placeholder="Найти товар или артикул" autocomplete="off"></div>
+      <select id="fAuthor" aria-label="Менеджер"></select>
+    </div>
+    <div id="allBody"><div class="loading">Загрузка…</div></div>
+  </section>
+
+  <section id="paneStats" hidden>
+    <div class="toolbar"><input id="fMonth" type="month" aria-label="Месяц"></div>
+    <div class="tiles" id="statTiles"></div>
+    <div id="statsBody"><div class="loading">Загрузка…</div></div>
+  </section>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+
+/* Заявки на закупку. Права держит база (crm.purchase_*): менеджеры по списку оставляют заявки и видят свои,
+   закупщик и руководство видят все, статус меняет только закупщик. «Пришло» ставит закупщик вручную. */
+const ST = {
+  new:     { ru:'Новая',    cls:'late'  },
+  in_work: { ru:'В работе', cls:'info'  },
+  ordered: { ru:'Заказано', cls:'info'  },
+  arrived: { ru:'Пришло',   cls:'ok'    },
+  refused: { ru:'Отказ',    cls:'muted' }
+};
+const ACTIVE = ['new', 'in_work', 'ordered'];
+const ALL_FILTERS = [
+  { key:'act',     label:'В работе у закупщика' },
+  { key:'new',     label:'Новые' },
+  { key:'in_work', label:'В работе' },
+  { key:'ordered', label:'Заказано' },
+  { key:'arrived', label:'Пришло' },
+  { key:'refused', label:'Отказ' },
+  { key:'all',     label:'Все' }
+];
+const MINE_FILTERS = [{ key:'act', label:'Активные' }, { key:'all', label:'Все' }];
+
+let ACC = {};
+let ROWS = null;
+let TAB = '', MINE_F = 'act', ALL_F = 'act', OPEN = new Set();
+
+(async () => {
+  if(!await requireAuth()) return;
+  await loadPurchaseAccess();
+  ACC = PURCH || {};
+  if(!ACC.create && !ACC.view){ location.replace('index.html'); return; }
+
+  await renderShell({
+    title:'Закупки', tab:'purchases',
+    actions: canCreate() ? '<button class="ib" id="newBtn" aria-label="Новая заявка">' + icon('plus') + '</button>' : ''
+  });
+  if(canCreate()){
+    $('newBtn').onclick = openNew;
+    $('newBtnPc').hidden = false;
+    $('newBtnPc').onclick = openNew;
+  }
+  $('searchIcon').outerHTML = icon('search');
+  let timer = null;
+  $('q').oninput = () => { clearTimeout(timer); timer = setTimeout(paintAll, 200); };
+  $('fAuthor').onchange = paintAll;
+  $('fMonth').value = tzYmd().slice(0, 7);
+  $('fMonth').onchange = loadStats;
+
+  const p = new URLSearchParams(location.search);
+  if(p.get('status') && ALL_FILTERS.some(f => f.key === p.get('status'))) ALL_F = p.get('status');
+  paintSeg();
+  const want = p.get('tab');
+  showTab(tabs().some(t => t.key === want) ? want : tabs()[0].key);
+  if(p.get('id')) openCard(Number(p.get('id')));
+})();
+
+/* ---------- права (повторяют базу, только чтобы прятать кнопки) ---------- */
+function canCreate(){ return !!ACC.create && !IS_PREVIEW; }
+function canManage(){ return !!ACC.manage && !IS_PREVIEW; }
+
+function tabs(){
+  const t = [];
+  if(ACC.view) t.push({ key:'all', label:'Все заявки' });
+  if(ACC.create) t.push({ key:'mine', label:'Мои заявки' });
+  if(ACC.view) t.push({ key:'stats', label:'Статистика' });
+  return t;
+}
+function paintSeg(){
+  const t = tabs();
+  $('seg').hidden = t.length < 2;
+  $('seg').innerHTML = t.map(x => '<button data-t="' + x.key + '">' + esc(x.label) + '</button>').join('');
+  $('seg').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+}
+function showTab(t){
+  TAB = t;
+  history.replaceState(null, '', 'purchases.html?tab=' + t);
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('paneMine').hidden = t !== 'mine';
+  $('paneAll').hidden = t !== 'all';
+  $('paneStats').hidden = t !== 'stats';
+  if(t === 'stats') loadStats();
+  else loadRows();
+}
+
+/* ---------- форматы ---------- */
+function qtyText(v){ const n = Number(v) || 0; return String(Math.round(n * 1000) / 1000).replace('.', ','); }
+function qtyUnit(v, unit){ return qtyText(v) + (unit ? ' ' + unit : ''); }
+function stHTML(s){ const x = ST[s] || { ru:s, cls:'muted' }; return '<b class="rf-res ' + x.cls + '">' + esc(x.ru) + '</b>'; }
+function lastGroup(path){ return Array.isArray(path) && path.length ? path[path.length - 1] : ''; }
+function needHTML(d){
+  if(!d) return '<span class="dim">—</span>';
+  const late = d < tzYmd();
+  return '<span' + (late ? ' class="rf-res late"' : '') + '>' + esc(fmtDateOnly(d)) + '</span>';
+}
+
+/* ---------- данные ---------- */
+async function loadRows(force){
+  const body = TAB === 'mine' ? $('mineBody') : $('allBody');
+  if(!ROWS || force){
+    body.innerHTML = '<div class="loading">Загрузка…</div>';
+    const { data, error } = await sb.from('purchase_requests')
+      .select('id,author_id,item_code,item_name,item_article,item_unit,item_path,qty,need_by,client_name,comment,status,refuse_reason,created_at,status_at,seen_at')
+      .order('created_at', { ascending:false }).limit(3000);
+    if(error){ body.innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+    ROWS = data || [];
+  }
+  if(TAB === 'mine') paintMine(); else paintAll();
+}
+
+/* ---------- мои заявки ---------- */
+function paintMine(){
+  $('mineChips').innerHTML = MINE_FILTERS.map(f => '<button class="chip' + (f.key === MINE_F ? ' on' : '') +
+    '" data-f="' + f.key + '">' + esc(f.label) + '</button>').join('');
+  $('mineChips').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { MINE_F = b.dataset.f; paintMine(); });
+  const rows = ROWS.filter(r => r.author_id === ME.id && (MINE_F === 'all' || ACTIVE.includes(r.status)));
+  if(!rows.length){
+    $('mineBody').innerHTML = '<div class="empty">' + (MINE_F === 'act' ? 'Активных заявок нет' : 'Заявок пока нет') +
+      (canCreate() ? '<div style="margin-top:14px"><button class="btn sm" id="newEmpty">Новая заявка</button></div>' : '') + '</div>';
+    if($('newEmpty')) $('newEmpty').onclick = openNew;
+    return;
+  }
+  $('mineBody').innerHTML = '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
+    '<th>№</th><th>Товар</th><th class="num">Количество</th><th>Нужно к</th><th>Статус</th><th>Создана</th>' +
+    '</tr></thead><tbody>' + rows.map(r =>
+      '<tr><td data-label="№" class="dim">' + r.id + '</td>' +
+      '<td data-label="Товар" class="nm"><span><button class="rf-lnk" data-open="' + r.id + '">' + esc(r.item_name) + '</button>' +
+        '<span class="dim rf-small rf-blk">' + esc([r.item_article, lastGroup(r.item_path)].filter(Boolean).join(' · ')) + '</span></span></td>' +
+      '<td data-label="Количество" class="num">' + esc(qtyUnit(r.qty, r.item_unit)) + '</td>' +
+      '<td data-label="Нужно к">' + needHTML(r.need_by) + '</td>' +
+      '<td data-label="Статус"><span>' + stHTML(r.status) +
+        (r.status === 'refused' && r.refuse_reason ? '<span class="dim rf-small rf-blk">' + esc(r.refuse_reason) + '</span>' : '') + '</span></td>' +
+      '<td data-label="Создана" class="dim">' + esc(fmtDateTime(r.created_at)) + '</td></tr>').join('') +
+    '</tbody></table></div>';
+  $('mineBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(Number(b.dataset.open)));
+}
+
+/* ---------- все заявки: одинаковые товары склеены ---------- */
+function allFiltered(){
+  const q = $('q').value.trim().toLowerCase();
+  const a = $('fAuthor').value;
+  return ROWS.filter(r =>
+    (ALL_F === 'all' || (ALL_F === 'act' ? ACTIVE.includes(r.status) : r.status === ALL_F)) &&
+    (!a || r.author_id === a) &&
+    (!q || (r.item_name || '').toLowerCase().includes(q) || (r.item_article || '').toLowerCase().includes(q) || r.item_code === q));
+}
+function paintAll(){
+  const cnt = k => ROWS.filter(r => k === 'all' || (k === 'act' ? ACTIVE.includes(r.status) : r.status === k)).length;
+  $('allChips').innerHTML = ALL_FILTERS.map(f => '<button class="chip' + (f.key === ALL_F ? ' on' : '') +
+    '" data-f="' + f.key + '">' + esc(f.label) + ' · ' + cnt(f.key) + '</button>').join('');
+  $('allChips').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { ALL_F = b.dataset.f; paintAll(); });
+
+  const authors = Array.from(new Set(ROWS.map(r => r.author_id)));
+  const cur = $('fAuthor').value;
+  $('fAuthor').innerHTML = '<option value="">Все менеджеры</option>' + authors
+    .map(id => [id, empName(id)]).sort((x, y) => x[1].localeCompare(y[1]))
+    .map(x => '<option value="' + esc(x[0]) + '"' + (x[0] === cur ? ' selected' : '') + '>' + esc(x[1]) + '</option>').join('');
+
+  const rows = allFiltered();
+  if(!rows.length){ $('allBody').innerHTML = '<div class="empty">Заявок нет</div>'; return; }
+
+  const groups = new Map();
+  rows.forEach(r => {
+    if(!groups.has(r.item_code)) groups.set(r.item_code, []);
+    groups.get(r.item_code).push(r);
+  });
+  const list = Array.from(groups.values()).map(g => {
+    g.sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
+    return g;
+  }).sort((x, y) => String(x[0].created_at).localeCompare(String(y[0].created_at)));
+
+  $('allBody').innerHTML = '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr>' +
+    '<th>Товар</th><th class="num">Всего</th><th>Кто просит</th><th>Нужно к</th><th>Статус</th><th></th>' +
+    '</tr></thead><tbody>' + list.map(groupHTML).join('') + '</tbody></table></div>';
+
+  $('allBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(Number(b.dataset.open)));
+  $('allBody').querySelectorAll('[data-exp]').forEach(b => b.onclick = () => {
+    const k = b.dataset.exp;
+    OPEN.has(k) ? OPEN.delete(k) : OPEN.add(k);
+    paintAll();
+  });
+  $('allBody').querySelectorAll('[data-st]').forEach(b => b.onclick = () => {
+    const g = groups.get(b.dataset.st) || [];
+    const same = new Set(g.map(r => r.status)).size === 1 ? g[0].status : '';
+    openStatus(g.map(r => r.id), g[0].item_name, g.length > 1 ? g.length + ' ' + plural(g.length, 'заявка', 'заявки', 'заявок') : '', same);
+  });
+}
+function groupHTML(g){
+  const r0 = g[0];
+  const code = esc(r0.item_code);
+  const total = g.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const people = Array.from(new Set(g.map(r => r.author_id)));
+  const needs = g.map(r => r.need_by).filter(Boolean).sort();
+  const sts = {};
+  g.forEach(r => sts[r.status] = (sts[r.status] || 0) + 1);
+  const unseen = g.some(r => r.status === 'new' && !r.seen_at);
+  const multi = g.length > 1;
+  const open = OPEN.has(r0.item_code);
+  let html = '<tr' + (unseen ? ' class="alarm"' : '') + '>' +
+    '<td data-label="Товар" class="nm"><span>' +
+      (multi ? '<button class="rf-lnk" data-exp="' + code + '">' + esc(r0.item_name) + '</button>'
+             : '<button class="rf-lnk" data-open="' + r0.id + '">' + esc(r0.item_name) + '</button>') +
+      '<span class="dim rf-small rf-blk">' + esc([r0.item_article, lastGroup(r0.item_path)].filter(Boolean).join(' · ')) + '</span></span></td>' +
+    '<td data-label="Всего" class="num"><b>' + esc(qtyUnit(total, r0.item_unit)) + '</b></td>' +
+    '<td data-label="Кто просит"><span>' + esc(people.map(empName).join(', ')) +
+      (multi ? '<span class="dim rf-small rf-blk">' + g.length + ' ' + plural(g.length, 'заявка', 'заявки', 'заявок') +
+        ' · <button class="rf-lnk rf-small" data-exp="' + code + '">' + (open ? 'свернуть' : 'показать') + '</button></span>' : '') +
+      '</span></td>' +
+    '<td data-label="Нужно к">' + needHTML(needs[0]) + '</td>' +
+    '<td data-label="Статус"><span>' + Object.keys(ST).filter(k => sts[k]).map(k =>
+      stHTML(k) + (multi ? ' <span class="dim rf-small">' + sts[k] + '</span>' : '')).join('<br>') + '</span></td>' +
+    '<td class="acts-cell"><div class="acts">' +
+      (canManage() ? '<button class="btn sm" data-st="' + code + '">Статус' + (multi ? ' всем' : '') + '</button>' : '') +
+    '</div></td></tr>';
+  if(multi && open){
+    html += g.map(r => '<tr class="pc-sub">' +
+      '<td data-label="Заявка" class="nm"><span><button class="rf-lnk" data-open="' + r.id + '">№' + r.id + ' · ' + esc(empName(r.author_id)) + '</button>' +
+        (r.client_name || r.comment ? '<span class="dim rf-small rf-blk">' + esc([r.client_name, r.comment].filter(Boolean).join(' · ')) + '</span>' : '') +
+      '</span></td>' +
+      '<td data-label="Количество" class="num">' + esc(qtyUnit(r.qty, r.item_unit)) + '</td>' +
+      '<td data-label="Создана" class="dim">' + esc(fmtDateTime(r.created_at)) + '</td>' +
+      '<td data-label="Нужно к">' + needHTML(r.need_by) + '</td>' +
+      '<td data-label="Статус">' + stHTML(r.status) + '</td><td></td></tr>').join('');
+  }
+  return html;
+}
+
+/* ---------- карточка заявки ---------- */
+async function openCard(id){
+  if(!id) return;
+  modalOpen({ title:'Заявка №' + id, wide:true, bodyHTML:'<div class="loading">Загрузка…</div>' });
+  const { data, error } = await sb.rpc('purchase_open', { p_id: id });
+  if(!document.getElementById('crmModal')) return;
+  if(error){ modalBody().innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!data){ modalBody().innerHTML = '<div class="empty">Заявка не найдена или недоступна</div>'; return; }
+  const r = data;
+  const local = ROWS && ROWS.find(x => x.id === r.id);
+  if(local && !local.seen_at && r.seen_at) local.seen_at = r.seen_at;
+  const ev = r.events || [];
+  let html =
+    '<dl class="kv" style="padding:0 0 14px">' +
+      '<dt>Товар</dt><dd><b>' + esc(r.item_name) + '</b>' + (r.item_article ? ' <span class="dim">· ' + esc(r.item_article) + '</span>' : '') + '</dd>' +
+      '<dt>Папка</dt><dd class="dim">' + esc((r.item_path || []).join(' / ') || '—') + '</dd>' +
+      '<dt>Количество</dt><dd><b>' + esc(qtyUnit(r.qty, r.item_unit)) + '</b></dd>' +
+      '<dt>Нужно к</dt><dd>' + needHTML(r.need_by) + '</dd>' +
+      (r.client_name ? '<dt>Клиент</dt><dd>' + esc(r.client_name) + '</dd>' : '') +
+      (r.comment ? '<dt>Комментарий</dt><dd>' + esc(r.comment) + '</dd>' : '') +
+      '<dt>От кого</dt><dd>' + esc(empName(r.author_id)) + ' <span class="dim">· ' + esc(fmtDateTime(r.created_at)) + '</span></dd>' +
+      '<dt>Статус</dt><dd>' + stHTML(r.status) +
+        (r.status === 'refused' && r.refuse_reason ? '<div class="rf-cmt">' + esc(r.refuse_reason) + '</div>' : '') + '</dd>' +
+      '<dt>Код в 1С</dt><dd class="dim">' + esc(r.item_code) + '</dd>' +
+    '</dl>';
+  if(canManage()) html += '<button class="btn block" id="cardSt" style="margin:4px 0 6px">Сменить статус</button>';
+  html += '<div class="sec" style="margin:18px 0 8px">История</div><div class="rf-calls">' + ev.map(e =>
+    '<div class="rf-call"><div class="l1">' + stHTML(e.status) + '<span class="dim">' + esc(fmtDateTime(e.at)) + '</span></div>' +
+    '<div class="rf-small">' + esc(e.actor_id ? empName(e.actor_id) : '') + '</div>' +
+    (e.note ? '<div class="rf-cmt">' + esc(e.note) + '</div>' : '') + '</div>').join('') + '</div>';
+  modalBody().innerHTML = html;
+  if($('cardSt')) $('cardSt').onclick = () => openStatus([r.id], r.item_name, '', r.status);
+}
+
+/* ---------- смена статуса (одной заявке или всей склеенной строке) ---------- */
+function openStatus(ids, name, sub, current){
+  let st = '';
+  const opts = ['in_work', 'ordered', 'arrived', 'refused'].filter(k => k !== current);
+  modalOpen({
+    title:'Статус: ' + name,
+    sheet:true,
+    bodyHTML:
+      (sub ? '<div class="hint" style="margin:0 0 12px">Поменяется у всех: ' + esc(sub) + '</div>' : '') +
+      '<div class="field"><label class="field-label">Новый статус <span class="req">*</span></label>' +
+        '<div class="chips-plain" id="sRes">' + opts.map(k =>
+          '<button type="button" class="chip" data-s="' + k + '">' + esc(ST[k].ru) + '</button>').join('') + '</div></div>' +
+      '<div class="field" id="sWhyBox" hidden><label class="field-label" for="sWhy">Причина отказа <span class="req">*</span></label>' +
+        '<textarea id="sWhy" rows="3" maxlength="500" placeholder="Почему не будет закупки"></textarea></div>' +
+      '<div class="hint">Менеджеру придёт сообщение при «Заказано», «Пришло» и «Отказ».</div>',
+    saveLabel:'Сохранить',
+    onSave: async () => {
+      if(!st) return modalMsg('Выберите статус');
+      const reason = $('sWhy').value.trim();
+      if(st === 'refused' && !reason) return modalMsg('Напишите причину отказа');
+      modalBusy(true, 'Сохраняем…');
+      const { data, error } = await sb.rpc('purchase_set_status', { p_ids: ids, p_status: st, p_reason: reason || null });
+      modalBusy(false, 'Сохранить');
+      if(error) return modalMsg(errText(error));
+      modalClose();
+      toast(data ? 'Статус: ' + ST[st].ru + (data > 1 ? ' · ' + data + ' ' + plural(data, 'заявка', 'заявки', 'заявок') : '') : 'Статус уже такой');
+      loadRows(true);
+    }
+  });
+  $('sRes').querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+    st = b.dataset.s;
+    $('sRes').querySelectorAll('[data-s]').forEach(x => x.classList.toggle('on', x === b));
+    $('sWhyBox').hidden = st !== 'refused';
+  });
+}
+
+/* ---------- новая заявка: выбор товара из дерева 1С или поиском ---------- */
+let PICK = null, CRUMBS = [];
+function openNew(){
+  PICK = null; CRUMBS = [];
+  modalOpen({ title:'Новая заявка', wide:true, bodyHTML:
+    '<div class="f-search" style="margin-bottom:10px">' + icon('search') +
+      '<input id="nQ" type="search" placeholder="Название или артикул" autocomplete="off"></div>' +
+    '<div class="pc-crumbs" id="nCrumbs"></div>' +
+    '<div id="nList"><div class="loading">Загрузка…</div></div>' });
+  let timer = null;
+  $('nQ').oninput = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => $('nQ').value.trim().length >= 2 ? runSearch2() : loadTree(CRUMBS.length ? CRUMBS[CRUMBS.length - 1].code : null), 250);
+  };
+  loadTree(null);
+}
+async function loadTree(code){
+  $('nList').innerHTML = '<div class="loading">Загрузка…</div>';
+  const { data, error } = await sb.rpc('purchase_tree', { p_parent: code });
+  if(!$('nList')) return;
+  if(error){ $('nList').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  if(!code) CRUMBS = data.parent ? [{ code: data.parent.code, name: data.parent.name }] : [];
+  paintCrumbs();
+  const g = data.groups || [], it = data.items || [];
+  if(!g.length && !it.length){ $('nList').innerHTML = '<div class="empty">В этой папке пусто</div>'; return; }
+  $('nList').innerHTML = '<div class="pc-list">' +
+    g.map(x => '<button type="button" class="pc-row grp" data-g="' + esc(x.code) + '" data-n="' + esc(x.name) + '">' +
+      '<span class="pc-ic">📁</span><span class="pc-nm">' + esc(x.name) + '</span><span class="dim rf-small">' + x.count + '</span></button>').join('') +
+    it.map(itemRowHTML).join('') + '</div>';
+  wireList(it);
+}
+async function runSearch2(){
+  const q = $('nQ').value.trim();
+  $('nList').innerHTML = '<div class="loading">Ищем…</div>';
+  const { data, error } = await sb.rpc('purchase_search', { p_q: q });
+  if(!$('nList') || $('nQ').value.trim() !== q) return;
+  if(error){ $('nList').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  $('nCrumbs').innerHTML = '<span class="dim rf-small">Поиск по всей номенклатуре' + (data.length >= 60 ? ' · показаны первые 60' : '') + '</span>';
+  if(!data.length){ $('nList').innerHTML = '<div class="empty">Ничего не нашлось</div>'; return; }
+  $('nList').innerHTML = '<div class="pc-list">' + data.map(itemRowHTML).join('') + '</div>';
+  wireList(data);
+}
+function itemRowHTML(x){
+  return '<button type="button" class="pc-row" data-i="' + esc(x.code) + '">' +
+    '<span class="pc-nm">' + esc(x.name) +
+      '<span class="dim rf-small rf-blk">' + esc([x.article, x.unit, (x.path || []).slice(1).join(' / ')].filter(Boolean).join(' · ')) + '</span></span></button>';
+}
+function paintCrumbs(){
+  $('nCrumbs').innerHTML = CRUMBS.map((c, i) => i === CRUMBS.length - 1
+    ? '<b>' + esc(c.name) + '</b>'
+    : '<button type="button" class="rf-lnk" data-c="' + i + '">' + esc(c.name) + '</button>').join(' / ');
+  $('nCrumbs').querySelectorAll('[data-c]').forEach(b => b.onclick = () => {
+    CRUMBS = CRUMBS.slice(0, Number(b.dataset.c) + 1);
+    loadTree(CRUMBS[CRUMBS.length - 1].code).then(() => {});
+  });
+}
+function wireList(items){
+  $('nList').querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
+    CRUMBS.push({ code: b.dataset.g, name: b.dataset.n });
+    loadTreeKeep(b.dataset.g);
+  });
+  $('nList').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    const x = items.find(i => i.code === b.dataset.i);
+    if(x) showForm(x);
+  });
+}
+/* переход в папку: крошки уже обновлены, корень не пересчитываем */
+async function loadTreeKeep(code){
+  const keep = CRUMBS.slice();
+  await loadTree(code);
+  CRUMBS = keep;
+  paintCrumbs();
+}
+function showForm(x){
+  PICK = x;
+  const body = modalBody();
+  body.innerHTML =
+    '<div class="pc-pick"><div><b>' + esc(x.name) + '</b>' +
+      '<span class="dim rf-small rf-blk">' + esc([x.article, (x.path || CRUMBS.map(c => c.name)).join(' / ')].filter(Boolean).join(' · ')) + '</span></div>' +
+      '<button type="button" class="btn sm ghost" id="nBack">Другой товар</button></div>' +
+    '<div class="field"><label class="field-label" for="nQty">Количество' + (x.unit ? ', ' + esc(x.unit) : '') + ' <span class="req">*</span></label>' +
+      '<input id="nQty" type="number" inputmode="decimal" min="0" step="any"></div>' +
+    '<div class="field"><label class="field-label" for="nNeed">Когда нужно</label>' +
+      '<input id="nNeed" type="date" min="' + esc(tzYmd()) + '">' +
+      '<div class="chips-plain" style="margin:8px 0 0">' + [[1, 'Завтра'], [3, 'Через 3 дня'], [7, 'Через неделю']].map(d =>
+        '<button type="button" class="chip" data-d="' + d[0] + '">' + d[1] + '</button>').join('') + '</div></div>' +
+    '<div class="field"><label class="field-label" for="nClient">Для какого клиента</label>' +
+      '<input id="nClient" type="text" maxlength="200" placeholder="Необязательно"></div>' +
+    '<div class="field"><label class="field-label" for="nCmt">Комментарий</label>' +
+      '<textarea id="nCmt" rows="3" maxlength="1000" placeholder="Необязательно"></textarea></div>' +
+    '<div class="btn-row" style="margin-top:16px">' +
+      '<button class="btn" id="crmSave" style="flex:1">Отправить закупщику</button>' +
+      '<button class="btn ghost" id="crmCancel">Отмена</button></div><div class="msg err" id="crmMsg"></div>';
+  $('crmCancel').onclick = modalClose;
+  $('nBack').onclick = openNew;
+  body.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    const d = new Date(Date.now() + Number(b.dataset.d) * 864e5);
+    $('nNeed').value = tzYmd(d);
+  });
+  $('nQty').focus();
+  $('crmSave').onclick = async () => {
+    const qty = Number(String($('nQty').value).replace(',', '.'));
+    if(!(qty > 0)) return modalMsg('Укажите количество');
+    modalBusy(true, 'Отправляем…');
+    const { data, error } = await sb.rpc('purchase_create', {
+      p_item: PICK.code, p_qty: qty, p_need_by: $('nNeed').value || null,
+      p_client: $('nClient').value.trim() || null, p_comment: $('nCmt').value.trim() || null
+    });
+    modalBusy(false, 'Отправить закупщику');
+    if(error) return modalMsg(errText(error));
+    modalClose();
+    toast('Заявка №' + data + ' отправлена закупщику');
+    if(TAB === 'stats') showTab(ACC.view ? 'all' : 'mine');
+    else loadRows(true);
+  };
+}
+
+/* ---------- статистика ---------- */
+async function loadStats(){
+  const m = $('fMonth').value || tzYmd().slice(0, 7);
+  const from = m + '-01';
+  const d = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0);
+  const to = m + '-' + String(d.getDate()).padStart(2, '0');
+  $('statTiles').innerHTML = '';
+  $('statsBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const { data, error } = await sb.rpc('purchase_stats', { p_from: from, p_to: to });
+  if(error){ $('statsBody').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  const s = data || {}, b = s.by_status || {};
+  const tile = (n, c) => '<div class="tile"><div class="n">' + esc(String(n)) + '</div><div class="c">' + esc(c) + '</div></div>';
+  $('statTiles').innerHTML =
+    tile(s.total || 0, 'заявок за месяц') +
+    tile(b.arrived || 0, 'пришло') +
+    tile(b.refused || 0, 'отказ') +
+    tile(s.avg_days_arrived === null || s.avg_days_arrived === undefined ? '—' : String(s.avg_days_arrived).replace('.', ','), 'дней в среднем до «Пришло»');
+  if(!s.total){ $('statsBody').innerHTML = '<div class="empty">За этот месяц заявок нет</div>'; return; }
+  const top = s.top_items || [], by = s.by_author || [];
+  $('statsBody').innerHTML =
+    '<div class="sec">Что просят чаще всего</div>' +
+    '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr><th>Товар</th><th class="num">Заявок</th>' +
+      '<th class="num">Всего</th><th class="num">Менеджеров</th><th class="num">Отказ</th></tr></thead><tbody>' +
+      top.map(x => '<tr><td data-label="Товар" class="nm">' + esc(x.name) + '</td>' +
+        '<td data-label="Заявок" class="num">' + x.requests + '</td>' +
+        '<td data-label="Всего" class="num">' + esc(qtyUnit(x.qty, x.unit)) + '</td>' +
+        '<td data-label="Менеджеров" class="num">' + x.authors + '</td>' +
+        '<td data-label="Отказ" class="num">' + (x.refused || 0) + '</td></tr>').join('') +
+    '</tbody></table></div>' +
+    '<div class="sec">По менеджерам</div>' +
+    '<div class="panel rf-panel"><table class="tbl rf-tbl"><thead><tr><th>Менеджер</th><th class="num">Заявок</th>' +
+      '<th class="num">Пришло</th><th class="num">Отказ</th></tr></thead><tbody>' +
+      by.map(x => '<tr><td data-label="Менеджер" class="nm">' + esc(empName(x.author_id)) + '</td>' +
+        '<td data-label="Заявок" class="num">' + x.requests + '</td>' +
+        '<td data-label="Пришло" class="num">' + x.arrived + '</td>' +
+        '<td data-label="Отказ" class="num">' + x.refused + '</td></tr>').join('') +
+    '</tbody></table></div>';
+}
+</script>
+</body>
+</html>

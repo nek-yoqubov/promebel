@@ -1229,3 +1229,17 @@ body.preview .tbar{top:var(--pvh)}
 .co-note{display:block;white-space:pre-line;font-size:12.5px;font-weight:500;line-height:1.45;color:var(--ink-2);margin-top:3px}
 .co-why{padding:10px 12px;margin:0 0 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(127,127,127,.18)}
 .co-why b{display:block;font-size:13px;margin-bottom:2px}
+
+/* ---------- Закупки ---------- */
+.pc-crumbs{font-size:13.5px;margin:0 0 10px;line-height:1.6}
+.pc-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:60vh;overflow-y:auto}
+.pc-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);
+  padding:11px 14px;color:var(--ink);font:inherit;font-size:14.5px;cursor:pointer}
+.pc-row:last-child{border-bottom:none}
+.pc-row:hover{background:rgba(127,127,127,.08)}
+.pc-row.grp .pc-nm{font-weight:700}
+.pc-ic{flex:0 0 auto}
+.pc-nm{flex:1;min-width:0;word-break:break-word}
+.pc-pick{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;margin:0 0 14px;
+  border-radius:12px;background:rgba(127,127,127,.06);border:1px solid var(--line)}
+.tbl tr.pc-sub td{background:rgba(127,127,127,.04);font-size:13.5px}

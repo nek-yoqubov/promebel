@@ -49,7 +49,8 @@ const ROLE_RU = {
   callcenter:'Колл-центр',
   production:'Раскрой',
   cashier:'Касса',
-  auditor:'Ревизор'
+  auditor:'Ревизор',
+  purchasing:'Закупщик'
 };
 const EVENT_RU = { created:'Задача создана', status_changed:'Смена статуса', escalated:'Эскалация руководителю' };
 const DOC_TYPE_RU = {
@@ -498,6 +499,7 @@ const ICONS = {
   moon:'<svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
   alert:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 9v5M12 17h.01"/></svg>',
   flag:'<svg class="i" viewBox="0 0 24 24"><path d="M4 21V4h11l-1.5 4L15 12H4"/></svg>',
+  box:'<svg class="i" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>',
   download:'<svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><path d="M12 15V3"/></svg>',
   share:'<svg class="i" viewBox="0 0 24 24"><path d="M12 16V3"/><polyline points="8 7 12 3 16 7"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
   link:'<svg class="i" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
@@ -574,22 +576,23 @@ const SECTIONS = [
   { key:'cal',     group:'work',    label:'Календарь',      href:'calendar.html',         icon:'calendar' },
   { key:'plan',    group:'work',    label:'Мой план',       href:'plan.html',             icon:'checkCircle',
     roles:['sales','head','regional','brand','admin','director','auditor'] },
+  { key:'purchases', group:'work',  label:'Закупки',        href:'purchases.html',        icon:'box', purchases:true },
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
-    notRoles:['production','cashier'] },
+    notRoles:['production','cashier','purchasing'] },
   { key:'raffle',  group:'sales',   label:'Розыгрыш',       href:'raffle.html',           icon:'gift',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
   { key:'callout', group:'sales',   label:'Обзвон клиентов', href:'callout.html',         icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'oct26' },
   { key:'callout_risk26', group:'sales', label:'Обзвон: дилеры, ОПИП', href:'callout-risk.html', icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'risk26' },
-  { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star' },
+  { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star', notRoles:['purchasing'] },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
     roles:['callcenter','head','admin','director','auditor'], soon:true },
   { key:'hr',      group:'company', label:'Подбор и адаптация', href:'hr.html',           icon:'idcard',
     roles:['hr','admin','director'], orBoss:true, soon:true },
   { key:'admin',   group:'company', label:'Сотрудники',     href:'admin.html',            icon:'users',
     roles:['admin','director','hr'] },
-  { key:'links',   group:'company', label:'Ссылки и планы', href:'links.html',            icon:'link' },
+  { key:'links',   group:'company', label:'Ссылки и планы', href:'links.html',            icon:'link', notRoles:['purchasing'] },
   { key:'wa',      group:'control', label:'WhatsApp',       href:'whatsapp.html',         icon:'phone',
     roles:['admin','director','head','callcenter','auditor'] },
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
@@ -614,11 +617,26 @@ async function loadCallouts(){
   CALLOUTS = data.map(x => x.campaign);
   try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), list: CALLOUTS })); }catch(e){}
 }
+/* Закупки: кто оставляет заявки и кто видит все — решает база (crm.purchase_access). Держим 10 минут. */
+let PURCH = null;
+async function loadPurchaseAccess(){
+  if(!ME) return;
+  const key = 'crm_purch';
+  try{
+    const c = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ PURCH = c.v; return; }
+  }catch(e){}
+  const { data, error } = await sb.rpc('purchase_access');
+  if(error || !data) return;
+  PURCH = data;
+  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), v: PURCH })); }catch(e){}
+}
 /* есть ли у меня подчинённые */
 function hasTeam(){ return !!(ME && EMPS.some(e => e.manager_id === ME.id)); }
 function canSee(s){
   if(!ME) return false;
   if(s.notRoles && s.notRoles.includes(ME.role)) return false;
+  if(s.purchases) return !!(PURCH && (PURCH.create || PURCH.view));
   // обзвон временный: после даты окончания и тем, у кого нет клиентов, пункт не нужен
   if(s.campaign && CALLOUTS && !CALLOUTS.includes(s.campaign)) return false;
   if(s.roles && !s.roles.includes(ME.role)) return s.orBoss ? hasTeam() : false;
@@ -653,7 +671,7 @@ function tabItems(){
 async function renderShell(opts){
   const o = opts || {};
   const tab = o.tab || '';
-  await Promise.all([loadEmployees(), loadCallouts()]);   // подчинённые и обзвоны решают, какие пункты показать
+  await Promise.all([loadEmployees(), loadCallouts(), loadPurchaseAccess()]);   // подчинённые и обзвоны решают, какие пункты показать
 
   const tabs = tabItems();
   const tabbar = tabs.map(n => {

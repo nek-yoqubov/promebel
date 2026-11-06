@@ -113,7 +113,7 @@ function canManage(){ return isBoss() && !readOnly(); }
 /* менеджер видит только своих — значит, любой его клиент свой */
 function canCall(){ return !readOnly() && (isBoss() || !isViewer()); }
 /* свой клиент: закреплён лично за мной или за моим кодом менеджера */
-function isMine(r){ return !readOnly() && !!ME && !!r && (r.employee_id ? r.employee_id === ME.id : sellerMatch(ME, r.seller)); }
+function isMine(r){ return !readOnly() && !!ME && !!r && (r.employee_id ? r.employee_id === ME.id : sellerMatch(STAFF.find(e => e.id === ME.id) || ME, r.seller)); }
 
 function tabs(){
   if(!isViewer()) return [{ key:'list', label:'Мой список' }];

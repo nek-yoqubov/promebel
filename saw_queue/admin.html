@@ -50,30 +50,25 @@ document.getElementById('lnkBack').innerHTML='<svg class="i sm" viewBox="0 0 24 
 function flash(t,ok){const m=document.getElementById('msg');m.textContent=t;m.className='msg '+(ok?'ok':'err')}
 
 const FN='https://yqspwkngntoklyggnosi.supabase.co/functions/v1/manage-users';
-let ADMIN_AUTH=null; // {login,password} — держим в памяти страницы, НЕ в localStorage
-
 async function callFn(action, extra){
-  const resp=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({action, auth:ADMIN_AUTH, ...extra})});
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session) return {ok:false,error:'forbidden'};
+  const resp=await fetch(FN,{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+    body:JSON.stringify({action, ...extra})});
   return await resp.json();
 }
-function askAdminPassword(){
-  const p=prompt('Для управления пользователями введите свой пароль администратора:');
-  if(p===null) return false;
-  ADMIN_AUTH={login:Auth.user(), password:p};
-  return true;
-}
 async function loadU(){
-  if(!ADMIN_AUTH && !askAdminPassword()){ document.getElementById('list').innerHTML='<div class="hint">Доступ не подтверждён</div>'; return; }
   const r=await callFn('list');
   if(!r.ok){
-    if(r.error==='forbidden'){ ADMIN_AUTH=null; flash('Неверный пароль или нет прав'); document.getElementById('list').innerHTML=''; return; }
+    if(r.error==='forbidden'){ flash('Нет прав администратора'); document.getElementById('list').innerHTML=''; return; }
     flash('Не удалось загрузить'); return;
   }
   document.getElementById('list').innerHTML=r.users.map(u=>`
-    <div class="urow"><span class="l">${u.login}</span><span class="r">[${u.role}]</span>
+    <div class="urow"><span class="l">${esc(u.login)}</span><span class="r">[${esc(u.role)}]</span>
     <span class="spacer"></span>
-    ${u.login==='admin'?'':`<button class="btn sm danger" onclick="delU('${u.login}')">Удалить</button>`}</div>`).join('');
+    ${u.login==='admin'?'':`<button class="btn sm danger" data-del="${esc(u.login)}">Удалить</button>`}</div>`).join('');
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>delU(b.dataset.del));
 }
 async function addU(){
   const login=document.getElementById('nl').value.trim();

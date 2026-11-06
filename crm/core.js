@@ -1082,6 +1082,35 @@ function toast(text){
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
+/* ---------- Номер клиента: кнопку рисуем только у своих клиентов,
+   а сам номер отдаёт база (crm.client_phone) — только тому, за кем закреплён клиент.
+   Каждый показ записывается в crm.phone_reveals. ---------- */
+function fmtPhone(p){
+  const m = String(p || '').match(/^\+992(\d{2})(\d{3})(\d{2})(\d{2})$/);
+  return m ? '+992 ' + m[1] + ' ' + m[2] + ' ' + m[3] + ' ' + m[4] : String(p || '');
+}
+function dialBtnHTML(code, block){
+  return '<button type="button" class="btn sm' + (block ? ' block' : '') + '" data-dial="' + esc(code) + '">' +
+    icon('phone') + 'Номер</button>';
+}
+function wireDial(root){
+  (root || document).querySelectorAll('[data-dial]').forEach(b => b.onclick = async e => {
+    e.preventDefault(); e.stopPropagation();
+    b.disabled = true;
+    const { data, error } = await sb.rpc('client_phone', { p_client: b.dataset.dial });
+    b.disabled = false;
+    if(error){ toast(errText(error)); return; }
+    if(!data){ toast('Номера нет в базе'); return; }
+    const a = document.createElement('a');
+    a.className = b.className;
+    a.href = 'tel:' + data;
+    a.innerHTML = icon('phone') + esc(fmtPhone(data));
+    a.onclick = ev => ev.stopPropagation();
+    b.replaceWith(a);
+    if(window.matchMedia && matchMedia('(pointer: coarse)').matches){ location.href = 'tel:' + data; return; }
+    if(navigator.clipboard) navigator.clipboard.writeText(data).then(() => toast('Номер скопирован'), () => {});
+  });
+}
 /* Зелёная галочка по центру на 1,2 секунды */
 function playDone(){
   if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;

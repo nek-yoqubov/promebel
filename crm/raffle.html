@@ -385,6 +385,7 @@ function paintList(){
     '</tr></thead><tbody>' + rows.map(r => rowHTML(r, sel)).join('') + '</tbody></table></div>';
 
   $('listBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  wireDial($('listBody'));
   $('listBody').querySelectorAll('[data-call]').forEach(b => b.onclick = () => {
     const r = rows.find(x => x.client_code === b.dataset.call);
     openCall(r);
@@ -409,6 +410,7 @@ function rowHTML(r, sel){
     '<td data-label="Звонок"><span>' + lastCallHTML(r) + '</span></td>' +
     '<td data-label="Перезвонить">' + callbackHTML(r.callback_date) + '</td>' +
     '<td class="acts-cell"><div class="acts">' +
+      (!readOnly() && r.employee_id === ME.id ? dialBtnHTML(r.client_code) : '') +
       (canCall(r) ? '<button class="btn sm ok" data-call="' + code + '">' + icon('phone') + 'Позвонил</button>' : '') +
     '</div></td>' +
   '</tr>';
@@ -506,6 +508,7 @@ function paintCard(calls, log){
       (r.employee_id ? '<button class="btn sm ghost" id="cardOff">Снять</button>' : '') +
     '</div>';
   }
+  if(!readOnly() && r.employee_id === ME.id) html += '<div style="margin:4px 0 6px">' + dialBtnHTML(r.client_code, true) + '</div>';
   if(canCall(r)){
     html += '<button class="btn ok block" id="cardCall" style="margin:4px 0 6px">' + icon('phone') + 'Позвонил</button>';
   }else if(!readOnly() && r.employee_id !== ME.id){
@@ -525,6 +528,7 @@ function paintCard(calls, log){
           (x.actor_id ? ' · ' + empName(x.actor_id) : '')) + '</div></div>').join('') + '</div>';
   }
   modalBody().innerHTML = html;
+  wireDial(modalBody());
 
   if($('cardSet')) $('cardSet').onclick = async () => {
     const emp = $('cardEmp').value;

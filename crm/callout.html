@@ -112,6 +112,8 @@ function isViewer(){ return isBoss() || isBossRole() || isAuditor(); }
 function canManage(){ return isBoss() && !readOnly(); }
 /* менеджер видит только своих — значит, любой его клиент свой */
 function canCall(){ return !readOnly() && (isBoss() || !isViewer()); }
+/* свой клиент: закреплён лично за мной или за моим кодом менеджера */
+function isMine(r){ return !readOnly() && !!ME && !!r && (r.employee_id ? r.employee_id === ME.id : sellerMatch(ME, r.seller)); }
 
 function tabs(){
   if(!isViewer()) return [{ key:'list', label:'Мой список' }];
@@ -288,6 +290,7 @@ function paintList(){
     '</tr></thead><tbody>' + rows.map(r => rowHTML(r, sel, showSeller)).join('') + '</tbody></table></div>';
 
   $('listBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openCard(b.dataset.open));
+  wireDial($('listBody'));
   $('listBody').querySelectorAll('[data-call]').forEach(b => b.onclick = () =>
     openCall(rows.find(x => x.client_code === b.dataset.call)));
   $('listBody').querySelectorAll('[data-sel]').forEach(c => c.onchange = () => {
@@ -313,6 +316,7 @@ function rowHTML(r, sel, showSeller){
     '<td data-label="Перезвонить">' + callbackHTML(r.callback_date) + '</td>' +
     '<td data-label="Пришёл"><span>' + cameHTML(r) + '</span></td>' +
     '<td class="acts-cell"><div class="acts">' +
+      (isMine(r) ? dialBtnHTML(r.client_code) : '') +
       (canCall() ? '<button class="btn sm ok" data-call="' + code + '">' + icon('phone') + 'Позвонил</button>' : '') +
     '</div></td>' +
   '</tr>';
@@ -397,6 +401,7 @@ function paintCard(c){
     html += '<div class="rf-assign"><select id="cardSeller" aria-label="Кому">' + sellerOptions(c.seller) + '</select>' +
       '<button class="btn sm" id="cardSet">Перекрепить</button></div>';
   }
+  if(isMine(c)) html += '<div style="margin:4px 0 6px">' + dialBtnHTML(c.client_code, true) + '</div>';
   if(canCall()){
     html += '<button class="btn ok block" id="cardCall" style="margin:4px 0 6px">' + icon('phone') + 'Позвонил</button>';
   }
@@ -427,6 +432,7 @@ function paintCard(c){
     (docs.length ? '<div class="co-docs">' + docs.map(docHTML).join('') + '</div>' : '<div class="hint">Покупок нет</div>');
 
   modalBody().innerHTML = html;
+  wireDial(modalBody());
   if($('cardSet')) $('cardSet').onclick = async () => {
     await reassign([c.client_code], $('cardSeller').value);
     openCard(c.client_code);

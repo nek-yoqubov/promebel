@@ -73,6 +73,7 @@ let TAB = '', MINE_F = 'act', ALL_F = 'act', OPEN = new Set();
 
 (async () => {
   if(!await requireAuth()) return;
+  try{ sessionStorage.removeItem('crm_purch'); }catch(e){}   // на самой странице права всегда свежие
   await loadPurchaseAccess();
   ACC = PURCH || {};
   if(!ACC.create && !ACC.view){ location.replace('index.html'); return; }

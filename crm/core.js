@@ -577,8 +577,7 @@ const SECTIONS = [
   { key:'plan',    group:'work',    label:'Мой план',       href:'plan.html',             icon:'checkCircle',
     roles:['sales','head','regional','brand','admin','director','auditor'] },
   { key:'purchases', group:'work',  label:'Закупки',        href:'purchases.html',        icon:'box', purchases:true },
-  { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
-    notRoles:['production','cashier','purchasing'] },
+  { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users', clientsAccess:true },
   { key:'callout', group:'sales',   label:'Обзвон клиентов', href:'callout.html',         icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'oct26' },
   { key:'callout_agt', group:'sales', label:'Обзвон AGT',    href:'callout.html?c=agt',    icon:'phone',
@@ -618,6 +617,19 @@ async function loadCallouts(){
   try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), list: CALLOUTS })); }catch(e){}
 }
 /* Закупки: кто оставляет заявки и кто видит все — решает база (crm.purchase_access). Держим 10 минут. */
+let CLIENTS_OK = false;
+async function loadClientsAccess(){
+  if(!ME) return;
+  const key = 'crm_cli';
+  try{
+    const c = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ CLIENTS_OK = c.v; return; }
+  }catch(e){}
+  const { data, error } = await sb.rpc('clients_access');
+  if(error) return;
+  CLIENTS_OK = !!data;
+  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), v: CLIENTS_OK })); }catch(e){}
+}
 let PURCH = null;
 async function loadPurchaseAccess(){
   if(!ME) return;
@@ -637,6 +649,7 @@ function canSee(s){
   if(!ME) return false;
   if(s.notRoles && s.notRoles.includes(ME.role)) return false;
   if(s.purchases) return !!(PURCH && (PURCH.create || PURCH.view));
+  if(s.clientsAccess) return CLIENTS_OK;
   // обзвон временный: после даты окончания и тем, у кого нет клиентов, пункт не нужен
   if(s.campaign && CALLOUTS && !CALLOUTS.includes(s.campaign)) return false;
   if(s.roles && !s.roles.includes(ME.role)) return s.orBoss ? hasTeam() : false;
@@ -671,7 +684,7 @@ function tabItems(){
 async function renderShell(opts){
   const o = opts || {};
   const tab = o.tab || '';
-  await Promise.all([loadEmployees(), loadCallouts(), loadPurchaseAccess()]);   // подчинённые и обзвоны решают, какие пункты показать
+  await Promise.all([loadEmployees(), loadCallouts(), loadPurchaseAccess(), loadClientsAccess()]);   // подчинённые и обзвоны решают, какие пункты показать
 
   const tabs = tabItems();
   const tabbar = tabs.map(n => {
@@ -1119,6 +1132,7 @@ function wireDial(root){
     b.disabled = false;
     if(error){ toast(errText(error)); return; }
     if(!data){ toast('Номера нет в базе'); return; }
+    if(String(data).charAt(0) === '!'){ b.innerHTML = icon('phone') + 'Лимит'; b.disabled = true; toast(String(data).slice(1)); return; }
     const a = document.createElement('a');
     a.className = b.className;
     a.href = 'tel:' + data;

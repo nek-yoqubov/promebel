@@ -579,8 +579,6 @@ const SECTIONS = [
   { key:'purchases', group:'work',  label:'Закупки',        href:'purchases.html',        icon:'box', purchases:true },
   { key:'clients', group:'sales',   label:'Клиенты',        href:'clients.html',          icon:'users',
     notRoles:['production','cashier','purchasing'] },
-  { key:'raffle',  group:'sales',   label:'Розыгрыш',       href:'raffle.html',           icon:'gift',
-    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'] },
   { key:'callout', group:'sales',   label:'Обзвон клиентов', href:'callout.html',         icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'oct26' },
   { key:'callout_risk26', group:'sales', label:'Обзвон: дилеры, ОПИП', href:'callout-risk.html', icon:'phone',

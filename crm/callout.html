@@ -54,7 +54,8 @@ const $ = id => document.getElementById(id);
 
 /* Список фиксированный: покупатели 01.08–22.10, закреплены за кодом продавца («Мебельный9»).
    Суммы и покупки берёт из 1С функция crm.callout_list — в CRM они не хранятся. */
-const CAMPAIGN = 'oct26';
+const CAMPAIGN = (new URLSearchParams(location.search).get('c') || 'oct26').replace(/[^a-z0-9_]/gi, '');
+const MENU_KEY = CAMPAIGN === 'oct26' ? 'callout' : 'callout_' + CAMPAIGN;
 const SECTION_ROLES = ['sales','head','regional','brand','callcenter','admin','director','auditor'];
 const CALL_RES_RU = { reached:'Дозвонился', no_answer:'Не взял', promised:'Обещал прийти', refused:'Отказ' };
 const CALL_RES_CLS = { reached:'info', no_answer:'muted', promised:'ok', refused:'late' };
@@ -78,7 +79,7 @@ let FILTER = '', SELLER = '', SEL = new Set();
   if(!await requireAuth()) return;
   if(!SECTION_ROLES.includes(ME.role)){ location.replace('index.html'); return; }
 
-  await renderShell({ title:'Обзвон клиентов', tab:'callout' });
+  await renderShell({ title:'Обзвон клиентов', tab:MENU_KEY });
   await loadEmployees();
   $('searchIcon').outerHTML = icon('search');
 
@@ -89,6 +90,7 @@ let FILTER = '', SELLER = '', SEL = new Set();
     sb.rpc('callout_campaigns')
   ]);
   CFG = (cfg.data && cfg.data.value) || {};
+  if(CAMPAIGN !== 'oct26' && CFG.title){ document.querySelector('.pagehead h1').textContent = CFG.title; document.title = 'PRO MEBEL CRM — ' + CFG.title; }
   BOSSES = (raffle.data && raffle.data.value && raffle.data.value.bosses) || [];
   STAFF = staff.data || [];
   paintState();
@@ -130,7 +132,7 @@ function paintSeg(){
 }
 function showTab(t){
   TAB = t;
-  history.replaceState(null, '', 'callout.html?tab=' + t);
+  history.replaceState(null, '', 'callout.html?' + (CAMPAIGN !== 'oct26' ? 'c=' + CAMPAIGN + '&' : '') + 'tab=' + t);
   document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $('paneList').hidden = t !== 'list';
   $('paneDist').hidden = t !== 'dist';
@@ -148,6 +150,13 @@ function paintOther(list){
     : '';
 }
 function paintState(){
+  if(CAMPAIGN === 'agt'){
+    $('cfgState').textContent = CFG.cycle_start
+      ? 'Клиенты, которые перестали брать AGT или стали брать меньше (продажи за ' + fmtDateOnly(CFG.period_from) + '–' + fmtDateOnly(CFG.period_to) +
+        ') · каждый день добавляются новые клиенты · список обновляется раз в ' + (CFG.cycle_days || 20) + ' дней · «пришёл» — покупка после звонка'
+      : 'Обзвон не настроен';
+    return;
+  }
   $('cfgState').textContent = CFG.period_from
     ? 'Покупатели за ' + fmtDateOnly(CFG.period_from) + '–' + fmtDateOnly(CFG.period_to) +
       ' · «пришёл» — покупка после звонка · суммы из 1С, обновляются раз в час'

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Карта продаж</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="leaflet.css">
+<link rel="stylesheet" href="crm.css">
+<style>
+.mp-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 16px 10px}
+.mp-filters select,.mp-filters input[type=date]{width:auto;min-width:0}
+.mp-item{position:relative;flex:1 1 240px;min-width:200px}
+.mp-sug{position:absolute;left:0;right:0;top:100%;z-index:1000;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);max-height:320px;overflow:auto;box-shadow:0 8px 24px #0005}
+.mp-sug button{display:block;width:100%;text-align:left;padding:9px 12px;background:none;border:none;color:inherit;font:inherit;cursor:pointer;border-bottom:1px solid var(--line)}
+.mp-sug button:hover{background:var(--card)}
+.mp-sug small{color:var(--muted)}
+.mp-wrap{display:grid;grid-template-columns:1fr;gap:12px;padding:0 16px 16px}
+@media (min-width:1000px){ .mp-wrap{grid-template-columns:minmax(0,1fr) 360px} }
+#map{height:62vh;min-height:360px;border-radius:var(--radius);border:1px solid var(--line);background:var(--card)}
+.mp-side{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;min-height:200px}
+.mp-side h3{margin:0 0 4px;font:800 18px 'Manrope'}
+.mp-kv{display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 12px;color:var(--muted);font-size:13.5px}
+.mp-kv b{display:block;color:var(--ink);font:800 17px 'Manrope';font-variant-numeric:tabular-nums}
+.mp-top{margin:10px 0 0}
+.mp-top div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.mp-top div span:last-child{flex:none;font-variant-numeric:tabular-nums;font-weight:700}
+.mp-top h4{margin:12px 0 4px;font:700 13px 'Manrope';color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.mp-list div{cursor:pointer}
+.mp-lbl{background:none;border:none;box-shadow:none;color:var(--ink);font:700 12px 'Manrope';text-shadow:0 0 3px var(--bg),0 0 3px var(--bg)}
+.mp-lbl:before{display:none}
+.leaflet-container{font:inherit}
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Карта продаж</h1></div>
+
+  <div class="mp-filters">
+    <select id="fPeriod" aria-label="Период">
+      <option value="m0">Этот месяц</option>
+      <option value="m1">Прошлый месяц</option>
+      <option value="3m" selected>Последние 3 месяца</option>
+      <option value="y0">С начала года</option>
+      <option value="own">Свой период</option>
+    </select>
+    <input type="date" id="fFrom" hidden aria-label="С">
+    <input type="date" id="fTo" hidden aria-label="По">
+    <div class="mp-item">
+      <div class="f-search"><span id="searchIcon"></span>
+        <input id="fItem" type="search" placeholder="Все товары — или найти товар / папку" autocomplete="off"></div>
+      <div class="mp-sug" id="sug" hidden></div>
+    </div>
+    <div class="seg" id="metric" style="flex:none">
+      <button data-m="amount" class="on">Сумма</button><button data-m="clients">Клиенты</button>
+    </div>
+  </div>
+  <div class="hint" id="state" style="padding:0 16px 10px"></div>
+
+  <div class="mp-wrap">
+    <div id="map"></div>
+    <div class="mp-side" id="side"><div class="loading">Загрузка…</div></div>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script src="leaflet.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+let FIT = false, MAP = null, LAYER = null, TILES = null, DATA = null, METRIC = 'amount', ITEM = null, SEL = null, SEQ = 0;
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'Карта продаж', tab:'map' });
+  const { data: ok } = await sb.rpc('map_access');
+  if(!ok){ location.replace('index.html'); return; }
+  $('searchIcon').outerHTML = icon('search');
+
+  MAP = L.map('map', { zoomControl:true, attributionControl:true }).setView([40.05, 69.3], 8);
+  MAP.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+  setTiles();
+  LAYER = L.layerGroup().addTo(MAP);
+  new MutationObserver(setTiles).observe(document.body, { attributes:true, attributeFilter:['class'] });
+
+  $('fPeriod').onchange = () => {
+    const own = $('fPeriod').value === 'own';
+    $('fFrom').hidden = $('fTo').hidden = !own;
+    if(own && !$('fFrom').value){ const p = period('3m'); $('fFrom').value = p[0]; $('fTo').value = p[1]; }
+    load();
+  };
+  $('fFrom').onchange = $('fTo').onchange = load;
+  document.querySelectorAll('#metric button').forEach(b => b.onclick = () => {
+    METRIC = b.dataset.m;
+    document.querySelectorAll('#metric button').forEach(x => x.classList.toggle('on', x === b));
+    draw();
+  });
+
+  let t = null;
+  $('fItem').oninput = () => {
+    if(ITEM && $('fItem').value !== ITEM.name){ ITEM = null; load(); }
+    clearTimeout(t); t = setTimeout(suggest, 250);
+  };
+  $('fItem').onsearch = () => { if(!$('fItem').value && ITEM){ ITEM = null; load(); } };
+  document.addEventListener('click', e => { if(!e.target.closest('.mp-item')) $('sug').hidden = true; });
+
+  load();
+})();
+
+function setTiles(){
+  if(!MAP) return;
+  const light = document.body.classList.contains('light');
+  if(TILES) MAP.removeLayer(TILES);
+  TILES = L.tileLayer('https://{s}.basemaps.cartocdn.com/' + (light ? 'light_all' : 'dark_all') + '/{z}/{x}/{y}{r}.png', {
+    maxZoom: 18, subdomains:'abcd',
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  }).addTo(MAP);
+}
+
+function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function period(v){
+  const today = new Date(tzYmd() + 'T00:00:00');
+  const y = today.getFullYear(), m = today.getMonth();
+  if(v === 'm0') return [ymd(new Date(y, m, 1)), ymd(today)];
+  if(v === 'm1') return [ymd(new Date(y, m - 1, 1)), ymd(new Date(y, m, 0))];
+  if(v === 'y0') return [ymd(new Date(y, 0, 1)), ymd(today)];
+  if(v === 'own') return [$('fFrom').value, $('fTo').value];
+  const f = new Date(today); f.setMonth(f.getMonth() - 3); f.setDate(f.getDate() + 1);
+  return [ymd(f), ymd(today)];
+}
+
+async function suggest(){
+  const q = $('fItem').value.trim();
+  if(q.length < 2 || (ITEM && q === ITEM.name)){ $('sug').hidden = true; return; }
+  const { data } = await sb.rpc('map_items', { q });
+  if(!data || !data.length){ $('sug').innerHTML = '<div class="hint pad">Ничего не нашли</div>'; $('sug').hidden = false; return; }
+  $('sug').innerHTML = data.map((x, i) =>
+    '<button data-i="' + i + '">' + (x.is_group ? '📁 ' : '') + esc(x.name) +
+    (x.path ? '<br><small>' + esc(x.path) + '</small>' : '') + '</button>').join('');
+  $('sug').hidden = false;
+  $('sug').querySelectorAll('button').forEach(b => b.onclick = () => {
+    ITEM = data[Number(b.dataset.i)];
+    $('fItem').value = ITEM.name;
+    $('sug').hidden = true;
+    load();
+  });
+}
+
+async function load(){
+  const [from, to] = period($('fPeriod').value);
+  if(!from || !to) return;
+  const my = ++SEQ;
+  $('state').textContent = 'Загрузка…';
+  const { data, error } = await sb.rpc('map_data', {
+    p_from: from, p_to: to,
+    p_item: ITEM && !ITEM.is_group ? ITEM.code : null,
+    p_folder: ITEM && ITEM.is_group ? ITEM.code : null
+  });
+  if(my !== SEQ) return;
+  if(error || !data){ $('state').textContent = error ? errText(error) : 'Нет доступа'; return; }
+  DATA = data;
+  $('state').textContent = 'Продажи товара за ' + fmtDateOnly(from) + '–' + fmtDateOnly(to) +
+    (ITEM ? ' · ' + (ITEM.is_group ? 'папка ' : 'товар ') + '«' + ITEM.name + '»' : ' · все товары') +
+    ' · всего ' + som(data.total) + ' · без своих клиентов, возвраты вычтены · данные из 1С, обновляются раз в час';
+  draw();
+}
+
+function val(d){ return METRIC === 'clients' ? d.clients : Math.max(0, d.amount); }
+function fmtVal(d){ return METRIC === 'clients' ? d.clients + ' клиент.' : som(d.amount); }
+
+function draw(){
+  if(!DATA) return;
+  LAYER.clearLayers();
+  const ds = DATA.districts.filter(d => val(d) > 0);
+  const max = Math.max(1, ...ds.map(val));
+  ds.slice().sort((a, b) => val(b) - val(a)).forEach(d => {
+    const r = 8 + 42 * Math.sqrt(val(d) / max);
+    const c = L.circleMarker([d.lat, d.lng], {
+      radius: r, color:'#e8a33d', weight: SEL === d.name ? 3 : 1.5, fillColor:'#e8a33d',
+      fillOpacity: SEL === d.name ? 0.75 : 0.45
+    }).addTo(LAYER);
+    c.bindTooltip(esc(d.name) + '<br>' + esc(fmtVal(d)), { permanent: r > 16, direction:'center', className:'mp-lbl' });
+    c.on('click', () => { SEL = d.name; draw(); });
+  });
+  if(!FIT && ds.length){
+    FIT = true;
+    MAP.fitBounds(L.latLngBounds(ds.filter(d => d.name !== 'Душанбе').map(d => [d.lat, d.lng])).pad(0.15));
+  }
+  side();
+}
+
+function side(){
+  const d = SEL && DATA.districts.find(x => x.name === SEL);
+  if(!d){
+    const ds = DATA.districts.filter(x => x.amount || x.clients);
+    $('side').innerHTML = '<h3>Все районы</h3><div class="hint">Нажмите на район на карте или в списке</div>' +
+      '<div class="mp-top mp-list">' + ds.map(x =>
+        '<div data-n="' + esc(x.name) + '"><span>' + esc(x.name) + ' <small class="hint">· ' + x.clients + ' клиент.</small></span><span>' + esc(som(x.amount)) + '</span></div>').join('') + '</div>';
+    $('side').querySelectorAll('[data-n]').forEach(el => el.onclick = () => { SEL = el.dataset.n; draw(); });
+    return;
+  }
+  const share = DATA.total ? Math.round(100 * d.amount / DATA.total) : 0;
+  $('side').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center"><h3>' + esc(d.name) + '</h3>' +
+      '<button class="btn sm" id="allBtn">Все районы</button></div>' +
+    '<div class="mp-kv"><span><b>' + esc(som(d.amount)) + '</b>сумма · ' + share + '%</span>' +
+      '<span><b>' + d.clients + '</b>клиентов</span><span><b>' + d.docs + '</b>покупок</span></div>' +
+    '<div class="mp-top"><h4>Топ клиентов</h4>' + (d.top_clients.length ? d.top_clients.map(x =>
+      '<div><span>' + esc(x.name) + '</span><span>' + esc(som(x.amount)) + '</span></div>').join('') : '<div class="hint">Нет</div>') +
+    '<h4>Топ товаров</h4>' + (d.top_items.length ? d.top_items.map(x =>
+      '<div><span>' + esc(x.name) + '</span><span>' + esc(som(x.amount)) + '</span></div>').join('') : '<div class="hint">Нет</div>') + '</div>' +
+    (d.name === 'Худжанд' ? '<div class="hint" style="margin-top:10px">Сюда входят и клиенты, у которых район не указан.</div>' : '');
+  $('allBtn').onclick = () => { SEL = null; draw(); };
+}
+</script>
+</body>
+</html>

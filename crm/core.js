@@ -513,6 +513,7 @@ const ICONS = {
   chevron:'<svg class="i sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
   deal:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/></svg>',
   phone:'<svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
+  map:'<svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>',
   chart:'<svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 3L20 7"/></svg>',
   star:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"/></svg>',
   clip:'<svg class="i" viewBox="0 0 24 24"><path d="M21 11.5 12.2 20a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 1 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 1 1-2.6-2.6L15 6.6"/></svg>',
@@ -594,6 +595,7 @@ const SECTIONS = [
   { key:'links',   group:'company', label:'Ссылки и планы', href:'links.html',            icon:'link', notRoles:['purchasing'] },
   { key:'wa',      group:'control', label:'WhatsApp',       href:'whatsapp.html',         icon:'phone',
     roles:['admin','director','head','callcenter','auditor'] },
+  { key:'map',     group:'control', label:'Карта продаж',   href:'map.html',              icon:'map', mapAccess:true },
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
     roles:['admin','director','auditor','head','regional'], orBoss:true },
   { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',
@@ -617,18 +619,18 @@ async function loadCallouts(){
   try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), list: CALLOUTS })); }catch(e){}
 }
 /* Закупки: кто оставляет заявки и кто видит все — решает база (crm.purchase_access). Держим 10 минут. */
-let CLIENTS_OK = false;
+let CLIENTS_OK = false, MAP_OK = false;
 async function loadClientsAccess(){
   if(!ME) return;
-  const key = 'crm_cli';
+  const key = 'crm_cli2';
   try{
     const c = JSON.parse(sessionStorage.getItem(key) || 'null');
-    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ CLIENTS_OK = c.v; return; }
+    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ CLIENTS_OK = c.v; MAP_OK = c.m; return; }
   }catch(e){}
-  const { data, error } = await sb.rpc('clients_access');
-  if(error) return;
-  CLIENTS_OK = !!data;
-  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), v: CLIENTS_OK })); }catch(e){}
+  const [a, b] = await Promise.all([sb.rpc('clients_access'), sb.rpc('map_access')]);
+  if(a.error || b.error) return;
+  CLIENTS_OK = !!a.data; MAP_OK = !!b.data;
+  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), v: CLIENTS_OK, m: MAP_OK })); }catch(e){}
 }
 let PURCH = null;
 async function loadPurchaseAccess(){
@@ -650,6 +652,7 @@ function canSee(s){
   if(s.notRoles && s.notRoles.includes(ME.role)) return false;
   if(s.purchases) return !!(PURCH && (PURCH.create || PURCH.view));
   if(s.clientsAccess) return CLIENTS_OK;
+  if(s.mapAccess) return MAP_OK;
   // обзвон временный: после даты окончания и тем, у кого нет клиентов, пункт не нужен
   if(s.campaign && CALLOUTS && !CALLOUTS.includes(s.campaign)) return false;
   if(s.roles && !s.roles.includes(ME.role)) return s.orBoss ? hasTeam() : false;

@@ -36,6 +36,12 @@
 .mp-lbl:before{display:none}
 .leaflet-container{font:inherit}
 .mp-dark{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)}
+.mp-nobase{background:var(--bg)!important}
+.mp-legend{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);font-size:12px;min-width:170px}
+.mp-lg-t{font-weight:700;margin-bottom:5px}
+.mp-lg-bar{display:flex;height:10px;border-radius:3px;overflow:hidden}
+.mp-lg-bar i{flex:1}
+.mp-lg-n{display:flex;justify-content:space-between;margin-top:3px;color:var(--muted)}
 .mp-lbl.out{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 6px;text-shadow:none}
 </style>
 </head>
@@ -61,6 +67,15 @@
     <div class="seg" id="metric" style="flex:none">
       <button data-m="amount" class="on">Сумма</button><button data-m="clients">Клиенты</button>
     </div>
+    <div class="seg" id="view" style="flex:none">
+      <button data-v="fill">Районы</button><button data-v="bubble">Кружки</button>
+    </div>
+    <select id="fBase" aria-label="Вид карты">
+      <option value="osm">Карта: обычная</option>
+      <option value="dark">Карта: тёмная</option>
+      <option value="topo">Карта: рельеф</option>
+      <option value="none">Без подложки</option>
+    </select>
   </div>
   <div class="hint" id="state" style="padding:0 16px 10px"></div>
 
@@ -76,7 +91,13 @@
 <script>
 initTheme();
 const $ = id => document.getElementById(id);
-let FIT = false, MAP = null, LAYER = null, TILES = null, DATA = null, METRIC = 'amount', ITEM = null, SEL = null, SEQ = 0;
+const PALETTE = ['#fdecd2', '#f9cf95', '#f3ab58', '#e9852c', '#c9611a', '#933f0f'];
+const CITIES = ['Худжанд', 'Бустон'];      // у городов нет границ в наборе — рисуем точкой
+let FIT = false, MAP = null, LAYER = null, TILES = null, DATA = null, GEO = null, LEGEND = null;
+let METRIC = 'amount', VIEW = 'fill', BASE = '', ITEM = null, SEL = null, SEQ = 0;
+
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
 
 (async () => {
   if(!await requireAuth()) return;
@@ -85,11 +106,21 @@ let FIT = false, MAP = null, LAYER = null, TILES = null, DATA = null, METRIC = '
   if(!ok){ location.replace('index.html'); return; }
   $('searchIcon').outerHTML = icon('search');
 
+  VIEW = lsGet('crm_map_view') || 'fill';
+  BASE = lsGet('crm_map_base') || (document.body.classList.contains('light') ? 'osm' : 'dark');
+  $('fBase').value = BASE;
+  segOn('view', VIEW);
+
   MAP = L.map('map', { zoomControl:true, attributionControl:true }).setView([40.05, 69.3], 8);
   MAP.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+  MAP.attributionControl.addAttribution('Границы: <a href="https://www.geoboundaries.org">geoBoundaries</a> (CC BY 4.0)');
   setTiles();
   LAYER = L.layerGroup().addTo(MAP);
-  new MutationObserver(setTiles).observe(document.body, { attributes:true, attributeFilter:['class'] });
+  LEGEND = L.control({ position:'bottomleft' });
+  LEGEND.onAdd = () => { const d = L.DomUtil.create('div', 'mp-legend'); return d; };
+  LEGEND.addTo(MAP);
+
+  try{ GEO = await (await fetch('sughd-districts.geojson')).json(); }catch(e){ GEO = null; }
 
   $('fPeriod').onchange = () => {
     const own = $('fPeriod').value === 'own';
@@ -98,11 +129,9 @@ let FIT = false, MAP = null, LAYER = null, TILES = null, DATA = null, METRIC = '
     load();
   };
   $('fFrom').onchange = $('fTo').onchange = load;
-  document.querySelectorAll('#metric button').forEach(b => b.onclick = () => {
-    METRIC = b.dataset.m;
-    document.querySelectorAll('#metric button').forEach(x => x.classList.toggle('on', x === b));
-    draw();
-  });
+  $('fBase').onchange = () => { BASE = $('fBase').value; lsSet('crm_map_base', BASE); setTiles(); };
+  document.querySelectorAll('#metric button').forEach(b => b.onclick = () => { METRIC = b.dataset.m; segOn('metric', METRIC); draw(); });
+  document.querySelectorAll('#view button').forEach(b => b.onclick = () => { VIEW = b.dataset.v; lsSet('crm_map_view', VIEW); segOn('view', VIEW); draw(); });
 
   let t = null;
   $('fItem').oninput = () => {
@@ -115,14 +144,24 @@ let FIT = false, MAP = null, LAYER = null, TILES = null, DATA = null, METRIC = '
   load();
 })();
 
+function segOn(id, v){
+  document.querySelectorAll('#' + id + ' button').forEach(x => x.classList.toggle('on', (x.dataset.m || x.dataset.v) === v));
+}
+
 function setTiles(){
   if(!MAP) return;
-  const light = document.body.classList.contains('light');
-  if(TILES) MAP.removeLayer(TILES);
-  TILES = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18, className: light ? '' : 'mp-dark',
-    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-  }).addTo(MAP);
+  if(TILES){ MAP.removeLayer(TILES); TILES = null; }
+  $('map').classList.toggle('mp-nobase', BASE === 'none');
+  if(BASE === 'none') return;
+  if(BASE === 'topo'){
+    TILES = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom:17, subdomains:'abc',
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://opentopomap.org">OpenTopoMap</a> (CC BY-SA)' });
+  }else{
+    TILES = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:18, className: BASE === 'dark' ? 'mp-dark' : '',
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  }
+  TILES.addTo(MAP);
+  TILES.bringToBack();
 }
 
 function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -173,12 +212,61 @@ async function load(){
   draw();
 }
 
-function val(d){ return METRIC === 'clients' ? d.clients : Math.max(0, d.amount); }
+function val(d){ return !d ? 0 : METRIC === 'clients' ? d.clients : Math.max(0, d.amount); }
 function fmtVal(d){ return METRIC === 'clients' ? d.clients + ' клиент.' : som(d.amount); }
+function byName(n){ return DATA.districts.find(x => x.name === n); }
+/* шкала: Худжанд почти всегда больше всех вместе, поэтому районы сравниваются между собой, а Худжанд — самый тёмный */
+function color(v, max){
+  if(!v) return null;
+  const k = Math.min(1, Math.sqrt(v / max));
+  return PALETTE[Math.min(PALETTE.length - 1, Math.floor(k * PALETTE.length))];
+}
 
 function draw(){
   if(!DATA) return;
   LAYER.clearLayers();
+  if(VIEW === 'fill' && GEO) drawFill(); else drawBubbles();
+  if(!FIT){
+    FIT = true;
+    MAP.invalidateSize();
+    MAP.fitBounds(GEO ? L.geoJSON(GEO).getBounds().pad(0.03) : L.latLngBounds(DATA.districts.map(d => [d.lat, d.lng])).pad(0.15));
+  }
+  side();
+}
+
+function drawFill(){
+  const regional = DATA.districts.filter(d => !CITIES.includes(d.name));
+  const max = Math.max(1, ...regional.map(val));
+  L.geoJSON(GEO, {
+    style: f => {
+      const c = color(val(byName(f.properties.name)), max);
+      const on = SEL === f.properties.name;
+      return { color: on ? '#fff' : '#8a6a44', weight: on ? 3 : 1, fillColor: c || '#000', fillOpacity: c ? 0.72 : 0.04 };
+    },
+    onEachFeature: (f, l) => {
+      const d = byName(f.properties.name);
+      const v = val(d);
+      l.bindTooltip(esc(f.properties.name) + (v ? '<br>' + esc(fmtVal(d)) : '<br>нет продаж'),
+        { permanent: v >= max * 0.05, direction:'center', className:'mp-lbl out' });
+      l.on('click', () => { SEL = f.properties.name; draw(); });
+    }
+  }).addTo(LAYER);
+  CITIES.forEach(n => {
+    const d = byName(n); if(!d) return;
+    const v = val(d);
+    const m = L.circleMarker([d.lat, d.lng], { radius: n === 'Худжанд' ? 13 : 7, color: SEL === n ? '#fff' : '#5c2a08',
+      weight: SEL === n ? 3 : 1.5, fillColor: v ? (v >= max ? PALETTE[PALETTE.length - 1] : color(v, max)) : '#999', fillOpacity: 0.95 }).addTo(LAYER);
+    m.bindTooltip(esc(n) + (v ? '<br>' + esc(fmtVal(d)) : ''), { permanent: n === 'Худжанд', direction:'top', offset:[0, -12], className:'mp-lbl out' });
+    m.on('click', () => { SEL = n; draw(); });
+  });
+  LEGEND.getContainer().hidden = false;
+  LEGEND.getContainer().innerHTML = '<div class="mp-lg-t">' + (METRIC === 'clients' ? 'Клиентов' : 'Сумма') + ' по району</div>' +
+    '<div class="mp-lg-bar">' + PALETTE.map(c => '<i style="background:' + c + '"></i>').join('') + '</div>' +
+    '<div class="mp-lg-n"><span>мало</span><span>' + esc(METRIC === 'clients' ? max + '+' : som(max) + '+') + '</span></div>';
+}
+
+function drawBubbles(){
+  LEGEND.getContainer().hidden = true;
   const ds = DATA.districts.filter(d => val(d) > 0);
   const max = Math.max(1, ...ds.map(val));
   ds.slice().sort((a, b) => val(b) - val(a)).forEach(d => {
@@ -193,16 +281,10 @@ function draw(){
       offset: big ? [0, 0] : [west ? -r : r, 0], className: 'mp-lbl' + (big ? '' : ' out') });
     c.on('click', () => { SEL = d.name; draw(); });
   });
-  if(!FIT && ds.length){
-    FIT = true;
-    MAP.invalidateSize();
-    MAP.fitBounds(L.latLngBounds(ds.filter(d => d.name !== 'Душанбе').map(d => [d.lat, d.lng])).pad(0.15));
-  }
-  side();
 }
 
 function side(){
-  const d = SEL && DATA.districts.find(x => x.name === SEL);
+  const d = SEL && byName(SEL);
   if(!d){
     const ds = DATA.districts.filter(x => x.amount || x.clients);
     $('side').innerHTML = '<h3>Все районы</h3><div class="hint">Нажмите на район на карте или в списке</div>' +

@@ -1,9 +1,9 @@
-const CACHE = 'promebel-crm-v34';
+const CACHE = 'promebel-crm-v35';
 const ASSETS = [
   'index.html', 'login.html', 'tasks.html', 'new-task.html', 'admin.html',
   'employee.html', 'links.html', 'notifications.html', 'profile.html',
   'dashboard.html', 'calendar.html', 'clients.html', 'deals.html', 'plan.html',
-  'events.html', 'audit.html', 'preview.html', 'whatsapp.html', 'callout.html', 'callout-risk.html', 'purchases.html', 'map.html', 'leaflet.js', 'leaflet.css',
+  'events.html', 'audit.html', 'preview.html', 'whatsapp.html', 'callout.html', 'callout-risk.html', 'purchases.html', 'map.html', 'leaflet.js', 'leaflet.css', 'sughd-districts.geojson',
   'core.js', 'crm.css', 'supabase.min.js', 'xlsx.full.min.js', 'favicon.svg', 'anim-done.svg',
   'icon-180.png', 'icon-192.png', 'icon-512.png', 'favicon-32.png',
   'logo-h-dark.png', 'logo-h-light.png', 'logo-mark.png'

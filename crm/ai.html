@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — ИИ-аналитик</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.ai-wrap{display:flex;gap:16px;padding:12px 16px 0;align-items:flex-start}
+.ai-side{width:260px;flex:none;display:flex;flex-direction:column;gap:8px}
+.ai-side .btn{height:42px}
+.ai-chats{display:flex;flex-direction:column;gap:2px;max-height:70vh;overflow:auto}
+.ai-chat{display:flex;align-items:center;gap:6px;padding:9px 10px;border-radius:10px;cursor:pointer;color:var(--ink-2);font-size:14px}
+.ai-chat:hover{background:var(--card)}
+.ai-chat.on{background:var(--card-2);color:var(--ink)}
+.ai-chat .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-chat .x{opacity:0;border:none;background:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
+.ai-chat:hover .x{opacity:1}
+.ai-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:calc(100vh - 140px)}
+.ai-msgs{flex:1;display:flex;flex-direction:column;gap:12px;padding-bottom:12px}
+.ai-m{max-width:100%;padding:12px 14px;border-radius:14px;font-size:15px;line-height:1.5;word-break:break-word}
+.ai-m.u{align-self:flex-end;background:var(--brand);color:var(--brand-ink);max-width:85%;white-space:pre-wrap}
+.ai-m.a{align-self:stretch;background:var(--card);border:1px solid var(--line)}
+.ai-m.a table{border-collapse:collapse;margin:8px 0;font-size:14px;display:block;overflow-x:auto;max-width:100%}
+.ai-m.a th,.ai-m.a td{border:1px solid var(--line);padding:5px 8px;text-align:left;white-space:nowrap}
+.ai-m.a th{background:var(--card-2)}
+.ai-m.a p{margin:6px 0}.ai-m.a ul{margin:6px 0;padding-left:20px}
+.ai-m .src{margin-top:8px;font-size:13px;color:var(--muted)}
+.ai-m .src a{color:var(--info);word-break:break-all}
+.ai-tag{display:inline-block;font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.ai-pick{align-self:stretch;background:var(--card);border:1px dashed var(--line-2);border-radius:14px;padding:12px 14px}
+.ai-pick .q{font-size:14px;color:var(--ink-2);margin:6px 0}
+.ai-pick .opts{display:flex;flex-wrap:wrap;gap:6px}
+.ai-pick .opts button{border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);border-radius:18px;padding:7px 12px;cursor:pointer;font-size:13.5px}
+.ai-pick .opts button.on{border-color:var(--brand);color:var(--brand)}
+.ai-bar{position:sticky;bottom:0;background:var(--bg);padding:8px 0 calc(8px + env(safe-area-inset-bottom))}
+.ai-bar .composer{padding:0}
+.ai-mode{display:flex;gap:6px;margin-bottom:6px}
+.ai-mode button{border:1px solid var(--line);background:var(--card);color:var(--ink-2);border-radius:16px;padding:6px 12px;cursor:pointer;font-size:13px}
+.ai-mode button.on{border-color:var(--brand);color:var(--brand)}
+.ai-hint{font-size:12.5px;color:var(--muted);margin-top:4px}
+.ai-empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:15px;line-height:1.6}
+.ai-toggle{display:none}
+@media (max-width:900px){
+  .ai-wrap{flex-direction:column;padding:8px 12px 0}
+  .ai-side{width:100%}
+  .ai-side.hide-m{display:none}
+  .ai-toggle{display:inline-flex}
+  .ai-chats{max-height:50vh}
+}
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>ИИ-аналитик</h1></div>
+  <div class="ai-wrap">
+    <aside class="ai-side hide-m" id="side">
+      <button class="btn" id="newBtn">Новый чат</button>
+      <div class="ai-chats" id="chats"></div>
+    </aside>
+    <section class="ai-main">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn ghost ai-toggle" id="listBtn" style="height:38px">Чаты</button>
+        <button class="btn ghost ai-toggle" id="newBtn2" style="height:38px">Новый чат</button>
+      </div>
+      <div class="ai-msgs" id="msgs"></div>
+      <div class="ai-bar">
+        <div class="ai-mode">
+          <button id="mDb" class="on">База</button>
+          <button id="mWeb">Интернет</button>
+        </div>
+        <div class="composer">
+          <textarea id="q" rows="1" placeholder="Спросите про продажи, клиентов, остатки…"></textarea>
+          <button class="send" id="send" title="Отправить"></button>
+        </div>
+        <div class="ai-hint" id="hint">Имена клиентов и сотрудников не уходят в ИИ: перед отправкой они заменяются метками.</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+let CHAT = null, WEB = false, BUSY = false, PENDING = null;
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'ИИ-аналитик', tab:'ai' });
+  const { data: ok } = await sb.rpc('ai_chat_access');
+  if(!ok){ location.replace('index.html'); return; }
+  $('send').innerHTML = icon('send');
+  $('newBtn').onclick = $('newBtn2').onclick = newChat;
+  $('listBtn').onclick = () => $('side').classList.toggle('hide-m');
+  $('mDb').onclick = () => setMode(false);
+  $('mWeb').onclick = () => setMode(true);
+  $('send').onclick = () => send();
+  $('q').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+  $('q').addEventListener('input', grow);
+  newChat();
+  loadChats();
+})();
+
+function grow(){ const t = $('q'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; }
+function setMode(w){
+  WEB = w;
+  $('mDb').classList.toggle('on', !w); $('mWeb').classList.toggle('on', w);
+  $('hint').textContent = w
+    ? 'Интернет: поиск по рынку и конкурентам. База в этом режиме недоступна, данные компании в поиск не уходят.'
+    : 'Имена клиентов и сотрудников не уходят в ИИ: перед отправкой они заменяются метками.';
+}
+
+async function api(body){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session) return { error:'Сессия истекла, войдите заново' };
+  try{
+    const r = await fetch(SUPABASE_URL + '/functions/v1/ai-chat', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', apikey: SUPABASE_KEY, Authorization:'Bearer ' + session.access_token },
+      body: JSON.stringify(body)
+    });
+    let res; try{ res = await r.json(); }catch(e){ return { error:'Сервер не ответил (' + r.status + '). Попробуйте ещё раз.' }; }
+    if(!r.ok && !res.error) return { error:'Ошибка сервера (' + r.status + ')' };
+    return res;
+  }catch(e){ return { error:'Нет связи с сервером' }; }
+}
+
+async function loadChats(){
+  const r = await api({ action:'list' });
+  if(r.error){ $('chats').innerHTML = '<div class="sub">' + esc(r.error) + '</div>'; return; }
+  $('chats').innerHTML = (r.chats || []).map(c =>
+    '<div class="ai-chat' + (c.id === CHAT ? ' on' : '') + '" data-id="' + esc(c.id) + '"><span class="t">' + esc(c.title) +
+    '</span><button class="x" title="Удалить" data-del="' + esc(c.id) + '">×</button></div>').join('') ||
+    '<div class="sub" style="padding:6px 10px">Чатов пока нет</div>';
+  $('chats').querySelectorAll('.ai-chat').forEach(el => el.onclick = e => {
+    if(e.target.dataset.del) return delChat(e.target.dataset.del);
+    openChat(el.dataset.id);
+  });
+}
+
+function newChat(){
+  CHAT = null; PENDING = null;
+  $('msgs').innerHTML = '<div class="ai-empty">Задайте вопрос про продажи, клиентов, долги, остатки или KPI.<br>' +
+    'Например: «Топ-10 клиентов за октябрь», «Как продаёт Мебельный8 в ноябре», «На сколько хватит остатков Egger».<br>' +
+    'Для рынка и конкурентов включите режим «Интернет».</div>';
+  $('side').classList.add('hide-m');
+  loadChats();
+  $('q').focus();
+}
+
+async function openChat(id){
+  CHAT = id; PENDING = null;
+  $('side').classList.add('hide-m');
+  $('msgs').innerHTML = '<div class="loading">Загрузка…</div>';
+  const r = await api({ action:'open', chat_id:id });
+  if(r.error){ $('msgs').innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  $('msgs').innerHTML = '';
+  for(const m of r.messages) addMsg(m.role, m.text, m.sources, m.web);
+  loadChats();
+  scrollEnd();
+}
+
+async function delChat(id){
+  if(!confirm('Удалить этот чат?')) return;
+  const r = await api({ action:'delete', chat_id:id });
+  if(r.error) return toast(r.error);
+  if(id === CHAT) newChat(); else loadChats();
+}
+
+function addMsg(role, text, sources, web){
+  const box = $('msgs');
+  const empty = box.querySelector('.ai-empty'); if(empty) empty.remove();
+  const d = document.createElement('div');
+  d.className = 'ai-m ' + (role === 'user' ? 'u' : 'a');
+  if(role === 'user') d.textContent = text;
+  else {
+    d.innerHTML = (web ? '<span class="ai-tag">Интернет</span>' : '') + md(text) +
+      (sources && sources.length ? '<div class="src">Источники:<br>' + sources.map(s =>
+        '<a href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(s.title || s.url) + '</a>').join('<br>') + '</div>' : '');
+  }
+  box.appendChild(d);
+  return d;
+}
+function scrollEnd(){ window.scrollTo({ top: document.body.scrollHeight, behavior:'smooth' }); }
+
+async function send(picks){
+  if(BUSY) return;
+  const text = picks ? PENDING.text : $('q').value.trim();
+  if(!text) return;
+  BUSY = true; $('send').disabled = true;
+  if(!picks){ addMsg('user', text); $('q').value = ''; grow(); }
+  const wait = addMsg('assistant', '');
+  wait.innerHTML = '<span class="sub">' + (WEB ? 'Ищу в интернете…' : 'Считаю по базе…') + ' Обычно до минуты.</span>';
+  scrollEnd();
+  const r = await api({ action:'send', chat_id: CHAT, text, web: WEB, picks: picks || {} });
+  wait.remove();
+  BUSY = false; $('send').disabled = false;
+  if(r.need_pick){ showPicks(text, r.need_pick); return; }
+  PENDING = null;
+  if(r.error){ addMsg('assistant', '⚠️ ' + r.error); scrollEnd(); return; }
+  if(!CHAT){ CHAT = r.chat_id; }
+  addMsg('assistant', r.answer, r.sources, WEB);
+  loadChats();
+  scrollEnd();
+}
+
+function showPicks(text, list){
+  PENDING = { text, picks:{} };
+  const d = document.createElement('div');
+  d.className = 'ai-pick';
+  d.innerHTML = '<div><b>Уточните, кого вы имеете в виду</b></div>' + list.map((p, i) =>
+    '<div class="q">«' + esc(p.span) + '»' + (p.more ? ' — ещё ' + p.more + ', напишите фамилию точнее' : '') + '</div><div class="opts" data-i="' + i + '">' +
+    p.options.map(o => '<button data-tok="' + esc(o.token) + '">' + esc(o.label) + '</button>').join('') + '</div>').join('');
+  $('msgs').appendChild(d);
+  d.querySelectorAll('.opts').forEach(box => box.querySelectorAll('button').forEach(b => b.onclick = () => {
+    box.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    PENDING.picks[list[+box.dataset.i].span] = b.dataset.tok;
+    if(Object.keys(PENDING.picks).length === list.length){ d.remove(); send(PENDING.picks); }
+  }));
+  scrollEnd();
+}
+
+/* простой и безопасный markdown: сначала экранирование, потом жирный, списки и таблицы */
+function md(src){
+  const lines = esc(src || '').split('\n');
+  let out = '', i = 0;
+  const inline = s => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  while(i < lines.length){
+    const l = lines[i];
+    if(/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])){
+      const row = s => s.trim().replace(/^\||\|$/g, '').split('|').map(c => inline(c.trim()));
+      let t = '<table><tr>' + row(l).map(c => '<th>' + c + '</th>').join('') + '</tr>';
+      i += 2;
+      while(i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])){ t += '<tr>' + row(lines[i]).map(c => '<td>' + c + '</td>').join('') + '</tr>'; i++; }
+      out += t + '</table>'; continue;
+    }
+    if(/^\s*[-*•]\s+/.test(l)){
+      let u = '<ul>';
+      while(i < lines.length && /^\s*[-*•]\s+/.test(lines[i])){ u += '<li>' + inline(lines[i].replace(/^\s*[-*•]\s+/, '')) + '</li>'; i++; }
+      out += u + '</ul>'; continue;
+    }
+    if(/^#{1,4}\s+/.test(l)){ out += '<p><b>' + inline(l.replace(/^#{1,4}\s+/, '')) + '</b></p>'; i++; continue; }
+    if(l.trim()) out += '<p>' + inline(l) + '</p>';
+    i++;
+  }
+  return out;
+}
+</script>
+</body>
+</html>

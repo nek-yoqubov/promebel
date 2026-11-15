@@ -596,6 +596,7 @@ const SECTIONS = [
   { key:'wa',      group:'control', label:'WhatsApp',       href:'whatsapp.html',         icon:'phone',
     roles:['admin','director','head','callcenter','auditor'] },
   { key:'map',     group:'control', label:'Карта продаж',   href:'map.html',              icon:'map', mapAccess:true },
+  { key:'ai',      group:'control', label:'ИИ-аналитик',    href:'ai.html',               icon:'message', aiAccess:true },
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
     roles:['admin','director','auditor','head','regional'], orBoss:true },
   { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',
@@ -619,18 +620,18 @@ async function loadCallouts(){
   try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), list: CALLOUTS })); }catch(e){}
 }
 /* Закупки: кто оставляет заявки и кто видит все — решает база (crm.purchase_access). Держим 10 минут. */
-let CLIENTS_OK = false, MAP_OK = false;
+let CLIENTS_OK = false, MAP_OK = false, AI_OK = false;
 async function loadClientsAccess(){
   if(!ME) return;
-  const key = 'crm_cli2';
+  const key = 'crm_cli3';
   try{
     const c = JSON.parse(sessionStorage.getItem(key) || 'null');
-    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ CLIENTS_OK = c.v; MAP_OK = c.m; return; }
+    if(c && c.uid === ME.id && Date.now() - c.at < 600000){ CLIENTS_OK = c.v; MAP_OK = c.m; AI_OK = c.ai; return; }
   }catch(e){}
-  const [a, b] = await Promise.all([sb.rpc('clients_access'), sb.rpc('map_access')]);
+  const [a, b, d] = await Promise.all([sb.rpc('clients_access'), sb.rpc('map_access'), sb.rpc('ai_chat_access')]);
   if(a.error || b.error) return;
-  CLIENTS_OK = !!a.data; MAP_OK = !!b.data;
-  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), v: CLIENTS_OK, m: MAP_OK })); }catch(e){}
+  CLIENTS_OK = !!a.data; MAP_OK = !!b.data; AI_OK = !d.error && !!d.data;
+  try{ sessionStorage.setItem(key, JSON.stringify({ uid: ME.id, at: Date.now(), v: CLIENTS_OK, m: MAP_OK, ai: AI_OK })); }catch(e){}
 }
 let PURCH = null;
 async function loadPurchaseAccess(){
@@ -653,6 +654,7 @@ function canSee(s){
   if(s.purchases) return !!(PURCH && (PURCH.create || PURCH.view));
   if(s.clientsAccess) return CLIENTS_OK;
   if(s.mapAccess) return MAP_OK;
+  if(s.aiAccess) return AI_OK;
   // обзвон временный: после даты окончания и тем, у кого нет клиентов, пункт не нужен
   if(s.campaign && CALLOUTS && !CALLOUTS.includes(s.campaign)) return false;
   if(s.roles && !s.roles.includes(ME.role)) return s.orBoss ? hasTeam() : false;

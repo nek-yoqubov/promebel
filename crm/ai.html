@@ -66,6 +66,18 @@
 .ai-how summary{cursor:pointer}
 .ai-how .ai-steps{margin-top:4px}
 @keyframes aispin{to{transform:rotate(360deg)}}
+/* выпадающий список @ / № */
+.ai-ref{position:absolute;left:0;right:0;bottom:100%;margin-bottom:6px;background:var(--panel);border:1px solid var(--line-2);border-radius:14px;
+  box-shadow:0 -6px 24px #0005;max-height:min(46vh,340px);overflow:auto;z-index:5;padding:4px}
+.ai-ref[hidden]{display:none}
+.ai-ref .it{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;cursor:pointer}
+.ai-ref .it.on,.ai-ref .it:hover{background:var(--card-2)}
+.ai-ref .nm{flex:1;min-width:0}
+.ai-ref .nm b{display:block;font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-ref .nm i{display:block;font-style:normal;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-ref .tp{flex:none;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:color-mix(in srgb, var(--c) 18%, transparent);color:var(--c)}
+.ai-ref .em{padding:10px;color:var(--muted);font-size:13.5px}
+.ai-ref .hd{padding:6px 10px 2px;font-size:12px;color:var(--muted)}
 .ai-empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:15px;line-height:1.6}
 .ai-down{position:absolute;right:4px;top:-50px;width:40px;height:40px;border-radius:50%;border:1px solid var(--line-2);
   background:var(--card-2);color:var(--ink);display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px #0004}
@@ -109,6 +121,7 @@
       <div class="ai-msgs" id="msgs"></div>
       <div class="ai-bar">
         <button class="ai-down" id="down" aria-label="Вниз"></button>
+        <div class="ai-ref" id="ref" hidden></div>
         <div class="ai-mode">
           <button id="mDb" class="on">База</button>
           <button id="mWeb">Интернет</button>
@@ -132,7 +145,7 @@ const MOBILE = matchMedia('(max-width:1023px)');
 const MENU = '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
 const HINT_DB = 'Имена клиентов и сотрудников не уходят в ИИ: перед отправкой они заменяются метками.';
 const HINT_WEB = 'Интернет: поиск по рынку и конкурентам. База в этом режиме недоступна, данные компании в поиск не уходят.';
-let CHAT = null, WEB = false, BUSY = false, PENDING = null, TITLES = {}, TRACK = null;
+let CHAT = null, WEB = false, BUSY = false, PENDING = null, TITLES = {}, TRACK = null, REFS = [];
 
 const seen = k => { try{ return localStorage.getItem(k) === '1'; }catch(e){ return false; } };
 const mark = k => { try{ localStorage.setItem(k, '1'); }catch(e){} };
@@ -174,8 +187,11 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
   $('down').onclick = () => { scrollEnd(); };
   const q = $('q');
   q.value = draftGet(); grow();
-  q.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey && !MOBILE.matches){ e.preventDefault(); send(); } });
-  q.addEventListener('input', () => { grow(); draftSet(q.value); });
+  q.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey && !MOBILE.matches && $('ref').hidden){ e.preventDefault(); send(); } });
+  q.addEventListener('input', () => { grow(); draftSet(q.value); refInput(); });
+  q.addEventListener('click', refInput);
+  q.addEventListener('keydown', refKey, true);
+  q.addEventListener('blur', () => setTimeout(refClose, 150));
   q.addEventListener('focus', () => document.body.classList.add('kb'));
   q.addEventListener('blur', () => document.body.classList.remove('kb'));
 
@@ -260,7 +276,7 @@ function newChat(){
   setTitle('');
   $('msgs').innerHTML = '<div class="ai-empty">Задайте вопрос про продажи, клиентов, долги, остатки или KPI.<br>' +
     'Например: «Топ-10 клиентов за октябрь», «Как продаёт Мебельный8 в ноябре», «На сколько хватит остатков Egger».<br>' +
-    'Для рынка и конкурентов включите режим «Интернет».</div>';
+    'Для рынка и конкурентов включите режим «Интернет».<br>Чтобы указать клиента или сотрудника точно — наберите @ или №.</div>';
   closeSide();
   loadChats();
   downBtn();
@@ -318,21 +334,82 @@ async function send(picks){
   const text = picks ? PENDING.text : $('q').value.trim();
   if(!text) return;
   BUSY = true; $('send').disabled = true;
-  if(!picks){ addMsg('user', text); $('q').value = ''; draftSet(''); grow(); }
+  if(!picks){ addMsg('user', text); $('q').value = ''; draftSet(''); grow(); refClose(); }
   if(MOBILE.matches) $('q').blur();
   const web = WEB;
   const wait = addMsg('assistant', '');
   wait.innerHTML = '<div class="ai-steps"><div class="st cur">Отправляю вопрос…</div></div>';
   scrollEnd();
-  const r = await api({ action:'send', chat_id: CHAT, text, web, picks: picks || {} });
+  const refs = REFS.filter(x => text.includes(x.text));
+  const r = await api({ action:'send', chat_id: CHAT, text, web, picks: picks || {}, refs });
   wait.remove();
   if(r.need_pick){ BUSY = false; $('send').disabled = false; showPicks(text, r.need_pick); return; }
-  PENDING = null;
+  PENDING = null; REFS = [];
   if(r.error && !r.job_id){ BUSY = false; $('send').disabled = false; scrollToMsg(addMsg('assistant', '⚠️ ' + r.error)); downBtn(); return; }
   if(!CHAT) CHAT = r.chat_id;
   mark(web ? 'ai_hint_web' : 'ai_hint_db'); setMode(WEB);
   loadChats();
   track(r.job_id, web);
+}
+
+/* @ или № в поле — список клиентов, сотрудников и папок. Ищет наш сервер, в ИИ ничего не уходит.
+   В поле вставляется обычный текст (имя), а страница запоминает, кто это — сервер подставит метку без угадывания. */
+const TYPE_COLOR = { 'сотрудник':'#14b8a6', 'ОРП':'#a855f7', 'дилер':'#3b82f6', 'ОПИП':'#eab308', 'Ламинати':'#22c55e',
+  'клиент':'#94a3b8', 'сотрудник-клиент':'#06b6d4', 'свои':'#f97316', 'разовые':'#64748b', 'папка':'#f43f5e' };
+let REF_AT = null, REF_ITEMS = [], REF_SEL = 0, REF_T = 0, REF_SEQ = 0;
+function refTrigger(){
+  const q = $('q'), pos = q.selectionStart, before = q.value.slice(0, pos);
+  const m = before.match(/(^|[\s(«"])([@№])([^@№\n]{0,40})$/);
+  if(!m) return null;
+  return { start: pos - m[3].length - 1, end: pos, query: m[3].trim() };
+}
+function refInput(){
+  const t = refTrigger();
+  if(!t){ refClose(); return; }
+  REF_AT = t;
+  clearTimeout(REF_T);
+  if(t.query.length < 2){ refShow([], 'Начните вводить имя, фамилию или код клиента'); return; }
+  REF_T = setTimeout(async () => {
+    const seq = ++REF_SEQ;
+    const r = await api({ action:'search', q: t.query });
+    if(seq !== REF_SEQ || !REF_AT) return;
+    refShow(r.items || [], r.error || 'Ничего не найдено');
+  }, 220);
+}
+function refShow(items, empty){
+  REF_ITEMS = items; REF_SEL = 0;
+  const box = $('ref');
+  box.innerHTML = items.length ? items.map((x, k) =>
+    '<div class="it' + (k === 0 ? ' on' : '') + '" data-k="' + k + '"><span class="nm"><b>' + esc(x.text) + '</b>' +
+    (x.sub ? '<i>' + esc(x.sub) + '</i>' : '') + '</span><span class="tp" style="--c:' + (TYPE_COLOR[x.type] || '#94a3b8') + '">' + esc(x.type) + '</span></div>').join('')
+    : '<div class="em">' + esc(empty) + '</div>';
+  box.hidden = false;
+  box.querySelectorAll('.it').forEach(el => {
+    el.addEventListener('pointerdown', e => e.preventDefault());   // не забирать фокус у поля
+    el.onclick = () => refPick(+el.dataset.k);
+  });
+}
+function refClose(){ REF_AT = null; REF_ITEMS = []; clearTimeout(REF_T); REF_SEQ++; $('ref').hidden = true; }
+function refPick(k){
+  const x = REF_ITEMS[k], t = REF_AT;
+  if(!x || !t) return;
+  const q = $('q'), ins = x.text + ' ';
+  q.value = q.value.slice(0, t.start) + ins + q.value.slice(t.end);
+  const pos = t.start + ins.length;
+  q.setSelectionRange(pos, pos);
+  // тёзки (сотрудник и клиент с одним именем): действует последний выбор
+  REFS = REFS.filter(r => r.text !== x.text);
+  if(x.token) REFS.push({ text: x.text, token: x.token });
+  draftSet(q.value); grow(); refClose(); q.focus();
+}
+function refKey(e){
+  if($('ref').hidden || !REF_ITEMS.length) { if(e.key === 'Escape') refClose(); return; }
+  if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    REF_SEL = (REF_SEL + (e.key === 'ArrowDown' ? 1 : REF_ITEMS.length - 1)) % REF_ITEMS.length;
+    $('ref').querySelectorAll('.it').forEach((el, k) => el.classList.toggle('on', k === REF_SEL));
+  } else if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); e.stopImmediatePropagation(); refPick(REF_SEL); }
+  else if(e.key === 'Escape'){ e.preventDefault(); refClose(); }
 }
 
 /* Ответ готовится на сервере. Страница раз в секунду спрашивает, что готово: шаги и уже написанный текст.

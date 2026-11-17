@@ -55,6 +55,17 @@
 .ai-mode button.on{border-color:var(--brand);color:var(--brand)}
 .ai-hint{font-size:12.5px;color:var(--muted);margin-top:4px}
 .ai-hint:empty{display:none}
+.ai-steps{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+.ai-steps .st{display:flex;gap:6px;align-items:center}
+.ai-steps .st::before{content:'✓';color:var(--ok, #22c55e);flex:none;width:12px}
+.ai-steps .st.cur::before{content:'';width:10px;height:10px;border-radius:50%;border:2px solid var(--brand);border-right-color:transparent;
+  animation:aispin .8s linear infinite;align-self:center}
+.ai-steps .sec{margin-left:auto;font:600 12px/1 'Manrope',system-ui,sans-serif;font-variant-numeric:tabular-nums;flex:none}
+.ai-m .body:not(:empty){margin-top:6px}
+.ai-how{margin-top:8px;font-size:12.5px;color:var(--muted)}
+.ai-how summary{cursor:pointer}
+.ai-how .ai-steps{margin-top:4px}
+@keyframes aispin{to{transform:rotate(360deg)}}
 .ai-empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:15px;line-height:1.6}
 .ai-down{position:absolute;right:4px;top:-50px;width:40px;height:40px;border-radius:50%;border:1px solid var(--line-2);
   background:var(--card-2);color:var(--ink);display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px #0004}
@@ -121,11 +132,13 @@ const MOBILE = matchMedia('(max-width:1023px)');
 const MENU = '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
 const HINT_DB = 'Имена клиентов и сотрудников не уходят в ИИ: перед отправкой они заменяются метками.';
 const HINT_WEB = 'Интернет: поиск по рынку и конкурентам. База в этом режиме недоступна, данные компании в поиск не уходят.';
-let CHAT = null, WEB = false, BUSY = false, PENDING = null, TITLES = {};
+let CHAT = null, WEB = false, BUSY = false, PENDING = null, TITLES = {}, TRACK = null;
 
 const seen = k => { try{ return localStorage.getItem(k) === '1'; }catch(e){ return false; } };
 const mark = k => { try{ localStorage.setItem(k, '1'); }catch(e){} };
 const draftGet = () => { try{ return localStorage.getItem('ai_draft') || ''; }catch(e){ return ''; } };
+const jobGet = () => { try{ return JSON.parse(localStorage.getItem('ai_job') || 'null'); }catch(e){ return null; } };
+const jobSet = v => { try{ v ? localStorage.setItem('ai_job', JSON.stringify(v)) : localStorage.removeItem('ai_job'); }catch(e){} };
 const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStorage.removeItem('ai_draft'); }catch(e){} };
 
 (async () => {
@@ -175,8 +188,13 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
   addEventListener('scroll', downBtn, { passive:true });
   addEventListener('resize', downBtn);
 
+  // экран погас или вкладка свернулась — по возвращении сразу забираем свежее состояние ответа
+  document.addEventListener('visibilitychange', () => { if(!document.hidden && TRACK) TRACK.kick(); });
+  addEventListener('pageshow', () => { if(TRACK) TRACK.kick(); });
+
   setMode(false);
-  newChat();
+  const j = jobGet();
+  if(j && j.chat) openChat(j.chat); else newChat();
 })();
 
 function grow(){ const t = $('q'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
@@ -234,7 +252,10 @@ async function loadChats(){
   });
 }
 
+function stopTrack(){ if(TRACK){ TRACK.stop(); TRACK = null; } BUSY = false; $('send').disabled = false; }
+
 function newChat(){
+  stopTrack();
   CHAT = null; PENDING = null;
   setTitle('');
   $('msgs').innerHTML = '<div class="ai-empty">Задайте вопрос про продажи, клиентов, долги, остатки или KPI.<br>' +
@@ -247,14 +268,24 @@ function newChat(){
 }
 
 async function openChat(id){
+  stopTrack();
   CHAT = id; PENDING = null;
   closeSide();
   setTitle(TITLES[id]);
   $('msgs').innerHTML = '<div class="loading">Загрузка…</div>';
   const r = await api({ action:'open', chat_id:id });
-  if(r.error){ $('msgs').innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  if(r.error){ jobSet(null); $('msgs').innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  if(CHAT !== id) return;
   $('msgs').innerHTML = '';
-  for(const m of r.messages) addMsg(m.role, m.text, m.sources, m.web);
+  let run = null;
+  for(const m of r.messages){
+    if(m.role === 'assistant' && m.status === 'running'){ run = m; continue; }
+    if(m.role === 'assistant' && m.status === 'error'){ addMsg('assistant', '⚠️ ' + (m.error || 'Ответ не получен'), [], m.web); continue; }
+    const d = addMsg(m.role, m.text, m.sources, m.web);
+    if(m.role === 'assistant') addHow(d, m.steps);
+  }
+  if(run) track(run.id, run.web, run);
+  else { const j = jobGet(); if(j && j.chat === id) jobSet(null); }
   loadChats();
   scrollTo({ top: document.documentElement.scrollHeight });
   downBtn();
@@ -289,21 +320,113 @@ async function send(picks){
   BUSY = true; $('send').disabled = true;
   if(!picks){ addMsg('user', text); $('q').value = ''; draftSet(''); grow(); }
   if(MOBILE.matches) $('q').blur();
-  const wait = addMsg('assistant', '');
-  wait.innerHTML = '<span class="sub">' + (WEB ? 'Ищу в интернете…' : 'Считаю по базе…') + ' Обычно до минуты.</span>';
-  scrollEnd();
   const web = WEB;
+  const wait = addMsg('assistant', '');
+  wait.innerHTML = '<div class="ai-steps"><div class="st cur">Отправляю вопрос…</div></div>';
+  scrollEnd();
   const r = await api({ action:'send', chat_id: CHAT, text, web, picks: picks || {} });
   wait.remove();
-  BUSY = false; $('send').disabled = false;
-  if(r.need_pick){ showPicks(text, r.need_pick); return; }
+  if(r.need_pick){ BUSY = false; $('send').disabled = false; showPicks(text, r.need_pick); return; }
   PENDING = null;
-  if(r.error){ scrollToMsg(addMsg('assistant', '⚠️ ' + r.error)); downBtn(); return; }
-  if(!CHAT){ CHAT = r.chat_id; }
+  if(r.error && !r.job_id){ BUSY = false; $('send').disabled = false; scrollToMsg(addMsg('assistant', '⚠️ ' + r.error)); downBtn(); return; }
+  if(!CHAT) CHAT = r.chat_id;
   mark(web ? 'ai_hint_web' : 'ai_hint_db'); setMode(WEB);
-  scrollToMsg(addMsg('assistant', r.answer, r.sources, web));
-  setTimeout(downBtn, 400);
   loadChats();
+  track(r.job_id, web);
+}
+
+/* Ответ готовится на сервере. Страница раз в секунду спрашивает, что готово: шаги и уже написанный текст.
+   Текст «допечатывается» плавно между опросами. Экран погас — опрос встаёт, при возвращении продолжается. */
+function track(id, web, first){
+  BUSY = true; $('send').disabled = true;
+  jobSet({ chat: CHAT, id });
+  const d = addMsg('assistant', '', [], web);
+  d.innerHTML = (web ? '<span class="ai-tag">Интернет</span>' : '') + '<div class="ai-steps"></div><div class="body"></div>';
+  const stepsEl = d.querySelector('.ai-steps'), body = d.querySelector('.body');
+  let shown = 0, target = '', steps = [], stepAt = Date.now(), alive = true, timer = null, busy = false, raf = 0, fails = 0;
+  const t0 = Date.now();
+  const sec = () => Math.round((Date.now() - stepAt) / 1000);
+  function drawSteps(){
+    stepsEl.innerHTML = squash(steps).map((x, k, a) => '<div class="st' + (k === a.length - 1 && !target ? ' cur' : '') + '"><span>' + esc(x) + '</span>' +
+      (k === a.length - 1 && !target ? '<span class="sec">' + sec() + ' с</span>' : '') + '</div>').join('');
+  }
+  function type(){
+    raf = 0;
+    if(!alive || shown >= target.length) return;
+    const atEnd = innerHeight + scrollY >= document.documentElement.scrollHeight - 80;
+    shown = Math.min(target.length, shown + Math.max(2, Math.ceil((target.length - shown) / 12)));
+    // недописанная строка таблицы не показывается, пока не придёт целиком
+    body.innerHTML = md(target.slice(0, shown).replace(/\n\s*\|[^\n]*$/, ''));
+    if(atEnd) scrollTo({ top: document.documentElement.scrollHeight });
+    raf = requestAnimationFrame(type);
+  }
+  function finish(m){
+    alive = false; clearTimeout(timer); cancelAnimationFrame(raf);
+    jobSet(null);
+    if(TRACK && TRACK.id === id) TRACK = null;
+    BUSY = false; $('send').disabled = false;
+    if(m.status === 'error'){ d.innerHTML = md('⚠️ ' + (m.error || 'Ответ не получен')); downBtn(); return; }
+    d.innerHTML = (web ? '<span class="ai-tag">Интернет</span>' : '') + md(m.text) +
+      (m.sources && m.sources.length ? '<div class="src">Источники:<br>' + m.sources.map(s =>
+        '<a href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(s.title || s.url) + '</a>').join('<br>') + '</div>' : '');
+    addHow(d, m.steps, Math.round((Date.now() - t0) / 1000));
+    if(!shown) scrollToMsg(d);
+    setTimeout(downBtn, 300);
+    loadChats();
+  }
+  function apply(m){
+    if(!alive) return;
+    if(m.status !== 'running') return finish(m);
+    if((m.steps || []).length !== steps.length){ steps = m.steps || []; stepAt = Date.now(); }
+    const t = m.text || '';
+    if(t !== target){
+      // текст начался заново (прежний оказался вступлением к запросу и стал шагом) — печатаем с нуля
+      if(!t.startsWith(target.slice(0, shown))){ shown = 0; body.innerHTML = ''; }
+      target = t;
+      if(t && !raf) raf = requestAnimationFrame(type);
+    }
+    drawSteps();
+  }
+  async function poll(){
+    if(!alive || busy) return;
+    clearTimeout(timer);
+    if(document.hidden){ timer = setTimeout(poll, 3000); return; }
+    busy = true;
+    const m = await api({ action:'poll', job_id:id });
+    busy = false;
+    if(!alive) return;
+    if(m.error && !m.status){
+      if(++fails >= 20) return finish({ status:'error', error: m.error });
+      timer = setTimeout(poll, 2000); return;
+    }
+    fails = 0;
+    apply(m);
+    if(alive) timer = setTimeout(poll, 1000);
+  }
+  const tick = setInterval(() => { if(!alive) return clearInterval(tick); if(!target) drawSteps(); }, 1000);
+  TRACK = { id, stop(){ alive = false; clearTimeout(timer); cancelAnimationFrame(raf); clearInterval(tick); }, kick(){ if(alive && !busy){ poll(); } } };
+  if(first) apply(first);
+  poll();
+}
+
+// одинаковые шаги подряд — одной строкой: «Считаю по базе: продажи ×3»
+function squash(list){
+  const out = [];
+  for(const x of list || []){
+    const l = out[out.length - 1];
+    if(l && l.t === x) l.n++; else out.push({ t:x, n:1 });
+  }
+  return out.map(o => o.t + (o.n > 1 ? ' ×' + o.n : ''));
+}
+
+// под готовым ответом — свёрнутый список шагов: что смотрел и сколько думал
+function addHow(d, steps, secs){
+  if(!steps || !steps.length) return;
+  const h = document.createElement('details');
+  h.className = 'ai-how';
+  h.innerHTML = '<summary>Как считал' + (secs ? ' · ' + secs + ' с' : '') + '</summary><div class="ai-steps">' +
+    squash(steps).map(x => '<div class="st"><span>' + esc(x) + '</span></div>').join('') + '</div>';
+  d.appendChild(h);
 }
 
 function showPicks(text, list){

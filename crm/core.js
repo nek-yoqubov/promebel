@@ -513,6 +513,7 @@ const ICONS = {
   chevron:'<svg class="i sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
   deal:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/></svg>',
   phone:'<svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
+  spark:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
   map:'<svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>',
   chart:'<svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 3L20 7"/></svg>',
   star:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3.5l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 10l6.1-.9z"/></svg>',
@@ -596,7 +597,7 @@ const SECTIONS = [
   { key:'wa',      group:'control', label:'WhatsApp',       href:'whatsapp.html',         icon:'phone',
     roles:['admin','director','head','callcenter','auditor'] },
   { key:'map',     group:'control', label:'Карта продаж',   href:'map.html',              icon:'map', mapAccess:true },
-  { key:'ai',      group:'control', label:'ИИ-аналитик',    href:'ai.html',               icon:'message', aiAccess:true },
+  { key:'ai',      group:'control', label:'ИИ-аналитик',    href:'ai.html',               icon:'spark', aiAccess:true },
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
     roles:['admin','director','auditor','head','regional'], orBoss:true },
   { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',
@@ -664,7 +665,8 @@ function visibleSections(){ return SECTIONS.filter(canSee); }
 function isAuditor(){ return ME && ME.role === 'auditor'; }   // ревизор всё видит, но ничего не меняет
 
 /* Нижняя панель: пять пунктов. У колл-центра «Задачи» становится «Обзвон».
-   Ревизор ничего не меняет — круглой кнопки «Новая задача» у него нет, пунктов четыре. */
+   Ревизор ничего не меняет — круглой кнопки «Новая задача» у него нет, пунктов четыре.
+   У кого есть ИИ-аналитик — вместо «Уведомлений» вкладка «ИИ» (колокольчик остаётся в шапке). */
 function tabItems(){
   const cc = SECTIONS.find(s => s.key === 'cc');
   const first = (ME && ME.role === 'callcenter' && cc && !cc.soon)
@@ -676,7 +678,8 @@ function tabItems(){
   ];
   if(!isAuditor()) items.push({ key:'add', label:'Новая задача', href:'new-task.html', icon:'plus', fab:true });
   items.push(
-    { key:'notif', label:'Уведомления', href:'notifications.html', icon:'bell', bell:true },
+    AI_OK ? { key:'ai', label:'ИИ', href:'ai.html', icon:'spark' }
+          : { key:'notif', label:'Уведомления', href:'notifications.html', icon:'bell', bell:true },
     { key:'profile', label:'Профиль', href:'profile.html', icon:'user' }
   );
   return items;

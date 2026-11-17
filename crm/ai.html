@@ -50,9 +50,9 @@
 .ai-pick .opts button.on{border-color:var(--brand);color:var(--brand)}
 .ai-bar{position:sticky;bottom:0;background:var(--bg);padding:8px 0 calc(8px + env(safe-area-inset-bottom))}
 .ai-bar .composer{padding:0}
-.ai-mode{display:flex;gap:6px;margin-bottom:6px}
-.ai-mode button{border:1px solid var(--line);background:var(--card);color:var(--ink-2);border-radius:16px;padding:5px 12px;cursor:pointer;font-size:13px}
-.ai-mode button.on{border-color:var(--brand);color:var(--brand)}
+.ai-web{width:var(--tap);height:var(--tap);flex:none;border-radius:50%;border:1px solid var(--line-2);background:var(--card);color:var(--muted);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.ai-web.on{background:color-mix(in srgb, var(--info, #3b82f6) 18%, transparent);border-color:var(--info, #3b82f6);color:var(--info, #3b82f6)}
 .ai-hint{font-size:12.5px;color:var(--muted);margin-top:4px}
 .ai-hint:empty{display:none}
 .ai-steps{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
@@ -104,6 +104,11 @@
   body.kb .tabbar{display:none}
   body.kb.shell{padding-bottom:0}
   body.kb .ai-bar{bottom:0}
+  /* читает ответ (не внизу страницы) — нижние вкладки уезжают, поле ввода опускается на их место */
+  .tabbar{transition:transform .2s ease-out}
+  .ai-bar{transition:bottom .2s ease-out}
+  body.tbhide .tabbar{transform:translateY(100%)}
+  body.tbhide .ai-bar{bottom:0}
 }
 </style>
 </head>
@@ -122,11 +127,8 @@
       <div class="ai-bar">
         <button class="ai-down" id="down" aria-label="Вниз"></button>
         <div class="ai-ref" id="ref" hidden></div>
-        <div class="ai-mode">
-          <button id="mDb" class="on">База</button>
-          <button id="mWeb">Интернет</button>
-        </div>
         <div class="composer">
+          <button class="ai-web" id="mWeb" type="button" aria-label="Интернет" title="Поиск в интернете"></button>
           <textarea id="q" rows="1" placeholder="Ваш вопрос…"></textarea>
           <button class="send" id="send" title="Отправить"></button>
         </div>
@@ -143,6 +145,7 @@ initTheme();
 const $ = id => document.getElementById(id);
 const MOBILE = matchMedia('(max-width:1023px)');
 const MENU = '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+const GLOBE = '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg>';
 const HINT_DB = 'Имена клиентов и сотрудников не уходят в ИИ: перед отправкой они заменяются метками.';
 const HINT_WEB = 'Интернет: поиск по рынку и конкурентам. База в этом режиме недоступна, данные компании в поиск не уходят.';
 let CHAT = null, WEB = false, BUSY = false, PENDING = null, TITLES = {}, TRACK = null, REFS = [];
@@ -179,11 +182,11 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
   $('sideClose').onclick = closeSide;
   $('back').onclick = closeSide;
   $('newBtn').onclick = newChat;
-  $('mDb').onclick = () => setMode(false);
-  $('mWeb').onclick = () => setMode(true);
+  $('mWeb').innerHTML = GLOBE;
+  $('mWeb').onclick = () => setMode(!WEB);
   $('send').onclick = () => send();
   // нажатие на кнопки не забирает фокус у поля — иначе клавиатура прячется посреди нажатия и всё прыгает
-  for(const b of [$('send'), $('mDb'), $('mWeb')]) b.addEventListener('pointerdown', e => e.preventDefault());
+  for(const b of [$('send'), $('mWeb')]) b.addEventListener('pointerdown', e => e.preventDefault());
   $('down').onclick = () => { scrollEnd(); };
   const q = $('q');
   q.value = draftGet(); grow();
@@ -216,8 +219,9 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
 function grow(){ const t = $('q'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
 function setMode(w){
   WEB = w;
-  $('mDb').classList.toggle('on', !w); $('mWeb').classList.toggle('on', w);
-  $('q').placeholder = w ? 'Вопрос про рынок, цены, конкурентов…' : 'Ваш вопрос…';
+  $('mWeb').classList.toggle('on', w);
+  $('mWeb').setAttribute('aria-pressed', w ? 'true' : 'false');
+  $('q').placeholder = w ? 'Вопрос про рынок…' : 'Ваш вопрос…';
   // подсказки показываются, пока человек не отправил первый вопрос в этом режиме
   $('hint').textContent = w ? (seen('ai_hint_web') ? '' : HINT_WEB) : (seen('ai_hint_db') ? '' : HINT_DB);
 }
@@ -228,6 +232,7 @@ function closeSide(){ $('side').classList.remove('open'); $('back').hidden = tru
 function downBtn(){
   const gap = document.documentElement.scrollHeight - (scrollY + innerHeight);
   $('down').classList.toggle('on', gap > 240);
+  document.body.classList.toggle('tbhide', MOBILE.matches && gap > 120);
 }
 function scrollEnd(){ scrollTo({ top: document.documentElement.scrollHeight, behavior:'smooth' }); }
 // длинный ответ — показать его начало, дальше человек листает сам (кнопка ↓ появится)

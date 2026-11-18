@@ -584,6 +584,8 @@ const SECTIONS = [
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'oct26' },
   { key:'callout_agt', group:'sales', label:'Обзвон AGT',    href:'callout.html?c=agt',    icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'agt' },
+  { key:'callout_ldsp', group:'sales', label:'Обзвон ЛДСП, ЛХДФ', href:'callout.html?c=ldsp', icon:'phone',
+    roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'ldsp' },
   { key:'callout_risk26', group:'sales', label:'Обзвон: дилеры, ОПИП', href:'callout-risk.html', icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'risk26' },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star', notRoles:['purchasing'] },

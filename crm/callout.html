@@ -150,9 +150,10 @@ function paintOther(list){
     : '';
 }
 function paintState(){
-  if(CAMPAIGN === 'agt'){
+  if(CAMPAIGN === 'agt' || Array.isArray(CFG.products)){
+    const what = Array.isArray(CFG.products) ? CFG.products.map(p => p.label).join(', ') : 'AGT';
     $('cfgState').textContent = CFG.cycle_start
-      ? 'Клиенты, которые перестали брать AGT или стали брать меньше (продажи за ' + fmtDateOnly(CFG.period_from) + '–' + fmtDateOnly(CFG.period_to) +
+      ? 'Клиенты, которые перестали брать ' + what + ' или стали брать меньше (продажи за ' + fmtDateOnly(CFG.period_from) + '–' + fmtDateOnly(CFG.period_to) +
         ') · каждый день добавляются новые клиенты · список обновляется раз в ' + (CFG.cycle_days || 20) + ' дней · «пришёл» — покупка после звонка'
       : 'Обзвон не настроен';
     return;

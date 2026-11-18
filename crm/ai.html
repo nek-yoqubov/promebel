@@ -12,10 +12,10 @@
 <link rel="stylesheet" href="crm.css">
 <style>
 .ai-wrap{display:flex;gap:16px;padding:12px 16px 0;align-items:flex-start}
-.ai-side{width:260px;flex:none;display:flex;flex-direction:column;gap:8px}
+.ai-side{width:260px;flex:none;display:flex;flex-direction:column;gap:8px;position:sticky;top:12px;max-height:calc(100vh - 24px)}
 .ai-side .btn{height:42px}
 .ai-side .sh{display:none}
-.ai-chats{display:flex;flex-direction:column;gap:2px;max-height:70vh;overflow:auto}
+.ai-chats{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
 .ai-chat{display:flex;align-items:center;gap:6px;padding:9px 10px;border-radius:10px;cursor:pointer;color:var(--ink-2);font-size:14px}
 .ai-chat:hover{background:var(--card)}
 .ai-chat.on{background:var(--card-2);color:var(--ink)}
@@ -91,7 +91,7 @@
   /* на телефоне значок интернета — в шапке рядом с «+», чтобы полю ввода хватало места */
   .composer .ai-web{display:none}
   .tbar .ai-webtop.on{color:var(--info, #3b82f6);background:color-mix(in srgb, var(--info, #3b82f6) 16%, transparent)}
-  .ai-side{position:fixed;top:0;bottom:0;left:0;width:min(84vw,320px);z-index:80;background:var(--panel);
+  .ai-side{position:fixed;top:0;bottom:0;left:0;width:min(84vw,320px);z-index:80;max-height:none;background:var(--panel);
     padding:calc(10px + env(safe-area-inset-top)) 10px 10px;border-right:1px solid var(--line);
     transform:translateX(-102%);transition:transform .2s ease-out}
   .ai-side.open{transform:none}

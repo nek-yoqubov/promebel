@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Устройства</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.dv-top{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 16px 12px}
+.dv-top input{flex:1;min-width:180px;height:42px;border-radius:12px;padding:0 12px}
+.dv-sum{padding:0 16px 10px}
+.dv-emp{margin:0 16px 12px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.dv-eh{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.dv-eh .n{flex:1;min-width:0}
+.dv-eh .n b{display:block;font-size:15px}
+.dv-eh .n span{font-size:13px;color:var(--muted)}
+.dv-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line)}
+.dv-row:first-of-type{border-top:0}
+.dv-row .d{flex:1;min-width:0}
+.dv-row .d b{font-size:14px;font-weight:600}
+.dv-row .d div{font-size:13px;color:var(--muted);margin-top:2px}
+.dv-tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:8px;margin-left:6px;vertical-align:1px}
+.dv-tag.me{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.dv-tag.old{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.dv-row.stale .d b{color:var(--muted)}
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Устройства</h1></div>
+  <div class="dv-top">
+    <input id="q" type="search" placeholder="Поиск по сотруднику">
+    <button class="btn ghost sm" id="onlyOld">Давно не заходили</button>
+    <button class="btn danger sm" id="allOut">Выйти у всех, кроме этого устройства</button>
+  </div>
+  <div class="sub dv-sum" id="sum"></div>
+  <div id="list"><div class="loading">Загрузка…</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+let ROWS = [], ONLY_OLD = false;
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'Устройства', tab:'' });
+  if(!ME || ME.role !== 'admin'){ location.replace('index.html'); return; }
+  $('q').addEventListener('input', paint);
+  $('onlyOld').onclick = () => { ONLY_OLD = !ONLY_OLD; $('onlyOld').classList.toggle('on', ONLY_OLD); paint(); };
+  $('allOut').onclick = () => logout({ p_all: true }, 'Выйти на всех устройствах у всех сотрудников? Останется вход только на этом устройстве. Всем придётся войти заново.');
+  load();
+})();
+
+async function load(){
+  const { data, error } = await sb.rpc('devices_list');
+  if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  ROWS = data || [];
+  paint();
+}
+
+function ago(ts){
+  const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+  if(m < 2) return 'сейчас';
+  if(m < 60) return m + ' мин назад';
+  const h = Math.round(m / 60);
+  if(h < 24) return h + ' ч назад';
+  const d = Math.round(h / 24);
+  return d + ' дн. назад';
+}
+const dt = ts => new Date(ts).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+
+function paint(){
+  const q = $('q').value.trim().toLowerCase();
+  const rows = ROWS.filter(r => (!q || (r.full_name || '').toLowerCase().includes(q)) && (!ONLY_OLD || r.is_stale));
+  const people = new Map();
+  for(const r of rows){ if(!people.has(r.employee_id)) people.set(r.employee_id, []); people.get(r.employee_id).push(r); }
+  const old = ROWS.filter(r => r.is_stale).length;
+  $('sum').textContent = 'Входов: ' + ROWS.length + ' у ' + new Set(ROWS.map(r => r.employee_id)).size + ' человек' +
+    (old ? ' · давно не заходили (30+ дней): ' + old + ' — выйдут сами ночью' : '');
+  if(!rows.length){ $('list').innerHTML = '<div class="empty">Ничего не найдено</div>'; return; }
+  $('list').innerHTML = [...people.values()].map(list => {
+    const p = list[0];
+    return '<div class="dv-emp"><div class="dv-eh"><div class="n"><b>' + esc(p.full_name) + '</b><span>' + esc(p.emp_position || '') +
+      ' · устройств: ' + list.length + '</span></div>' +
+      (list.some(r => !r.is_current) ? '<button class="btn ghost sm" data-emp="' + esc(p.employee_id) + '">Выйти везде</button>' : '') + '</div>' +
+      list.map(r => '<div class="dv-row' + (r.is_stale ? ' stale' : '') + '"><div class="d"><b>' + esc(r.device) + '</b>' +
+        (r.is_current ? '<span class="dv-tag me">это устройство</span>' : '') +
+        (r.is_stale ? '<span class="dv-tag old">давно не заходил</span>' : '') +
+        '<div>был ' + esc(ago(r.last_seen)) + ' · вход ' + esc(dt(r.signed_in)) + (r.ip ? ' · IP ' + esc(r.ip) : '') + '</div></div>' +
+        (r.is_current ? '' : '<button class="btn ghost sm" data-s="' + esc(r.session_id) + '">Выйти</button>') + '</div>').join('') +
+      '</div>';
+  }).join('');
+  $('list').querySelectorAll('[data-s]').forEach(b => b.onclick = () => logout({ p_session: b.dataset.s }, 'Выйти на этом устройстве? Сотруднику придётся войти заново.'));
+  $('list').querySelectorAll('[data-emp]').forEach(b => {
+    const n = (ROWS.find(r => r.employee_id === b.dataset.emp) || {}).full_name || '';
+    b.onclick = () => logout({ p_emp: b.dataset.emp }, 'Выйти на всех устройствах у «' + n + '»?');
+  });
+}
+
+async function logout(args, question){
+  if(!confirm(question)) return;
+  const { data, error } = await sb.rpc('devices_logout', args);
+  if(error){ toast(errText(error)); return; }
+  toast('Готово: выход на ' + (data || 0) + ' устр.');
+  load();
+}
+</script>
+</body>
+</html>

@@ -13,10 +13,31 @@ const SUPABASE_KEY = 'sb_publishable_rM3r9_o443Ij_8ISr-nE7Q_BxKWNnnO';
    режим просмотра держится на всех страницах без доп. параметров в URL. */
 const PREVIEW_ID = /^pv:/.test(window.name || '') ? window.name.slice(3) : null;
 const IS_PREVIEW = !!PREVIEW_ID;
+/* Сессию завершили с панели «Устройства» (или она истекла): база отвечает 401 session_revoked
+   на первый же запрос — сразу выходим на экран входа, не дожидаясь конца срока ключа. */
+let SESSION_ENDED = false;
+async function guardedFetch(input, init){
+  const r = await fetch(input, init);
+  if(r.status === 401 && !SESSION_ENDED){
+    try{ const j = await r.clone().json(); if(j && j.code === 'session_revoked') sessionEnded(); }catch(e){}
+  }
+  return r;
+}
+function sessionEnded(){
+  if(SESSION_ENDED) return;
+  SESSION_ENDED = true;
+  if(IS_PREVIEW){ exitPreview(); return; }
+  try{ localStorage.removeItem('sb-' + SUPABASE_URL.split('//')[1].split('.')[0] + '-auth-token'); }catch(e){}
+  if(!/login\.html$/.test(location.pathname)) location.replace('login.html?ended=1');
+}
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, Object.assign(
-  { db: { schema: 'crm' } },
+  { db: { schema: 'crm' }, global: { fetch: guardedFetch } },
   IS_PREVIEW ? { auth: { storageKey: 'sb-pv-' + PREVIEW_ID } } : null
 ));
+/* ключ продления отозван — библиотека сама сообщит SIGNED_OUT */
+sb.auth.onAuthStateChange(ev => {
+  if(ev === 'SIGNED_OUT' && !/login\.html$/.test(location.pathname) && !IS_PREVIEW) location.replace('login.html');
+});
 
 const BOT_USERNAME = 'pro_organaizer_bot';
 
@@ -600,6 +621,7 @@ const SECTIONS = [
     roles:['admin','director','head','callcenter','auditor'] },
   { key:'map',     group:'control', label:'Карта продаж',   href:'map.html',              icon:'map', mapAccess:true },
   { key:'ai',      group:'control', label:'ИИ-аналитик',    href:'ai.html',               icon:'spark', aiAccess:true },
+  { key:'devices', group:'control', label:'Устройства',     href:'devices.html',          icon:'phone', roles:['admin'] },
   { key:'dash',    group:'control', label:'Панель руководителя', href:'dashboard.html',   icon:'chart',
     roles:['admin','director','auditor','head','regional'], orBoss:true },
   { key:'audit',   group:'control', label:'Журнал действий',href:'audit.html',            icon:'history',

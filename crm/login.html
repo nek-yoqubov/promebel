@@ -58,6 +58,7 @@ const msg = document.getElementById('msg');
 const btn = document.getElementById('btn');
 
 // профиль не найден — сюда нас отправил requireAuth()
+if(new URLSearchParams(location.search).get('ended')) msg.textContent = 'Вход на этом устройстве завершён. Войдите заново.';
 if(new URLSearchParams(location.search).get('nouser')){
   msg.textContent = 'Пользователь не заведён в платформе, обратитесь к администратору';
 }

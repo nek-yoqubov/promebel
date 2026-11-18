@@ -78,6 +78,22 @@
 .ai-ref .tp{flex:none;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:color-mix(in srgb, var(--c) 18%, transparent);color:var(--c)}
 .ai-ref .em{padding:10px;color:var(--muted);font-size:13.5px}
 .ai-ref .hd{padding:6px 10px 2px;font-size:12px;color:var(--muted)}
+/* правила */
+.rl-sec{margin:0 0 18px}
+.rl-sec h3{font:800 14px 'Manrope';color:var(--ink-2);margin:0 0 4px}
+.rl-sec .sub{font-size:12.5px;color:var(--muted);margin:0 0 8px}
+.rl-it{display:flex;gap:8px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:12px;margin-bottom:6px;background:var(--card)}
+.rl-it .t{flex:1;min-width:0;font-size:14px;line-height:1.45;word-break:break-word}
+.rl-it .t i{display:block;font-style:normal;font-size:12px;color:var(--muted);margin-top:3px}
+.rl-it button{flex:none;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink-2);border-radius:10px;height:32px;min-width:32px;padding:0 9px;cursor:pointer;font-size:13px}
+.rl-it button.ok{color:#22c55e;border-color:#22c55e66}
+.rl-it button.no{color:var(--late)}
+.rl-add{display:flex;gap:6px}
+.rl-add textarea{flex:1;min-height:42px;resize:none;font:inherit;font-size:14px;border-radius:12px;padding:9px 12px;font-size:14px}
+.rl-add .btn{height:42px;flex:none}
+.rl-st{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:8px;background:var(--card-2);color:var(--muted)}
+.ai-side .btn.ghost{height:38px}
+.ai-side .cnt{position:static;margin-left:6px;display:inline-flex}
 .ai-empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:15px;line-height:1.6}
 .ai-down{position:absolute;right:4px;top:-50px;width:40px;height:40px;border-radius:50%;border:1px solid var(--line-2);
   background:var(--card-2);color:var(--ink);display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px #0004}
@@ -122,6 +138,7 @@
     <aside class="ai-side" id="side">
       <div class="sh"><span>Чаты</span><button class="ib" id="sideClose" aria-label="Закрыть"></button></div>
       <button class="btn" id="newBtn">Новый чат</button>
+      <button class="btn ghost" id="rulesBtn">Правила<span class="cnt" id="rulesCnt" hidden></span></button>
       <div class="ai-chats" id="chats"></div>
     </aside>
     <div class="ai-back" id="back" hidden></div>
@@ -140,6 +157,13 @@
     </section>
   </div>
 </main>
+
+<div class="modal sheet" id="rulesM" hidden>
+  <div class="modal-box" style="max-width:600px">
+    <div class="modal-head"><h2>Правила для ИИ</h2><button class="icon-btn" id="rulesX" aria-label="Закрыть"></button></div>
+    <div class="modal-body" id="rulesBody"></div>
+  </div>
+</div>
 
 <script src="supabase.min.js"></script>
 <script src="core.js"></script>
@@ -187,6 +211,11 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
   $('sideClose').onclick = closeSide;
   $('back').onclick = closeSide;
   $('newBtn').onclick = newChat;
+  $('rulesBtn').onclick = () => { closeSide(); openRules(); };
+  $('rulesX').innerHTML = icon('x');
+  $('rulesX').onclick = () => { $('rulesM').hidden = true; };
+  $('rulesM').addEventListener('click', e => { if(e.target === $('rulesM')) $('rulesM').hidden = true; });
+  if(new URLSearchParams(location.search).get('rules')) openRules(); else rulesCount();
   $('mWeb').innerHTML = GLOBE;
   $('mWeb').onclick = () => setMode(!WEB);
   $('send').onclick = () => send();
@@ -359,6 +388,63 @@ async function send(picks){
   mark(web ? 'ai_hint_web' : 'ai_hint_db'); setMode(WEB);
   loadChats();
   track(r.job_id, web);
+}
+
+/* Правила: личные — сразу и только для себя; общие — для всех, действуют после одобрения руководителем.
+   Нейронка сама может только предложить общее правило (до 5 в день) или сохранить личное по просьбе. */
+async function rulesCount(){
+  const r = await api({ action:'rules' });
+  const n = (r.proposed || []).length;
+  $('rulesCnt').hidden = !n; $('rulesCnt').textContent = n;
+  return r;
+}
+async function openRules(){
+  $('rulesM').hidden = false;
+  $('rulesBody').innerHTML = '<div class="loading">Загрузка…</div>';
+  const r = await rulesCount();
+  if(r.error){ $('rulesBody').innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  const when = d => d ? new Date(d).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit' }) : '';
+  const src = x => x.source === 'ai' ? 'предложила нейронка' : x.source === 'admin' ? 'руководитель' : 'вручную';
+  const item = (x, btns, meta) => '<div class="rl-it" data-id="' + x.id + '"><div class="t">' + esc(x.text) +
+    (meta ? '<i>' + esc(meta) + '</i>' : '') + '</div>' + btns + '</div>';
+  const del = '<button data-act="del" title="Убрать">×</button>';
+  let h = '';
+  if(r.admin && r.proposed.length){
+    h += '<div class="rl-sec"><h3>Ждут решения · ' + r.proposed.length + '</h3><div class="sub">Заработают для всех только после одобрения.</div>' +
+      r.proposed.map(x => item(x, '<button class="ok" data-act="ok" title="Одобрить">✓</button><button class="no" data-act="no" title="Отклонить">✗</button>',
+        [x.who, src(x), when(x.at)].filter(Boolean).join(' · ') + (x.reason ? '\nПочему: ' + x.reason : ''))).join('') + '</div>';
+  }
+  h += '<div class="rl-sec"><h3>Мои правила</h3><div class="sub">Только для вас, действуют сразу. Например: «всегда показывай суммы и в долларах».</div>' +
+    (r.mine.length ? r.mine.map(x => item(x, del, src(x) + ' · ' + when(x.at))).join('') : '') +
+    '<div class="rl-add"><textarea id="rlMine" rows="1" maxlength="300" placeholder="Новое личное правило…"></textarea><button class="btn" data-add="personal">Добавить</button></div></div>';
+  h += '<div class="rl-sec"><h3>Общие правила</h3><div class="sub">' + (r.admin ? 'Для всех. Вы можете добавить или убрать.' : 'Для всех. Новое общее правило сначала одобряет руководитель.') + '</div>' +
+    (r.common.length ? r.common.map(x => item(x, r.admin ? del : '', src(x) + ' · ' + when(x.at))).join('') : '<div class="sub">Пока нет.</div>') +
+    '<div class="rl-add"><textarea id="rlCommon" rows="1" maxlength="300" placeholder="' + (r.admin ? 'Новое общее правило…' : 'Предложить общее правило…') + '"></textarea>' +
+    '<button class="btn" data-add="common">' + (r.admin ? 'Добавить' : 'Предложить') + '</button></div></div>';
+  if(!r.admin && r.my_proposals.length){
+    h += '<div class="rl-sec"><h3>Мои предложения</h3>' + r.my_proposals.map(x => item(x,
+      '<span class="rl-st">' + (x.status === 'rejected' ? 'отклонено' : 'на рассмотрении') + '</span>', when(x.at))).join('') + '</div>';
+  }
+  $('rulesBody').innerHTML = h;
+  $('rulesBody').querySelectorAll('.rl-it .t i').forEach(i => i.style.whiteSpace = 'pre-line');
+  $('rulesBody').querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+    const id = +b.closest('.rl-it').dataset.id, act = b.dataset.act;
+    if(act === 'del' && !confirm('Убрать это правило?')) return;
+    b.disabled = true;
+    const res = await api(act === 'del' ? { action:'rule_delete', id } : { action:'rule_decide', id, ok: act === 'ok' });
+    if(res.error){ toast(res.error); b.disabled = false; return; }
+    openRules();
+  });
+  $('rulesBody').querySelectorAll('[data-add]').forEach(b => b.onclick = async () => {
+    const scope = b.dataset.add, ta = $(scope === 'personal' ? 'rlMine' : 'rlCommon'), text = ta.value.trim();
+    if(text.length < 3) return toast('Напишите правило');
+    b.disabled = true;
+    const res = await api({ action:'rule_add', scope, text });
+    b.disabled = false;
+    if(res.error) return toast(res.error);
+    if(res.status === 'proposed') toast('Отправлено руководителю на одобрение');
+    openRules();
+  });
 }
 
 /* @ или № в поле — список клиентов, сотрудников и папок. Ищет наш сервер, в ИИ ничего не уходит.

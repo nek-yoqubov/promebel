@@ -1,4 +1,4 @@
-const CACHE = 'promebel-crm-v46';
+const CACHE = 'promebel-crm-v47';
 const ASSETS = [
   'index.html', 'login.html', 'tasks.html', 'new-task.html', 'admin.html',
   'employee.html', 'links.html', 'notifications.html', 'profile.html',

@@ -55,7 +55,7 @@ let ROWS = [], ONLY_OLD = false;
   if(!ME || ME.role !== 'admin'){ location.replace('index.html'); return; }
   $('q').addEventListener('input', paint);
   $('onlyOld').onclick = () => { ONLY_OLD = !ONLY_OLD; $('onlyOld').classList.toggle('on', ONLY_OLD); paint(); };
-  $('allOut').onclick = () => logout({ p_all: true }, 'Выйти на всех устройствах у всех сотрудников? Останется вход только на этом устройстве. Всем придётся войти заново.');
+  $('allOut').onclick = () => revokeDevices({ p_all: true }, 'Выйти на всех устройствах у всех сотрудников? Останется вход только на этом устройстве. Всем придётся войти заново.');
   load();
 })();
 
@@ -98,14 +98,14 @@ function paint(){
         (r.is_current ? '' : '<button class="btn ghost sm" data-s="' + esc(r.session_id) + '">Выйти</button>') + '</div>').join('') +
       '</div>';
   }).join('');
-  $('list').querySelectorAll('[data-s]').forEach(b => b.onclick = () => logout({ p_session: b.dataset.s }, 'Выйти на этом устройстве? Сотруднику придётся войти заново.'));
+  $('list').querySelectorAll('[data-s]').forEach(b => b.onclick = () => revokeDevices({ p_session: b.dataset.s }, 'Выйти на этом устройстве? Сотруднику придётся войти заново.'));
   $('list').querySelectorAll('[data-emp]').forEach(b => {
     const n = (ROWS.find(r => r.employee_id === b.dataset.emp) || {}).full_name || '';
-    b.onclick = () => logout({ p_emp: b.dataset.emp }, 'Выйти на всех устройствах у «' + n + '»?');
+    b.onclick = () => revokeDevices({ p_emp: b.dataset.emp }, 'Выйти на всех устройствах у «' + n + '»?');
   });
 }
 
-async function logout(args, question){
+async function revokeDevices(args, question){
   if(!confirm(question)) return;
   const { data, error } = await sb.rpc('devices_logout', args);
   if(error){ toast(errText(error)); return; }

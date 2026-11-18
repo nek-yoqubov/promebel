@@ -88,6 +88,9 @@
 /* телефон и планшет: список чатов — выезжающая панель слева */
 @media (max-width:1023px){
   .ai-wrap{padding:8px 12px 0}
+  /* на телефоне значок интернета — в шапке рядом с «+», чтобы полю ввода хватало места */
+  .composer .ai-web{display:none}
+  .tbar .ai-webtop.on{color:var(--info, #3b82f6);background:color-mix(in srgb, var(--info, #3b82f6) 16%, transparent)}
   .ai-side{position:fixed;top:0;bottom:0;left:0;width:min(84vw,320px);z-index:80;background:var(--panel);
     padding:calc(10px + env(safe-area-inset-top)) 10px 10px;border-right:1px solid var(--line);
     transform:translateX(-102%);transition:transform .2s ease-out}
@@ -171,7 +174,9 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
     menu.className = 'ib'; menu.id = 'menuBtn'; menu.setAttribute('aria-label', 'Чаты'); menu.innerHTML = MENU;
     left ? left.replaceWith(menu) : tb.prepend(menu);
     tb.querySelector('.tt').classList.add('ai-t');
-    tb.querySelector('.ta').innerHTML = '<button class="ib" id="newTop" aria-label="Новый чат">' + icon('plus') + '</button>';
+    tb.querySelector('.ta').innerHTML = '<button class="ib ai-webtop" id="webTop" aria-label="Интернет" title="Поиск в интернете">' + GLOBE + '</button>' +
+      '<button class="ib" id="newTop" aria-label="Новый чат">' + icon('plus') + '</button>';
+    $('webTop').onclick = () => setMode(!WEB);
     menu.onclick = openSide;
     $('newTop').onclick = newChat;
   }
@@ -219,8 +224,7 @@ const draftSet = v => { try{ v ? localStorage.setItem('ai_draft', v) : localStor
 function grow(){ const t = $('q'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
 function setMode(w){
   WEB = w;
-  $('mWeb').classList.toggle('on', w);
-  $('mWeb').setAttribute('aria-pressed', w ? 'true' : 'false');
+  for(const b of [$('mWeb'), $('webTop')]) if(b){ b.classList.toggle('on', w); b.setAttribute('aria-pressed', w ? 'true' : 'false'); }
   $('q').placeholder = w ? 'Вопрос про рынок…' : 'Ваш вопрос…';
   // подсказки показываются, пока человек не отправил первый вопрос в этом режиме
   $('hint').textContent = w ? (seen('ai_hint_web') ? '' : HINT_WEB) : (seen('ai_hint_db') ? '' : HINT_DB);

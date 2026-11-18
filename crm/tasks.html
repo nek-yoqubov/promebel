@@ -208,8 +208,11 @@ async function load(){
 
 /* ---------- Повторяющиеся задачи ---------- */
 async function loadTemplates(){
-  const { data, error } = await sb.from('task_templates')
-    .select('*').eq('author_id', ME.id).order('created_at', { ascending:false });
+  // админ видит и выключает повторы всех постановщиков
+  const all = ME.role === 'admin';
+  let q = sb.from('task_templates').select('*');
+  if(!all) q = q.eq('author_id', ME.id);
+  const { data, error } = await q.order('created_at', { ascending:false });
   if(error){ $('list').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
   const rows = data || [];
   if(!rows.length){
@@ -222,6 +225,7 @@ async function loadTemplates(){
       '<span class="tb2">' +
         '<span class="tn">' + esc(t.title) + '</span>' +
         '<span class="tr">' + esc(empName(t.assignee_id)) + ' · ' + esc(templateRule(t)) + '</span>' +
+        (t.author_id !== ME.id ? '<span class="tr">поставил — ' + esc(empName(t.author_id)) + '</span>' : '') +
         '<span class="tr">следующая — ' + esc(t.next_run_at ? fmtDate(t.next_run_at) : '—') + '</span>' +
       '</span>' +
       (canEdit()
@@ -334,6 +338,7 @@ function paintTask(t, subs, comments, events, files){
           'Нужен отчёт: фото или файл</div>' : '') +
       (t.archived_at ? '<div class="sub" style="margin-top:6px">В архиве · только чтение</div>' : '') +
     '</div>' +
+    (CUR.template_id ? '<div class="pad" id="tplBox" hidden></div>' : '') +
     '<dl class="kv">' + kv.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('') + '</dl>' +
     '<div class="meta-small">Задача <span class="mono">№' + t.id + '</span> · создана ' +
       esc(fmtWhen(t.created_at)) + '</div>';
@@ -378,12 +383,36 @@ function paintTask(t, subs, comments, events, files){
     a.onclick = e => { e.preventDefault(); openTask(Number(a.dataset.open)); });
   wireFiles();
 
+  if(t.template_id) paintTplBox(t);
   paintActions(t);
   // архив закрыт для всех, ревизор не пишет и в живых задачах
   const readonly = !!t.archived_at || !canEdit();
   $('dActs').hidden = readonly;
   document.querySelector('.composer').hidden = readonly;
   $('dBody').scrollTop = 0;
+}
+
+// повтор, из которого создана задача: автор и админ могут выключить его прямо здесь
+async function paintTplBox(t){
+  const box = $('tplBox');
+  if(!box || !canEdit()) return;
+  const { data: tpl } = await sb.from('task_templates')
+    .select('*')
+    .eq('id', t.template_id).maybeSingle();
+  if(!tpl || !CUR || CUR.id !== t.id) return;
+  if(ME.role !== 'admin' && tpl.author_id !== ME.id) return;
+  box.innerHTML = '<div class="sub" style="margin-bottom:6px">' + icon('repeat') + ' ' +
+      (tpl.is_active ? 'Повтор: ' + esc(templateRule(tpl)) : 'Повтор выключен — новые задачи не создаются') +
+    '</div>' +
+    '<button class="btn ghost sm" id="tplTgl">' + (tpl.is_active ? 'Выключить повтор' : 'Включить повтор') + '</button>';
+  box.hidden = false;
+  $('tplTgl').onclick = async () => {
+    $('tplTgl').disabled = true;
+    const { error } = await sb.from('task_templates').update({ is_active: !tpl.is_active }).eq('id', tpl.id);
+    if(error){ $('tplTgl').disabled = false; return toast(errText(error, 'update')); }
+    toast(tpl.is_active ? 'Повтор выключен' : 'Повтор включён');
+    paintTplBox(t);
+  };
 }
 
 function bubbleHTML(c){

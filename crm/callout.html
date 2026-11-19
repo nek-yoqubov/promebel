@@ -108,8 +108,9 @@ let FILTER = '', SELLER = '', SEL = new Set();
    ПРАВА — повторяют RLS, только чтобы прятать лишние кнопки.
    Роли как в «Розыгрыше»: управляют люди из списка bosses и администратор.
    ============================================================ */
-function readOnly(){ return isAuditor() || IS_PREVIEW; }
-function isBoss(){ return !!ME && (ME.role === 'admin' || BOSSES.includes(ME.id)); }
+// директор, как ревизор, только смотрит
+function readOnly(){ return isAuditor() || IS_PREVIEW || (!!ME && ME.role === 'director'); }
+function isBoss(){ return !!ME && ME.role !== 'director' && (ME.role === 'admin' || BOSSES.includes(ME.id)); }
 function isViewer(){ return isBoss() || isBossRole() || isAuditor(); }
 function canManage(){ return isBoss() && !readOnly(); }
 /* менеджер видит только своих — значит, любой его клиент свой */

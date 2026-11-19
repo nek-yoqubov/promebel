@@ -103,8 +103,9 @@ let FILTER = '', WHO = '';
 /* ============================================================
    ПРАВА — повторяют RLS, только чтобы прятать лишние кнопки
    ============================================================ */
-function readOnly(){ return isAuditor() || IS_PREVIEW; }
-function isBoss(){ return !!ME && (ME.role === 'admin' || BOSSES.includes(ME.id)); }
+// директор, как ревизор, только смотрит
+function readOnly(){ return isAuditor() || IS_PREVIEW || (!!ME && ME.role === 'director'); }
+function isBoss(){ return !!ME && ME.role !== 'director' && (ME.role === 'admin' || BOSSES.includes(ME.id)); }
 function isViewer(){ return isBoss() || isBossRole() || isAuditor(); }
 function canCall(r){ return !readOnly() && (isBoss() || (r && r.employee_id === ME.id)); }
 

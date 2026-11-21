@@ -153,12 +153,15 @@ initTheme();
 const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 let ASSIGNEE = null, PRIORITY = 'normal';
+const TPL_ID = Number(qs.get('tpl')) || null;   // правка повтора: new-task.html?tpl=ID
+let TPL = null;
 
 (async () => {
   if(!await requireAuth()) return;
   // ревизор сюда попадает только по прямой ссылке — задач он не ставит
   if(isAuditor()){ location.replace('tasks.html'); return; }
-  await renderShell({ title:'Новая задача', tab:'add', back:'tasks.html' });
+  await renderShell({ title: TPL_ID ? 'Изменить повтор' : 'Новая задача', tab:'add',
+                     back: TPL_ID ? 'tasks.html?tab=author&f=tpl' : 'tasks.html' });
 
   await Promise.all([loadEmployees(), loadBranches()]);
   paintPeople('');
@@ -195,6 +198,7 @@ let ASSIGNEE = null, PRIORITY = 'normal';
   }
   // задача подготовки к событию
   if(qs.get('event')) await showEvent(qs.get('event'));
+  if(TPL_ID && !await loadTemplate()) return;
 
   $('title').focus();
 })();
@@ -224,6 +228,50 @@ function repRule(){
 function paintRepHint(){
   if(!$('repeat').checked){ $('repHint').textContent = ''; return; }
   $('repHint').textContent = 'Будет создаваться: ' + templateRule(repRule());
+}
+
+/* ---------- правка повтора: заполняем форму из шаблона ---------- */
+async function loadTemplate(){
+  const { data } = await sb.from('task_templates').select('*').eq('id', TPL_ID).maybeSingle();
+  if(!data || (ME.role !== 'admin' && data.author_id !== ME.id)){
+    $('msg').textContent = 'Повтор не найден или менять его может только постановщик';
+    $('save').disabled = true;
+    return false;
+  }
+  TPL = data;
+  $('title').value = data.title || '';
+  $('description').value = data.description || '';
+  $('criteria').value = data.done_criteria || '';
+  $('needReport').checked = !!data.report_required;
+  ASSIGNEE = data.assignee_id;
+  paintPeople('');
+  if(!EMPS.some(e => e.id === ASSIGNEE)) $('whoHint').textContent = 'Исполнитель больше не работает — выберите нового';
+  if(data.branch_id != null) $('branch').value = String(data.branch_id);
+  PRIORITY = data.priority || 'normal';
+  document.querySelectorAll('#prio button').forEach(x => x.classList.toggle('on', x.dataset.p === PRIORITY));
+
+  $('repeat').checked = true;
+  $('repeat').disabled = true;
+  $('repBox').hidden = false;
+  $('freq').value = data.freq || 'daily';
+  WD = (data.weekdays && data.weekdays.length) ? data.weekdays.map(Number).sort() : [1,2,3,4,5,6];
+  $('monthDay').value = data.month_day || 1;
+  $('createTime').value = String(data.create_time || '08:00').slice(0, 5);
+  $('dueTime').value = String(data.due_time || '18:00').slice(0, 5);
+  const dd = String(data.due_days || 0);
+  if(![...$('dueDays').options].some(o => o.value === dd)){
+    $('dueDays').insertAdjacentHTML('beforeend', '<option value="' + dd + '">Через ' + dd + ' дн.</option>');
+  }
+  $('dueDays').value = dd;
+  $('wdBox').hidden = $('freq').value !== 'weekly';
+  $('mdBox').hidden = $('freq').value !== 'monthly';
+  paintWeekdays(); paintRepHint();
+
+  // у повтора срок считается по расписанию, родительской задачи нет
+  $('due').closest('.field').hidden = true;
+  $('parent').closest('.field').hidden = true;
+  $('save').textContent = 'Сохранить изменения';
+  return true;
 }
 
 /* ---------- задача подготовки к событию ---------- */
@@ -309,10 +357,18 @@ async function save(){
     const r = repRule();
     if(r.freq === 'weekly' && !r.weekdays.length){ msg.textContent = 'Выберите хотя бы один день недели'; return; }
     btn.disabled = true; btn.textContent = 'Сохраняем…';
-    const { error } = await sb.from('task_templates').insert(Object.assign({}, common, r));
+    let error;
+    if(TPL){
+      // автор остаётся прежним, даже если правит админ
+      const upd = Object.assign({}, common, r);
+      delete upd.author_id;
+      ({ error } = await sb.from('task_templates').update(upd).eq('id', TPL.id));
+    } else {
+      ({ error } = await sb.from('task_templates').insert(Object.assign({}, common, r)));
+    }
     if(error){
-      msg.textContent = errText(error, 'insert');
-      btn.disabled = false; btn.textContent = 'Сохранить повтор';
+      msg.textContent = errText(error, TPL ? 'update' : 'insert');
+      btn.disabled = false; btn.textContent = TPL ? 'Сохранить изменения' : 'Сохранить повтор';
       return;
     }
     playDone();

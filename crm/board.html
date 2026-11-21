@@ -257,8 +257,8 @@ function rowHTML(p){
   } else if(p.status === 'pending'){
     left += '<div class="meta" style="margin-top:10px">Ждёт проверки ведущим доски</div>';
   }
-  if(p.author_id === ME.id && ['pending','rejected'].includes(p.status) && !IS_PREVIEW){
-    left += '<div class="bar"><button class="btn ghost sm" data-del="' + p.id + '">' + icon('trash') + 'Удалить</button></div>';
+  if(!IS_PREVIEW && (isMod() || (p.author_id === ME.id && ['pending','rejected'].includes(p.status)))){
+    left += '<div class="bar"><button class="btn ghost sm" data-del="' + p.id + '" style="color:var(--late)">' + icon('trash') + 'Удалить проблему</button></div>';
   }
   left += '</div>';
 
@@ -301,7 +301,8 @@ function wire(){
   v.querySelectorAll('[data-accept]').forEach(b => b.onclick = () => acceptForm(Number(b.dataset.pr), Number(b.dataset.accept)));
   v.querySelectorAll('[data-solve]').forEach(b => b.onclick = () => setStatus(Number(b.dataset.solve), 'solved'));
   v.querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => setStatus(Number(b.dataset.reopen), 'open'));
-  v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => confirmBox('Удалить проблему?', 'Её нельзя будет вернуть.', 'Удалить', async () => {
+  v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => confirmBox('Удалить проблему?',
+    'Проблема, решения и голоса удалятся насовсем. Задача, если её уже поставили, останется в «Задачах».', 'Удалить', async () => {
     const { error } = await sb.from('board_problems').delete().eq('id', Number(b.dataset.del));
     if(error) return toast(errText(error));
     toast('Удалено'); load();
@@ -444,7 +445,9 @@ function boardForm(b){
         '<div class="pickbox" style="max-height:140px">' + Object.keys(ROLE_RU).map(k => '<label class="chk"><input type="checkbox" class="g-role" value="' + k + '"' +
           ((v.visible_roles || []).includes(k) ? ' checked' : '') + '>' + esc(ROLE_RU[k]) + '</label>').join('') + '</div>' +
         '<div class="pickbox" style="margin-top:8px">' + box('g-see', emps, v.visible_to || []) + '</div></div>' +
-      (b && (ME.role === 'admin' || b.created_by === ME.id) ? '<button class="btn ghost sm" id="gArch" style="color:var(--late)">' + icon('box') + 'Убрать доску в архив</button>' : '') +
+      (b && (ME.role === 'admin' || b.created_by === ME.id) ? '<div class="btn-row" style="gap:8px;flex-wrap:wrap">' +
+        '<button class="btn ghost sm" id="gArch">' + icon('box') + 'Убрать в архив</button>' +
+        '<button class="btn ghost sm" id="gDel" style="color:var(--late)">' + icon('trash') + 'Удалить доску</button></div>' : '') +
       '</div>',
     onSave: async () => {
       const title = $('gTitle').value.trim();
@@ -465,6 +468,13 @@ function boardForm(b){
       pickBoard(r.data);
     }
   });
+  if($('gDel')) $('gDel').onclick = () => confirmBox('Удалить доску «' + b.title + '»?',
+    'Доска удалится насовсем вместе со всеми проблемами, решениями и голосами. Вернуть будет нельзя. Поставленные задачи останутся в «Задачах». Если доска просто больше не нужна, лучше убрать её в архив.',
+    'Удалить насовсем', async () => {
+      const { error } = await sb.from('boards').delete().eq('id', b.id);
+      if(error) return toast(errText(error));
+      BOARDS = BOARDS.filter(x => x.id !== b.id); toast('Доска удалена'); pickBoard(BOARDS[0] || null);
+    });
   if($('gArch')) $('gArch').onclick = () => confirmBox('Убрать доску в архив?', 'Доска пропадёт из списка у всех. Проблемы сохранятся.', 'В архив', async () => {
     const { error } = await sb.from('boards').update({ is_archived: true }).eq('id', b.id);
     if(error) return toast(errText(error));

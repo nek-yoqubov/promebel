@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Оргструктура</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.og-top{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 16px 10px}
+.og-top input{flex:1;min-width:180px;height:42px;border-radius:12px;padding:0 12px}
+.og-top .seg{min-width:240px}
+.og-sum{padding:0 16px 12px}
+.og-lead{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:0 16px 14px}
+.og-blocks{columns:290px;column-gap:12px;padding:0 16px 24px}
+.og-block{border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden;break-inside:avoid;margin-bottom:12px}
+.og-bh{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:8px}
+.og-bh b{flex:1;font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+.og-bh span{font-size:12px;color:var(--muted);white-space:nowrap}
+.og-unit{padding:10px 14px 12px;border-top:1px solid var(--line)}
+.og-unit:first-of-type{border-top:0}
+.og-uh{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.og-uh b{flex:1;font-size:14px}
+.og-uh .cnt{font-size:12px;color:var(--muted);white-space:nowrap}
+.og-par{font-size:12px;color:var(--muted);margin:-2px 0 6px}
+.og-p{display:flex;align-items:baseline;gap:6px;padding:4px 6px;margin:0 -6px;border-radius:8px;font-size:14px;line-height:1.35}
+.og-p .pos{color:var(--muted)}
+.og-p.head .nm{font-weight:700}
+.og-p.edit{cursor:pointer}
+.og-p.edit:hover{background:var(--card-2)}
+.og-p.hit{background:color-mix(in srgb,var(--brand) 16%,transparent)}
+.og-p .tx{flex:1;min-width:0}
+.og-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:7px;vertical-align:1px;margin-left:4px;
+  background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.og-tag.h{background:color-mix(in srgb,var(--brand) 16%,transparent);color:var(--brand)}
+.og-empty{font-size:13px;color:var(--muted);padding:2px 0}
+.og-add{margin-top:6px}
+.og-leadcard{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:12px 14px}
+.og-leadcard .r{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.og-leadcard .n{font-size:16px;font-weight:700;margin-top:4px}
+.og-diff{padding:0 16px 24px}
+.og-diff table{width:100%;border-collapse:collapse;font-size:14px}
+.og-diff th,.og-diff td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.og-diff th{font-size:12px;color:var(--muted);font-weight:600}
+.og-diff tr.ok td{color:var(--muted)}
+.og-diff .bad{color:var(--warn);font-weight:700}
+.og-note{margin:0 16px 12px;padding:10px 12px;border-radius:12px;background:var(--card-2);font-size:13px;color:var(--muted)}
+.og-form .field{margin-bottom:12px}
+.og-form input,.og-form select{width:100%}
+@media (max-width:640px){
+  .og-diff .hide-m{display:none}
+}
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Оргструктура</h1></div>
+  <div class="og-top">
+    <input id="q" type="search" placeholder="Поиск по имени или должности">
+    <div class="seg" id="seg">
+      <button data-v="scheme" class="on">Схема</button>
+      <button data-v="diff">Сверка с CRM</button>
+    </div>
+    <button class="btn sm" id="addUnit" hidden>Звено</button>
+  </div>
+  <div class="sub og-sum" id="sum"></div>
+  <div id="view"><div class="loading">Загрузка…</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+let UNITS = [], PEOPLE = [], DIFF = null, VIEW = 'scheme', CAN_EDIT = false;
+const LEAD = 'Руководство';
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'Оргструктура', tab:'' });
+  if(!ME || !['admin','director','hr'].includes(ME.role)){ location.replace('index.html'); return; }
+  // правка — админ и директора (база проверяет то же самое); в режиме просмотра — никогда
+  CAN_EDIT = (ME.role === 'admin' || ME.role === 'director') && !IS_PREVIEW;
+  $('addUnit').hidden = !CAN_EDIT;
+  $('addUnit').insertAdjacentHTML('afterbegin', icon('plus'));
+  $('addUnit').onclick = () => unitForm(null);
+  $('q').addEventListener('input', paint);
+  $('seg').querySelectorAll('button').forEach(b => b.onclick = () => {
+    VIEW = b.dataset.v;
+    $('seg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    if(VIEW === 'diff' && !DIFF) loadDiff(); else paint();
+  });
+  load();
+})();
+
+async function load(){
+  const [u, p] = await Promise.all([
+    sb.from('org_units').select('*').order('sort').order('id'),
+    sb.from('org_people').select('*').eq('is_active', true).order('sort').order('id')
+  ]);
+  if(u.error || p.error){ $('view').innerHTML = '<div class="empty">' + esc(errText(u.error || p.error)) + '</div>'; return; }
+  UNITS = (u.data || []).filter(x => x.is_active);
+  PEOPLE = p.data || [];
+  DIFF = null;
+  if(VIEW === 'diff') loadDiff(); else paint();
+}
+async function loadDiff(){
+  $('view').innerHTML = '<div class="loading">Загрузка…</div>';
+  const { data, error } = await sb.rpc('org_crm_diff');
+  if(error){ $('view').innerHTML = '<div class="empty">' + esc(errText(error)) + '</div>'; return; }
+  DIFF = data || [];
+  paint();
+}
+
+const unitById = id => UNITS.find(u => u.id === id);
+function peopleOf(u){
+  return PEOPLE.filter(p => p.unit_id === u.id)
+    .sort((a, b) => (b.id === u.head_id) - (a.id === u.head_id) || a.sort - b.sort || a.id - b.id);
+}
+function unitCount(u){ return PEOPLE.filter(p => p.unit_id === u.id).length; }
+
+function paint(){
+  const q = $('q').value.trim().toLowerCase();
+  const inCrm = PEOPLE.filter(p => p.employee_id).length;
+  $('sum').textContent = 'Сотрудников: ' + PEOPLE.length + ' · звеньев: ' + UNITS.length + ' · из них с входом в CRM: ' + inCrm;
+  if(VIEW === 'diff') return paintDiff(q);
+
+  const hit = p => !!q && ((p.full_name || '').toLowerCase().includes(q) || (p.position || '').toLowerCase().includes(q));
+  const personHTML = (p, u) => {
+    const isHead = p.id === u.head_id;
+    return '<div class="og-p' + (isHead ? ' head' : '') + (CAN_EDIT ? ' edit' : '') + (hit(p) ? ' hit' : '') + '" data-p="' + p.id + '">' +
+      '<span class="tx"><span class="nm">' + esc(p.full_name) + '</span>' +
+      (p.employee_id ? '<span class="og-tag" title="Есть вход в CRM">CRM</span>' : '') +
+      '<br><span class="pos">' + esc(p.position || '—') + '</span></span></div>';
+  };
+  const unitHTML = u => {
+    const ps = peopleOf(u), par = unitById(u.parent_id);
+    if(q && !ps.some(hit) && !(u.name || '').toLowerCase().includes(q)) return '';
+    return '<div class="og-unit">' +
+      '<div class="og-uh"><b>' + esc(u.name) + '</b><span class="cnt">' + ps.length + ' чел.</span>' +
+        (CAN_EDIT ? '<button class="ib" data-u="' + u.id + '" aria-label="Изменить звено">' + icon('edit') + '</button>' : '') + '</div>' +
+      (par ? '<div class="og-par">подчиняется: ' + esc(par.name) + (par.head_id ? ' · ' + esc(headName(par)) : '') + '</div>' : '') +
+      (ps.length ? ps.map(p => personHTML(p, u)).join('') : '<div class="og-empty">Никого нет</div>') +
+      (CAN_EDIT ? '<button class="btn ghost sm og-add" data-add="' + u.id + '">' + icon('plus') + 'Сотрудник</button>' : '') +
+      '</div>';
+  };
+
+  // руководство — отдельной строкой, остальные звенья — по блокам в порядке звеньев
+  const lead = UNITS.filter(u => u.block === LEAD && PEOPLE.some(p => p.unit_id === u.id));
+  const leadEmpty = UNITS.filter(u => u.block === LEAD && !PEOPLE.some(p => p.unit_id === u.id));
+  const blocks = [];
+  for(const u of UNITS.filter(x => x.block !== LEAD)){
+    let b = blocks.find(x => x.name === u.block);
+    if(!b){ b = { name: u.block || 'Без блока', units: [] }; blocks.push(b); }
+    b.units.push(u);
+  }
+
+  let html = '';
+  if(!q){
+    html += '<div class="og-lead">' + leadEmpty.map(u =>
+      '<div class="og-leadcard"><div class="r">Верх схемы</div><div class="n">' + esc(u.name) + '</div></div>').join('') +
+      lead.map(u => {
+        const h = PEOPLE.find(p => p.id === u.head_id) || peopleOf(u)[0];
+        return '<div class="og-leadcard"' + (CAN_EDIT && h ? ' style="cursor:pointer" data-p="' + h.id + '"' : '') + '>' +
+          '<div class="r">' + esc(u.name) + '</div><div class="n">' + esc(h ? h.full_name : '—') +
+          (h && h.employee_id ? '<span class="og-tag">CRM</span>' : '') + '</div></div>';
+      }).join('') + '</div>';
+  }
+  const blocksHTML = blocks.map(b => {
+    const units = b.units.map(unitHTML).filter(Boolean);
+    if(!units.length) return '';
+    const n = b.units.reduce((s, u) => s + unitCount(u), 0);
+    return '<div class="og-block"><div class="og-bh"><b>' + esc(b.name) + '</b><span>' + n + ' чел.</span></div>' + units.join('') + '</div>';
+  }).filter(Boolean);
+  html += blocksHTML.length ? '<div class="og-blocks">' + blocksHTML.join('') + '</div>'
+                            : (q ? '<div class="empty">Ничего не найдено</div>' : '');
+  $('view').innerHTML = html;
+
+  if(CAN_EDIT){
+    $('view').querySelectorAll('[data-p]').forEach(el => el.onclick = () => personForm(PEOPLE.find(p => p.id === Number(el.dataset.p)), null));
+    $('view').querySelectorAll('[data-u]').forEach(el => el.onclick = e => { e.stopPropagation(); unitForm(unitById(Number(el.dataset.u))); });
+    $('view').querySelectorAll('[data-add]').forEach(el => el.onclick = () => personForm(null, Number(el.dataset.add)));
+  }
+}
+function headName(u){ const h = PEOPLE.find(p => p.id === u.head_id); return h ? h.full_name : ''; }
+
+function paintDiff(q){
+  const rows = (DIFF || []).filter(r => !q || (r.full_name || '').toLowerCase().includes(q));
+  const bad = (DIFF || []).filter(r => !r.same).length;
+  $('view').innerHTML =
+    '<div class="og-note">Схема пока не влияет на права в CRM: кто кому ставит задачи и чьи планы видит, решает подчинение в «Сотрудниках». ' +
+    'Здесь видно, где они расходятся' + (bad ? ' — расхождений: ' + bad : ' — расхождений нет') + '. ' +
+    'Если руководителя звена нет в CRM, берётся ближайший руководитель выше, у которого есть вход.</div>' +
+    '<div class="og-diff"><table><thead><tr><th>Сотрудник CRM</th><th class="hide-m">Звено</th><th>По схеме</th><th>В CRM сейчас</th></tr></thead><tbody>' +
+    rows.map(r => '<tr class="' + (r.same ? 'ok' : '') + '"><td>' + esc(r.full_name) + '</td>' +
+      '<td class="hide-m">' + (r.in_scheme ? esc(r.unit_name || '') : '<span class="bad">нет в схеме</span>') + '</td>' +
+      '<td>' + (r.in_scheme ? esc(r.scheme_manager || '—') : '—') + '</td>' +
+      '<td>' + esc(r.crm_manager || '—') + (r.same ? '' : ' <span class="bad">≠</span>') + '</td></tr>').join('') +
+    '</tbody></table></div>';
+}
+
+/* ---------- правка человека ---------- */
+function unitOptions(sel){
+  return UNITS.map(u => '<option value="' + u.id + '"' + (u.id === sel ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('');
+}
+function personForm(p, unitId){
+  const isNew = !p;
+  const u = unitById(isNew ? unitId : p.unit_id);
+  const isHead = !isNew && u && u.head_id === p.id;
+  const taken = new Set(PEOPLE.filter(x => x.employee_id && (!p || x.id !== p.id)).map(x => x.employee_id));
+  const emps = EMPS.filter(e => !taken.has(e.id)).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
+  modalOpen({
+    title: isNew ? 'Новый сотрудник в схеме' : p.full_name,
+    sheet: true,
+    saveLabel: 'Сохранить',
+    bodyHTML: '<div class="og-form">' +
+      '<div class="field"><label class="field-label" for="fName">ФИО</label><input id="fName" maxlength="120" value="' + esc(isNew ? '' : p.full_name) + '"></div>' +
+      '<div class="field"><label class="field-label" for="fPos">Должность</label><input id="fPos" maxlength="160" value="' + esc(isNew ? '' : p.position) + '"></div>' +
+      '<div class="field"><label class="field-label" for="fUnit">Звено</label><select id="fUnit">' + unitOptions(u ? u.id : null) + '</select></div>' +
+      '<div class="field"><label class="switch"><input type="checkbox" id="fHead"' + (isHead ? ' checked' : '') + '>' +
+        '<span class="sl">Руководитель звена<i>Прежний руководитель звена станет обычным сотрудником</i></span></label></div>' +
+      '<div class="field"><label class="field-label" for="fEmp">Вход в CRM</label><select id="fEmp"><option value="">Нет входа</option>' +
+        emps.map(e => '<option value="' + esc(e.id) + '"' + (!isNew && p.employee_id === e.id ? ' selected' : '') + '>' + esc(e.full_name) + '</option>').join('') +
+        '</select><div class="hint">Только связь со схемой. Учётки создаются и отключаются в «Сотрудниках».</div></div>' +
+      (isNew ? '' : '<button class="btn ghost sm" id="fDel" style="color:var(--late)">' + icon('trash') + 'Убрать из схемы</button>') +
+      '</div>',
+    onSave: () => savePerson(p)
+  });
+  if(!isNew) $('fDel').onclick = () => removePerson(p);
+  $('fName').focus();
+}
+async function savePerson(p){
+  const rec = {
+    full_name: $('fName').value.trim(),
+    position: $('fPos').value.trim(),
+    unit_id: Number($('fUnit').value),
+    employee_id: $('fEmp').value || null
+  };
+  if(!rec.full_name) return modalMsg('Впишите ФИО');
+  modalBusy(true, 'Сохраняем…');
+  let id = p && p.id, error;
+  if(p){
+    ({ error } = await sb.from('org_people').update(rec).eq('id', p.id));
+  } else {
+    rec.sort = PEOPLE.reduce((m, x) => Math.max(m, x.sort), 0) + 1;
+    const r = await sb.from('org_people').insert(rec).select('id').single();
+    error = r.error; id = r.data && r.data.id;
+  }
+  if(!error){
+    const u = unitById(rec.unit_id), wantHead = $('fHead').checked;
+    if(wantHead && u.head_id !== id) ({ error } = await sb.from('org_units').update({ head_id: id }).eq('id', u.id));
+    else if(!wantHead && u.head_id === id) ({ error } = await sb.from('org_units').update({ head_id: null }).eq('id', u.id));
+  }
+  if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error)); }
+  modalClose(); toast('Сохранено'); load();
+}
+function removePerson(p){
+  confirmBox('Убрать из схемы?', p.full_name + ' пропадёт из оргструктуры. Вход в CRM, если он есть, не отключается.', 'Убрать', async () => {
+    const { error } = await sb.from('org_people').delete().eq('id', p.id);
+    if(error) return toast(errText(error));
+    toast('Убран из схемы'); load();
+  });
+}
+
+/* ---------- правка звена ---------- */
+function below(id){
+  const out = new Set([id]);
+  let grow = true;
+  while(grow){ grow = false; for(const u of UNITS) if(u.parent_id && out.has(u.parent_id) && !out.has(u.id)){ out.add(u.id); grow = true; } }
+  return out;
+}
+function unitForm(u){
+  const isNew = !u;
+  const blocks = [...new Set(UNITS.map(x => x.block).filter(Boolean))];
+  const deny = isNew ? new Set() : below(u.id);
+  const ps = isNew ? [] : peopleOf(u);
+  modalOpen({
+    title: isNew ? 'Новое звено' : u.name,
+    sheet: true,
+    saveLabel: 'Сохранить',
+    bodyHTML: '<div class="og-form">' +
+      '<div class="field"><label class="field-label" for="uName">Название</label><input id="uName" maxlength="120" value="' + esc(isNew ? '' : u.name) + '"></div>' +
+      '<div class="field"><label class="field-label" for="uBlock">Блок</label><input id="uBlock" list="uBlocks" maxlength="80" value="' + esc(isNew ? '' : u.block) + '">' +
+        '<datalist id="uBlocks">' + blocks.map(b => '<option value="' + esc(b) + '">').join('') + '</datalist>' +
+        '<div class="hint">Колонка на схеме: Склады, Цех, Продажи… «' + esc(LEAD) + '» — строка директоров сверху.</div></div>' +
+      '<div class="field"><label class="field-label" for="uPar">Подчиняется звену</label><select id="uPar"><option value="">Никому (верх схемы)</option>' +
+        UNITS.filter(x => !deny.has(x.id)).map(x => '<option value="' + x.id + '"' + (!isNew && u.parent_id === x.id ? ' selected' : '') + '>' +
+          esc(x.name) + (x.head_id ? ' — ' + esc(headName(x)) : '') + '</option>').join('') + '</select></div>' +
+      (isNew ? '' : '<div class="field"><label class="field-label" for="uHead">Руководитель</label><select id="uHead"><option value="">Нет</option>' +
+        ps.map(p => '<option value="' + p.id + '"' + (u.head_id === p.id ? ' selected' : '') + '>' + esc(p.full_name) + '</option>').join('') + '</select></div>') +
+      (isNew ? '' : '<button class="btn ghost sm" id="uDel" style="color:var(--late)">' + icon('trash') + 'Удалить звено</button>') +
+      '</div>',
+    onSave: () => saveUnit(u)
+  });
+  if(!isNew) $('uDel').onclick = () => removeUnit(u);
+  $('uName').focus();
+}
+async function saveUnit(u){
+  const rec = {
+    name: $('uName').value.trim(),
+    block: $('uBlock').value.trim(),
+    parent_id: $('uPar').value ? Number($('uPar').value) : null
+  };
+  if(!rec.name) return modalMsg('Впишите название');
+  if(u) rec.head_id = $('uHead').value ? Number($('uHead').value) : null;
+  else rec.sort = UNITS.reduce((m, x) => Math.max(m, x.sort), 0) + 1;
+  modalBusy(true, 'Сохраняем…');
+  const { error } = u ? await sb.from('org_units').update(rec).eq('id', u.id)
+                      : await sb.from('org_units').insert(rec);
+  if(error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(error)); }
+  modalClose(); toast('Сохранено'); load();
+}
+function removeUnit(u){
+  if(PEOPLE.some(p => p.unit_id === u.id) || UNITS.some(x => x.parent_id === u.id)){
+    return modalMsg('Сначала переведите людей и звенья, которые подчиняются этому звену');
+  }
+  confirmBox('Удалить звено?', '«' + u.name + '» пропадёт из схемы.', 'Удалить', async () => {
+    const { error } = await sb.from('org_units').delete().eq('id', u.id);
+    if(error) return toast(errText(error));
+    toast('Звено удалено'); load();
+  });
+}
+</script>
+</body>
+</html>

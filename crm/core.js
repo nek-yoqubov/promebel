@@ -145,7 +145,8 @@ const AUDIT_TABLE_RU = {
   adaptations:'Адаптация', service_orders:'Заявки', callbacks:'Обзвон', feedback:'Замечания',
   links:'Ссылки', branches:'Филиалы', regions:'Регионы',
   raffle_assign:'Розыгрыш: закрепления', raffle_calls:'Розыгрыш: звонки',
-  callout_assign:'Обзвон: закрепления', callout_calls:'Обзвон: звонки'
+  callout_assign:'Обзвон: закрепления', callout_calls:'Обзвон: звонки',
+  org_units:'Оргструктура: звенья', org_people:'Оргструктура: сотрудники'
 };
 function optionsFrom(dict, sel){
   return Object.keys(dict).map(k =>
@@ -615,6 +616,8 @@ const SECTIONS = [
   { key:'hr',      group:'company', label:'Подбор и адаптация', href:'hr.html',           icon:'idcard',
     roles:['hr','admin','director'], orBoss:true, soon:true },
   { key:'admin',   group:'company', label:'Сотрудники',     href:'admin.html',            icon:'users',
+    roles:['admin','director','hr'] },
+  { key:'org',     group:'company', label:'Оргструктура',   href:'org.html',              icon:'building',
     roles:['admin','director','hr'] },
   { key:'links',   group:'company', label:'Ссылки и планы', href:'links.html',            icon:'link', notRoles:['purchasing'] },
   { key:'wa',      group:'control', label:'WhatsApp',       href:'whatsapp.html',         icon:'phone',

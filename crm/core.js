@@ -146,7 +146,8 @@ const AUDIT_TABLE_RU = {
   links:'Ссылки', branches:'Филиалы', regions:'Регионы',
   raffle_assign:'Розыгрыш: закрепления', raffle_calls:'Розыгрыш: звонки',
   callout_assign:'Обзвон: закрепления', callout_calls:'Обзвон: звонки',
-  org_units:'Оргструктура: звенья', org_people:'Оргструктура: сотрудники'
+  org_units:'Оргструктура: звенья', org_people:'Оргструктура: сотрудники',
+  boards:'Доски', board_problems:'Доска: проблемы', board_solutions:'Доска: решения'
 };
 function optionsFrom(dict, sel){
   return Object.keys(dict).map(k =>
@@ -610,6 +611,7 @@ const SECTIONS = [
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'ldsp' },
   { key:'callout_risk26', group:'sales', label:'Обзвон: дилеры, ОПИП', href:'callout-risk.html', icon:'phone',
     roles:['sales','head','regional','brand','callcenter','admin','director','auditor'], campaign:'risk26' },
+  { key:'board',   group:'company', label:'Доска проблем',  href:'board.html',            icon:'flag' },
   { key:'events',  group:'company', label:'События и акции',href:'events.html',           icon:'star', notRoles:['purchasing'] },
   { key:'cc',      group:'company', label:'Колл-центр',     href:'callcenter.html',       icon:'phone',
     roles:['callcenter','head','admin','director','auditor'], soon:true },

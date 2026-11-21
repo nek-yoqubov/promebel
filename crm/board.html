@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PRO MEBEL CRM — Доска проблем</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#11131a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="crm.css">
+<style>
+.bd-head{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:0 16px 6px}
+.bd-head .ttl{flex:1;min-width:220px}
+.bd-head .ttl p{margin:4px 0 0;color:var(--ink-2);font-size:14px;max-width:720px}
+.bd-head .acts{display:flex;gap:8px;flex-wrap:wrap}
+.bd-boards{padding-bottom:4px}
+.bd-boards .chip{height:36px;font-size:13px}
+.bd-filters .chip .n{margin-left:6px;font-weight:800;opacity:.8}
+
+/* флипчарт: слева проблема, справа решения, посередине черта */
+.bd-sheet{margin:4px 16px 32px;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
+.bd-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+.bd-cols.hd{border-bottom:2px solid var(--line-2)}
+.bd-cols.hd div{padding:12px 18px;font-weight:800;font-size:15px}
+.bd-cols.hd div:last-child,.bd-row .sol{border-left:2px solid var(--line-2)}
+.bd-row{border-bottom:1px solid var(--line)}
+.bd-row:last-child{border-bottom:0}
+.bd-row.flash{animation:bdflash 1.6s ease-out}
+@keyframes bdflash{from{background:color-mix(in srgb,var(--brand) 18%,transparent)}to{background:transparent}}
+.bd-row .prb,.bd-row .sol{padding:14px 18px;min-width:0}
+.prb .t{font-weight:700;font-size:15.5px;line-height:1.35;word-break:break-word}
+.prb .d{margin-top:6px;color:var(--ink-2);font-size:14px;white-space:pre-wrap;word-break:break-word}
+.prb .meta{margin-top:8px;font-size:12.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.prb .bar{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bd-st{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:20px;font-size:12px;font-weight:700}
+.bd-st.pending{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.bd-st.open{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+.bd-st.talk{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+.bd-st.in_work{background:color-mix(in srgb,var(--plan) 16%,transparent);color:var(--plan)}
+.bd-st.solved{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.bd-st.rejected,.bd-st.merged{background:color-mix(in srgb,var(--late) 14%,transparent);color:var(--late)}
+.bd-vote{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:20px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink-2);font:600 13px 'Manrope';cursor:pointer}
+.bd-vote b{font-weight:800;color:var(--ink)}
+.bd-vote.on{border-color:var(--brand);color:var(--brand);background:color-mix(in srgb,var(--brand) 10%,var(--card))}
+.bd-vote:disabled{cursor:default;opacity:.7}
+.bd-why{margin-top:8px;font-size:13px;color:var(--late)}
+
+.sol .s{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--line)}
+.sol .s:last-of-type{border-bottom:0}
+.sol .s .tx{flex:1;min-width:0}
+.sol .s .tx div{font-size:14.5px;white-space:pre-wrap;word-break:break-word}
+.sol .s .tx small{display:block;margin-top:3px;color:var(--muted);font-size:12px}
+.sol .s.acc{background:color-mix(in srgb,var(--ok) 9%,transparent);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);border-radius:12px;padding:10px 12px;margin:2px 0 8px}
+.sol .acc-info{margin-top:6px;font-size:13px;color:var(--ink-2)}
+.sol .acc-info b{color:var(--ok)}
+.sol .none{color:var(--muted);font-size:14px;padding:4px 0 8px}
+.sol .s .bd-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.sol .add{display:flex;gap:8px;margin-top:8px;align-items:flex-end}
+.sol .add textarea{flex:1;min-height:42px;height:42px;resize:none;border-radius:12px;padding:10px 12px;font-size:14px}
+.sol .add .btn{flex:none}
+
+.bd-mod{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.bd-empty{padding:40px 20px;text-align:center;color:var(--ink-2)}
+.bd-empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
+.bd-form .field{margin-bottom:12px}
+.bd-form textarea{width:100%}
+.bd-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.bd-quick button{height:30px;font-size:12.5px}
+.pickbox{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px 10px}
+
+@media (max-width:820px){
+  .bd-cols.hd{display:none}
+  .bd-cols{grid-template-columns:1fr}
+  .bd-row .sol{border-left:0;border-top:1px dashed var(--line-2);padding-top:10px;margin-left:18px;padding-left:12px;border-left:2px solid var(--line-2)}
+  .bd-sheet{margin:4px 10px 24px}
+}
+@media (prefers-reduced-motion:reduce){ .bd-row.flash{animation:none} }
+</style>
+</head>
+<body>
+<main class="main" id="main">
+  <div class="pagehead"><h1>Доска проблем</h1></div>
+  <div class="chips bd-boards" id="boards" hidden></div>
+  <div class="bd-head">
+    <div class="ttl"><b id="bTitle" style="font-size:17px"></b><p id="bDesc"></p></div>
+    <div class="acts">
+      <button class="btn" id="addProblem" hidden></button>
+      <button class="btn ghost" id="boardCfg" hidden></button>
+      <button class="btn ghost" id="addBoard" hidden></button>
+    </div>
+  </div>
+  <div class="chips bd-filters" id="filters"></div>
+  <div id="view"><div class="loading">Загрузка…</div></div>
+</main>
+
+<script src="supabase.min.js"></script>
+<script src="core.js"></script>
+<script>
+initTheme();
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+let BOARDS = [], BOARD = null, PROBS = [], SOLS = [], VOTES = [], TASKS = {}, UNITS = [], CAN_CREATE = false;
+let FILTER = qs.get('f') || 'open', FOCUS = Number(qs.get('p')) || null;
+const ST_RU = { pending:'На рассмотрении', open:'Открыта', talk:'Обсуждается', in_work:'В работе', solved:'Решена', rejected:'Отклонена', merged:'Объединена' };
+const TASK_RU = { new:'новая', in_progress:'в работе', review:'на проверке', done:'выполнена', canceled:'отменена' };
+
+(async () => {
+  if(!await requireAuth()) return;
+  await renderShell({ title:'Доска проблем', tab:'' });
+  const [b, c, u] = await Promise.all([
+    sb.from('boards').select('*').eq('is_archived', false).order('id'),
+    sb.rpc('board_can_create'),
+    sb.rpc('board_units')
+  ]);
+  if(b.error){ $('view').innerHTML = '<div class="empty">' + esc(errText(b.error)) + '</div>'; return; }
+  BOARDS = b.data || [];
+  CAN_CREATE = !!c.data && !IS_PREVIEW;
+  UNITS = u.data || [];
+  $('addProblem').innerHTML = icon('plus') + 'Написать проблему';
+  $('boardCfg').innerHTML = icon('edit') + 'Настройки доски';
+  $('addBoard').innerHTML = icon('plus') + 'Новая доска';
+  $('addProblem').onclick = () => problemForm(null);
+  $('boardCfg').onclick = () => boardForm(BOARD);
+  $('addBoard').onclick = () => boardForm(null);
+  const want = Number(qs.get('b'));
+  pickBoard(BOARDS.find(x => x.id === want) || BOARDS[0] || null);
+})();
+
+const canWrite = () => !IS_PREVIEW && !isAuditor();
+const isMod = () => !!BOARD && !IS_PREVIEW && (ME.role === 'admin' || (BOARD.moderators || []).includes(ME.id));
+const canCfg = () => !!BOARD && !IS_PREVIEW && (ME.role === 'admin' || BOARD.created_by === ME.id || (BOARD.moderators || []).includes(ME.id));
+
+function pickBoard(b){
+  BOARD = b;
+  $('boards').hidden = BOARDS.length < 2;
+  $('boards').innerHTML = BOARDS.map(x => '<button class="chip' + (b && x.id === b.id ? ' on' : '') + '" data-b="' + x.id + '">' + esc(x.title) + '</button>').join('');
+  $('boards').querySelectorAll('[data-b]').forEach(el => el.onclick = () => { FILTER = 'open'; FOCUS = null; pickBoard(BOARDS.find(x => x.id === Number(el.dataset.b))); });
+  $('addBoard').hidden = !CAN_CREATE;
+  if(!b){
+    $('bTitle').textContent = ''; $('bDesc').textContent = '';
+    $('addProblem').hidden = true; $('boardCfg').hidden = true; $('filters').innerHTML = '';
+    $('view').innerHTML = '<div class="bd-empty"><b>Досок пока нет</b>' + (CAN_CREATE ? 'Создайте первую доску кнопкой «Новая доска».' : 'Когда руководство создаст доску, она появится здесь.') + '</div>';
+    return;
+  }
+  $('bTitle').textContent = b.title;
+  $('bDesc').textContent = b.description || '';
+  $('addProblem').hidden = !canWrite();
+  $('boardCfg').hidden = !canCfg();
+  if(!isMod() && FILTER === 'pending') FILTER = 'open';
+  history.replaceState(null, '', 'board.html?b=' + b.id + (FILTER !== 'open' ? '&f=' + FILTER : ''));
+  load();
+}
+
+async function load(){
+  const p = await sb.from('board_problems').select('*').eq('board_id', BOARD.id).order('created_at', { ascending:false });
+  if(p.error){ $('view').innerHTML = '<div class="empty">' + esc(errText(p.error)) + '</div>'; return; }
+  PROBS = p.data || [];
+  const ids = PROBS.map(x => x.id);
+  SOLS = []; VOTES = []; TASKS = {};
+  if(ids.length){
+    const s = await sb.from('board_solutions').select('*').in('problem_id', ids).order('created_at');
+    SOLS = s.data || [];
+    const sids = SOLS.map(x => x.id);
+    const withTask = PROBS.filter(x => x.task_id).map(x => x.id);
+    const [vp, vs, t] = await Promise.all([
+      sb.from('board_votes').select('problem_id,voter_id').in('problem_id', ids),
+      sids.length ? sb.from('board_votes').select('solution_id,voter_id').in('solution_id', sids) : Promise.resolve({ data: [] }),
+      withTask.length ? sb.rpc('board_tasks', { p_problems: withTask }) : Promise.resolve({ data: [] })
+    ]);
+    VOTES = (vp.data || []).concat(vs.data || []);
+    (t.data || []).forEach(x => TASKS[x.problem_id] = x);
+  }
+  paint();
+}
+
+const solsOf = id => SOLS.filter(s => s.problem_id === id);
+const votesP = id => VOTES.filter(v => v.problem_id === id);
+const votesS = id => VOTES.filter(v => v.solution_id === id);
+const myVote = list => list.some(v => v.voter_id === ME.id);
+const unitName = id => (UNITS.find(u => u.id === id) || {}).name || '';
+function stKey(p){ return p.status === 'open' && solsOf(p.id).length ? 'talk' : p.status; }
+const dt = iso => new Date(iso).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+
+function paint(){
+  const groups = {
+    open: PROBS.filter(p => p.status === 'open'),
+    in_work: PROBS.filter(p => p.status === 'in_work'),
+    solved: PROBS.filter(p => p.status === 'solved'),
+    pending: PROBS.filter(p => p.status === 'pending'),
+    mine: PROBS.filter(p => p.author_id === ME.id)
+  };
+  const tabs = [['open','Открытые'], ['in_work','В работе'], ['solved','Решённые']];
+  if(isMod()) tabs.push(['pending','На рассмотрении']);
+  tabs.push(['mine','Мои']);
+  $('filters').innerHTML = tabs.map(([k, l]) => '<button class="chip' + (FILTER === k ? ' on' : '') + '" data-f="' + k + '">' + l +
+    (groups[k].length ? '<span class="n">' + groups[k].length + '</span>' : '') + '</button>').join('');
+  $('filters').querySelectorAll('[data-f]').forEach(el => el.onclick = () => {
+    FILTER = el.dataset.f; FOCUS = null;
+    history.replaceState(null, '', 'board.html?b=' + BOARD.id + (FILTER !== 'open' ? '&f=' + FILTER : ''));
+    paint();
+  });
+
+  let list = groups[FILTER] || [];
+  if(FILTER === 'open') list = list.slice().sort((a, b) => votesP(b.id).length - votesP(a.id).length || new Date(b.created_at) - new Date(a.created_at));
+  if(FOCUS && !list.some(p => p.id === FOCUS)){
+    const f = PROBS.find(p => p.id === FOCUS);
+    if(f){ FILTER = f.status === 'pending' && isMod() ? 'pending' : f.author_id === ME.id && !['open','in_work','solved'].includes(f.status) ? 'mine' : f.status; return paint(); }
+  }
+  if(!list.length){
+    const empty = {
+      open: ['Открытых проблем нет', canWrite() ? 'Если что-то мешает работать — напишите. Проблема появится здесь после проверки.' : ''],
+      in_work: ['Сейчас ничего не решается', 'Когда по проблеме примут решение и назначат ответственного, она будет здесь.'],
+      solved: ['Решённых пока нет', ''],
+      pending: ['Ничего не ждёт проверки', ''],
+      mine: ['Вы ещё ничего не писали', canWrite() ? 'Кнопка «Написать проблему» — вверху.' : '']
+    }[FILTER];
+    $('view').innerHTML = '<div class="bd-sheet"><div class="bd-empty"><b>' + esc(empty[0]) + '</b>' + esc(empty[1]) + '</div></div>';
+    return;
+  }
+  $('view').innerHTML = '<div class="bd-sheet"><div class="bd-cols hd"><div>Проблема</div><div>Решения</div></div>' +
+    list.map(rowHTML).join('') + '</div>';
+  wire();
+  if(FOCUS){
+    const el = document.querySelector('[data-row="' + FOCUS + '"]');
+    if(el){ el.scrollIntoView({ block:'center' }); el.classList.add('flash'); }
+    FOCUS = null;
+  }
+}
+
+function rowHTML(p){
+  const k = stKey(p), vp = votesP(p.id), mine = myVote(vp);
+  const writable = canWrite() && (p.status === 'open' || p.status === 'in_work');
+  const meta = [empName(p.author_id) || 'Сотрудник', dt(p.created_at)];
+  if(p.unit_id && unitName(p.unit_id)) meta.push(unitName(p.unit_id));
+  let left = '<div class="prb"><div class="t">' + esc(p.title) + '</div>' +
+    (p.details ? '<div class="d">' + esc(p.details) + '</div>' : '') +
+    '<div class="meta"><span class="bd-st ' + k + '">' + ST_RU[k] + '</span>' + meta.map(esc).join('<span>·</span>') + '</div>';
+  if(p.status === 'rejected' && p.reject_reason) left += '<div class="bd-why">Причина: ' + esc(p.reject_reason) + '</div>';
+  if(p.status === 'merged'){
+    const t = PROBS.find(x => x.id === p.merged_into);
+    left += '<div class="bd-why">Такая проблема уже есть' + (t ? ': «' + esc(t.title) + '»' : '') + '. Ваш голос добавлен к ней.</div>';
+  }
+  if(['open','in_work','solved'].includes(p.status)){
+    left += '<div class="bar"><button class="bd-vote' + (mine ? ' on' : '') + '" data-vp="' + p.id + '"' + (writable ? '' : ' disabled') +
+      ' title="Тоже сталкиваюсь с этим">У меня тоже <b>' + vp.length + '</b></button>' +
+      (isMod() && p.status !== 'solved' ? '<button class="btn ghost sm" data-solve="' + p.id + '">' + icon('check') + 'Решена</button>' : '') +
+      (isMod() && p.status === 'solved' ? '<button class="btn ghost sm" data-reopen="' + p.id + '">Вернуть в открытые</button>' : '') +
+      '</div>';
+  }
+  if(p.status === 'pending' && isMod()){
+    left += '<div class="bd-mod"><button class="btn sm ok" data-approve="' + p.id + '">' + icon('check') + 'На доску</button>' +
+      '<button class="btn ghost sm" data-merge="' + p.id + '">Это дубль</button>' +
+      '<button class="btn ghost sm" data-reject="' + p.id + '" style="color:var(--late)">Отклонить</button></div>';
+  } else if(p.status === 'pending'){
+    left += '<div class="meta" style="margin-top:10px">Ждёт проверки ведущим доски</div>';
+  }
+  if(p.author_id === ME.id && ['pending','rejected'].includes(p.status) && !IS_PREVIEW){
+    left += '<div class="bar"><button class="btn ghost sm" data-del="' + p.id + '">' + icon('trash') + 'Удалить</button></div>';
+  }
+  left += '</div>';
+
+  const sols = solsOf(p.id).slice().sort((a, b) =>
+    (b.id === p.accepted_solution_id) - (a.id === p.accepted_solution_id) || votesS(b.id).length - votesS(a.id).length || a.id - b.id);
+  const t = TASKS[p.id];
+  const taskActive = t && ['new','in_progress','review'].includes(t.status);
+  let right = '<div class="sol">';
+  if(!sols.length) right += '<div class="none">' + (['open','in_work'].includes(p.status) ? 'Решений пока нет' : '—') + '</div>';
+  right += sols.map(s => {
+    const acc = s.id === p.accepted_solution_id, vs = votesS(s.id);
+    return '<div class="s' + (acc ? ' acc' : '') + '"><div class="tx"><div>' + esc(s.text) + '</div>' +
+      '<small>' + esc(empName(s.author_id) || 'Сотрудник') + ' · ' + esc(dt(s.created_at)) + '</small>' +
+      (acc && t ? '<div class="acc-info"><b>Принято.</b> Ответственный: ' + esc(empName(t.assignee_id)) +
+        (t.due_at ? ', срок ' + esc(fmtDateTime(t.due_at)) : '') + ' · задача ' + esc(TASK_RU[t.status] || t.status) + '</div>' : '') +
+      (acc && !t && p.status === 'solved' ? '<div class="acc-info"><b>Принято</b></div>' : '') +
+      '</div><div class="bd-side">' +
+        '<button class="bd-vote' + (myVote(vs) ? ' on' : '') + '" data-vs="' + s.id + '"' + (writable ? '' : ' disabled') + ' title="Поддерживаю это решение">+ <b>' + vs.length + '</b></button>' +
+        (isMod() && !acc && p.status === 'open' && !taskActive ? '<button class="btn sm" data-accept="' + s.id + '" data-pr="' + p.id + '">Принять</button>' : '') +
+        (!acc && !IS_PREVIEW && (s.author_id === ME.id || isMod()) ? '<button class="ib" data-sdel="' + s.id + '" aria-label="Удалить решение">' + icon('trash') + '</button>' : '') +
+      '</div></div>';
+  }).join('');
+  if(writable && p.status === 'open'){
+    right += '<div class="add"><textarea maxlength="2000" placeholder="Предложить решение" data-sol="' + p.id + '"></textarea>' +
+      '<button class="btn sm" data-send="' + p.id + '">Предложить</button></div>';
+  }
+  right += '</div>';
+  return '<div class="bd-row bd-cols" data-row="' + p.id + '">' + left + right + '</div>';
+}
+
+function wire(){
+  const v = $('view');
+  v.querySelectorAll('[data-vp]').forEach(b => b.onclick = () => toggleVote('problem_id', Number(b.dataset.vp)));
+  v.querySelectorAll('[data-vs]').forEach(b => b.onclick = () => toggleVote('solution_id', Number(b.dataset.vs)));
+  v.querySelectorAll('[data-send]').forEach(b => b.onclick = () => sendSolution(Number(b.dataset.send)));
+  v.querySelectorAll('textarea[data-sol]').forEach(t => t.oninput = () => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; });
+  v.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => moderate(Number(b.dataset.approve), 'approve'));
+  v.querySelectorAll('[data-reject]').forEach(b => b.onclick = () => rejectForm(Number(b.dataset.reject)));
+  v.querySelectorAll('[data-merge]').forEach(b => b.onclick = () => mergeForm(Number(b.dataset.merge)));
+  v.querySelectorAll('[data-accept]').forEach(b => b.onclick = () => acceptForm(Number(b.dataset.pr), Number(b.dataset.accept)));
+  v.querySelectorAll('[data-solve]').forEach(b => b.onclick = () => setStatus(Number(b.dataset.solve), 'solved'));
+  v.querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => setStatus(Number(b.dataset.reopen), 'open'));
+  v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => confirmBox('Удалить проблему?', 'Её нельзя будет вернуть.', 'Удалить', async () => {
+    const { error } = await sb.from('board_problems').delete().eq('id', Number(b.dataset.del));
+    if(error) return toast(errText(error));
+    toast('Удалено'); load();
+  }));
+  v.querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => confirmBox('Удалить решение?', 'Голоса за него тоже пропадут.', 'Удалить', async () => {
+    const { error } = await sb.from('board_solutions').delete().eq('id', Number(b.dataset.sdel));
+    if(error) return toast(errText(error));
+    load();
+  }));
+}
+
+async function toggleVote(col, id){
+  const mine = VOTES.find(x => x[col] === id && x.voter_id === ME.id);
+  const r = mine ? await sb.from('board_votes').delete().eq(col, id).eq('voter_id', ME.id)
+                 : await sb.from('board_votes').insert({ [col]: id });
+  if(r.error) return toast(errText(r.error));
+  load();
+}
+async function sendSolution(pid){
+  const t = document.querySelector('textarea[data-sol="' + pid + '"]'), text = t.value.trim();
+  if(!text){ t.focus(); return; }
+  const { error } = await sb.from('board_solutions').insert({ problem_id: pid, text });
+  if(error) return toast(errText(error));
+  toast('Решение добавлено'); FOCUS = pid; load();
+}
+
+/* ---------- проблема ---------- */
+function problemForm(){
+  modalOpen({
+    title: 'Новая проблема', sheet: true, saveLabel: isMod() ? 'Поставить на доску' : 'Отправить на проверку',
+    bodyHTML: '<div class="bd-form">' +
+      '<div class="field"><label class="field-label" for="pTitle">Что мешает работать <span class="req">*</span></label>' +
+        '<textarea id="pTitle" rows="2" maxlength="300" placeholder="Например: по вторникам почти нет клиентов в шоуруме"></textarea></div>' +
+      '<div class="field"><label class="field-label" for="pDet">Подробности</label>' +
+        '<textarea id="pDet" rows="3" maxlength="3000" placeholder="Где, с какого времени, как часто, к чему приводит"></textarea></div>' +
+      (UNITS.length ? '<div class="field"><label class="field-label" for="pUnit">Отдел</label><select id="pUnit"><option value="">Не указан</option>' +
+        UNITS.map(u => '<option value="' + u.id + '">' + esc(u.name) + '</option>').join('') + '</select></div>' : '') +
+      '<div class="hint">' + (isMod() ? 'Вы ведущий этой доски — проблема сразу появится на доске.' :
+        'Проблема появится на доске после проверки ведущим. Пока её видите только вы и ведущие.') + '</div></div>',
+    onSave: saveProblem
+  });
+  $('pTitle').focus();
+}
+async function saveProblem(){
+  const title = $('pTitle').value.trim();
+  if(!title) return modalMsg('Опишите проблему');
+  modalBusy(true, 'Отправляем…');
+  const rec = { board_id: BOARD.id, title, details: $('pDet').value.trim() };
+  if($('pUnit') && $('pUnit').value) rec.unit_id = Number($('pUnit').value);
+  const { data, error } = await sb.from('board_problems').insert(rec).select('id').single();
+  if(error){ modalBusy(false, 'Отправить'); return modalMsg(errText(error)); }
+  if(isMod()) await sb.rpc('board_moderate', { p_problem: data.id, p_action: 'approve' });
+  modalClose();
+  toast(isMod() ? 'Проблема на доске' : 'Отправлено. Появится на доске после проверки');
+  FILTER = isMod() ? 'open' : 'mine'; FOCUS = data.id; load();
+}
+
+/* ---------- ведущий ---------- */
+async function moderate(id, action, extra){
+  const { error } = await sb.rpc('board_moderate', Object.assign({ p_problem: id, p_action: action }, extra || {}));
+  if(error){ toast(errText(error)); return false; }
+  toast(action === 'approve' ? 'Проблема на доске' : action === 'reject' ? 'Отклонено, автор получит причину' : 'Объединено');
+  load(); return true;
+}
+function rejectForm(id){
+  const quick = ['Уже решается', 'Это вопрос, а не проблема', 'Слишком общо — опишите конкретнее', 'Не относится к этой доске'];
+  modalOpen({
+    title: 'Отклонить', sheet: true, saveLabel: 'Отклонить',
+    bodyHTML: '<div class="bd-form"><div class="bd-quick">' + quick.map(q => '<button class="btn ghost sm" data-q="' + esc(q) + '">' + esc(q) + '</button>').join('') + '</div>' +
+      '<div class="field"><label class="field-label" for="rWhy">Причина — её увидит автор</label><textarea id="rWhy" rows="3" maxlength="500"></textarea></div></div>',
+    onSave: async () => {
+      const why = $('rWhy').value.trim();
+      if(!why) return modalMsg('Напишите причину');
+      modalBusy(true);
+      if(await moderate(id, 'reject', { p_reason: why })) modalClose(); else modalBusy(false, 'Отклонить');
+    }
+  });
+  document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { $('rWhy').value = b.dataset.q; });
+}
+function mergeForm(id){
+  const opts = PROBS.filter(p => (p.status === 'open' || p.status === 'in_work') && p.id !== id);
+  if(!opts.length) return toast('На доске нет открытых проблем, с которыми можно объединить');
+  modalOpen({
+    title: 'Это дубль', sheet: true, saveLabel: 'Объединить',
+    bodyHTML: '<div class="bd-form"><div class="field"><label class="field-label" for="mInto">С какой проблемой объединить</label><select id="mInto">' +
+      opts.map(p => '<option value="' + p.id + '">' + esc(p.title.slice(0, 90)) + '</option>').join('') + '</select>' +
+      '<div class="hint">Автор получит уведомление, его голос добавится к выбранной проблеме.</div></div></div>',
+    onSave: async () => { modalBusy(true); if(await moderate(id, 'merge', { p_into: Number($('mInto').value) })) modalClose(); else modalBusy(false, 'Объединить'); }
+  });
+}
+function acceptForm(pid, sid){
+  const s = SOLS.find(x => x.id === sid);
+  const d = new Date(); d.setDate(d.getDate() + 3); d.setHours(18, 0, 0, 0);
+  const emps = EMPS.slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
+  modalOpen({
+    title: 'Принять решение', sheet: true, saveLabel: 'Принять и поставить задачу',
+    bodyHTML: '<div class="bd-form"><div class="text-block" style="margin-bottom:12px">' + esc(s.text) + '</div>' +
+      '<div class="field"><label class="field-label" for="aWho">Ответственный <span class="req">*</span></label><select id="aWho"><option value="">Выберите</option>' +
+        emps.map(e => '<option value="' + esc(e.id) + '"' + (e.id === s.author_id ? ' selected' : '') + '>' + esc(e.full_name) + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label class="field-label" for="aDue">Срок</label><input id="aDue" type="datetime-local" class="num" value="' + isoToLocalInput(d) + '"></div>' +
+      '<div class="hint">Ответственному придёт задача. Когда он её выполнит и вы примете, проблема станет решённой.</div></div>',
+    onSave: async () => {
+      const who = $('aWho').value;
+      if(!who) return modalMsg('Выберите ответственного');
+      modalBusy(true, 'Ставим задачу…');
+      const { error } = await sb.rpc('board_accept', { p_problem: pid, p_solution: sid, p_assignee: who, p_due: localToISO($('aDue').value) });
+      if(error){ modalBusy(false, 'Принять и поставить задачу'); return modalMsg(errText(error)); }
+      modalClose(); toast('Решение принято, задача поставлена'); FILTER = 'in_work'; FOCUS = pid; load();
+    }
+  });
+}
+async function setStatus(id, st){
+  const go = async () => {
+    const { error } = await sb.rpc('board_set_status', { p_problem: id, p_status: st });
+    if(error) return toast(errText(error));
+    toast(st === 'solved' ? 'Отмечено решённой' : 'Возвращено в открытые'); load();
+  };
+  if(st === 'solved') confirmBox('Проблема решена?', 'Автор получит уведомление. Задача по ней, если есть, останется как есть.', 'Решена', go);
+  else go();
+}
+
+/* ---------- доска ---------- */
+function boardForm(b){
+  const v = b || { moderators: [], visible_roles: [], visible_to: [] };
+  let mods = v.moderators || [];
+  if(!b){ mods = []; }
+  const emps = EMPS.slice().sort((a, x) => (a.full_name || '').localeCompare(x.full_name || '', 'ru'));
+  const box = (cls, list, sel) => list.map(e => '<label class="chk"><input type="checkbox" class="' + cls + '" value="' + esc(e.id) + '"' +
+    (sel.includes(e.id) ? ' checked' : '') + '>' + esc(e.full_name) + '</label>').join('');
+  modalOpen({
+    title: b ? 'Настройки доски' : 'Новая доска', sheet: true, wide: true, saveLabel: b ? 'Сохранить' : 'Создать доску',
+    bodyHTML: '<div class="bd-form">' +
+      '<div class="field"><label class="field-label" for="gTitle">Название <span class="req">*</span></label><input id="gTitle" maxlength="120" value="' + esc(v.title || '') + '"></div>' +
+      '<div class="field"><label class="field-label" for="gDesc">Для чего доска</label><textarea id="gDesc" rows="2" maxlength="1000">' + esc(v.description || '') + '</textarea></div>' +
+      '<div class="field"><label class="field-label">Ведущие — проверяют проблемы, принимают решения и назначают ответственных</label>' +
+        '<div class="pickbox">' + box('g-mod', emps, mods) + '</div>' +
+        '<div class="hint">' + (b ? 'Создатель доски всегда остаётся ведущим.' : 'Если никого не отметить, ведущими будут Толиб, Далер, Салимхуча, Азим и Некруз. Вы тоже станете ведущим.') + '</div></div>' +
+      '<div class="field"><label class="field-label">Кто видит доску</label>' +
+        '<div class="hint" style="margin:0 0 6px">Ничего не отмечено — видят все сотрудники.</div>' +
+        '<div class="pickbox" style="max-height:140px">' + Object.keys(ROLE_RU).map(k => '<label class="chk"><input type="checkbox" class="g-role" value="' + k + '"' +
+          ((v.visible_roles || []).includes(k) ? ' checked' : '') + '>' + esc(ROLE_RU[k]) + '</label>').join('') + '</div>' +
+        '<div class="pickbox" style="margin-top:8px">' + box('g-see', emps, v.visible_to || []) + '</div></div>' +
+      (b && (ME.role === 'admin' || b.created_by === ME.id) ? '<button class="btn ghost sm" id="gArch" style="color:var(--late)">' + icon('box') + 'Убрать доску в архив</button>' : '') +
+      '</div>',
+    onSave: async () => {
+      const title = $('gTitle').value.trim();
+      if(!title) return modalMsg('Впишите название');
+      const rec = {
+        title, description: $('gDesc').value.trim(),
+        moderators: [...document.querySelectorAll('.g-mod:checked')].map(c => c.value),
+        visible_roles: [...document.querySelectorAll('.g-role:checked')].map(c => c.value),
+        visible_to: [...document.querySelectorAll('.g-see:checked')].map(c => c.value)
+      };
+      modalBusy(true, 'Сохраняем…');
+      const r = b ? await sb.from('boards').update(rec).eq('id', b.id).select('*').single()
+                  : await sb.from('boards').insert(rec).select('*').single();
+      if(r.error){ modalBusy(false, 'Сохранить'); return modalMsg(errText(r.error)); }
+      modalClose(); toast(b ? 'Сохранено' : 'Доска создана');
+      const i = BOARDS.findIndex(x => x.id === r.data.id);
+      if(i >= 0) BOARDS[i] = r.data; else BOARDS.push(r.data);
+      pickBoard(r.data);
+    }
+  });
+  if($('gArch')) $('gArch').onclick = () => confirmBox('Убрать доску в архив?', 'Доска пропадёт из списка у всех. Проблемы сохранятся.', 'В архив', async () => {
+    const { error } = await sb.from('boards').update({ is_archived: true }).eq('id', b.id);
+    if(error) return toast(errText(error));
+    BOARDS = BOARDS.filter(x => x.id !== b.id); toast('Доска в архиве'); pickBoard(BOARDS[0] || null);
+  });
+}
+</script>
+</body>
+</html>
